@@ -23,7 +23,43 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler
 )
+from flask import Flask, jsonify
 
+# Create Flask app for health check
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return jsonify({"status": "ok", "service": "telegram-bot"})
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+# Run Flask in separate thread
+def run_flask():
+    app.run(host='0.0.0.0', port=PORT)
+
+# Update main() to run both
+import threading
+
+def main():
+    """Start the bot with Flask for health checks"""
+    # Start Flask in background thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Create Telegram application
+    application = Application.builder().token(TOKEN).build()
+    
+    # ... [rest of your bot setup] ...
+    
+    # Start bot polling
+    logger.info("Bot starting in polling mode...")
+    application.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+)
 # Load environment variables
 load_dotenv()
 
