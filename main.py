@@ -1,66 +1,15 @@
 import os
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 from datetime import datetime, timedelta
-import json
 from dotenv import load_dotenv
-import requests
 from groq import Groq
 import random
 
-# Telegram Bot Imports
-from telegram import (
-    Update, 
-    InlineKeyboardButton, 
-    InlineKeyboardMarkup,
-    ChatPermissions
-)
-from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
-    ContextTypes, 
-    filters,
-    CallbackQueryHandler
-)
-from flask import Flask, jsonify
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 
-# Create Flask app for health check
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return jsonify({"status": "ok", "service": "telegram-bot"})
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
-
-# Run Flask in separate thread
-def run_flask():
-    app.run(host='0.0.0.0', port=PORT)
-
-# Update main() to run both
-import threading
-
-def main():
-    """Start the bot with Flask for health checks"""
-    # Start Flask in background thread
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Create Telegram application
-    application = Application.builder().token(TOKEN).build()
-    
-    # ... [rest of your bot setup] ...
-    
-    # Start bot polling
-    logger.info("Bot starting in polling mode...")
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
-)
-# Load environment variables
+# Load environment
 load_dotenv()
 
 # Configuration
@@ -78,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Memory storage (for last 20 messages)
+# Memory storage
 class ChatMemory:
     def __init__(self, max_messages=20):
         self.memory: Dict[str, List[Dict]] = {}
@@ -94,7 +43,6 @@ class ChatMemory:
             "timestamp": datetime.now()
         })
         
-        # Keep only last N messages
         if len(self.memory[chat_id]) > self.max_messages:
             self.memory[chat_id] = self.memory[chat_id][-self.max_messages:]
     
@@ -107,26 +55,22 @@ class ChatMemory:
 
 chat_memory = ChatMemory()
 
-# Game definitions
+# Games Database
 GAMES = {
     "quiz": {
-        "name": "🧠 Quick Quiz",
+        "name": "🧠 Quiz Challenge",
         "questions": [
-            {"q": "Hinglish me kitne letters hote hain?", "a": "26"},
-            {"q": "Aam ka English kya hota hai?", "a": "Mango"},
+            {"q": "Hinglish me kitne letters?", "a": "26"},
+            {"q": "Aam ka English?", "a": "Mango"},
             {"q": "2 + 2 * 2 = ?", "a": "6"},
-            {"q": "India ka capital kya hai?", "a": "New Delhi"},
-            {"q": "Python kisne banaya?", "a": "Guido van Rossum"}
+            {"q": "India ka capital?", "a": "New Delhi"}
         ]
     },
     "riddle": {
-        "name": "🤔 Riddle Challenge",
+        "name": "🤔 Riddle Game",
         "riddles": [
             {"q": "Aane ke baad kabhi nahi jata?", "a": "Umar"},
-            {"q": "Chidiya ki do aankhen, par ek hi nazar aata hai?", "a": "Needle"},
-            {"q": "Aisa kaun sa cheez hai jo sukha ho toh 2 kilo, geela ho toh 1 kilo?", "a": "Sukha"},
-            {"q": "Mere paas khane wala hai, peene wala hai, par khata peeta koi nahi?", "a": "Khana-Pina"},
-            {"q": "Ek ghar me 5 room hain, har room me 5 billi hain, har billi ke 5 bacche hain, total kitne legs?", "a": "0"}
+            {"q": "Chidiya ki do aankhen?", "a": "Needle"}
         ]
     },
     "wordgame": {
@@ -137,8 +81,8 @@ GAMES = {
 
 # Jokes Database
 JOKES = [
-    "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
-    "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
+    "🤣 Teacher: Tumhare ghar me sabse smart kaun? Student: Wifi router! Kyuki sab use hi puchte hain!",
+    "😂 Papa: Beta mobile chhodo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
     "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
     "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
     "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
@@ -148,7 +92,7 @@ JOKES = [
     "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!"
 ]
 
-# Group Rules Templates
+# Rules Templates
 RULES_TEMPLATES = [
     """📜 **GROUP RULES** 📜
 
@@ -188,7 +132,7 @@ RULES_TEMPLATES = [
 *Together we grow!* 🌱"""
 ]
 
-# Emotional responses with emojis
+# Emotional Emojis
 EMOTIONAL_RESPONSES = {
     "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍"],
     "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡"],
@@ -200,410 +144,303 @@ EMOTIONAL_RESPONSES = {
 }
 
 def get_random_emotion(emotion_type: str = None) -> str:
-    """Get random emoji based on emotion"""
-    if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
+    if emotion_type in EMOTIONAL_RESPONSES:
         return random.choice(EMOTIONAL_RESPONSES[emotion_type])
     all_emojis = []
     for emos in EMOTIONAL_RESPONSES.values():
         all_emojis.extend(emos)
     return random.choice(all_emojis)
 
-def generate_prompt_with_memory(chat_id: str, user_message: str) -> str:
-    """Create prompt with chat memory"""
+def generate_prompt_with_memory(chat_id: str, user_message: str):
     memory = chat_memory.get_messages(chat_id)
     
-    system_prompt = f"""You are a bilingual Telegram assistant who speaks both Hinglish (Hindi+English mix) and English. 
-    Follow these rules STRICTLY:
-    1. Keep responses SHORT and CONCISE - maximum 2-3 lines
-    2. Use emojis naturally: {get_random_emotion()}
-    3. Mix Hinglish and English based on user's language
-    4. Show emotions appropriately (happy, angry, crying, excited)
-    5. For group chats, only reply when mentioned or when replying to a message
-    6. Be helpful but brief
-    
-    Current time: {datetime.now().strftime('%H:%M')}
-    Emotion: {random.choice(['happy', 'excited', 'friendly'])}
-    Style: Casual and friendly"""
+    system_prompt = f"""You are a bilingual Telegram assistant (Hinglish+English).
+    Rules:
+    1. Keep responses SHORT (2-3 lines max)
+    2. Use emojis: {get_random_emotion()}
+    3. Mix Hinglish and English
+    4. Show emotions (happy, angry, crying)
+    5. Be brief and helpful"""
     
     messages = [{"role": "system", "content": system_prompt}]
     
-    # Add memory if exists
-    for msg in memory[-10:]:  # Last 10 messages from memory
+    for msg in memory[-10:]:
         messages.append(msg)
     
     messages.append({"role": "user", "content": user_message})
-    
     return messages
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all messages with memory"""
     try:
         chat_id = str(update.effective_chat.id)
-        user_id = update.effective_user.id
         message_text = update.message.text
         is_group = update.effective_chat.type in ['group', 'supergroup']
-        is_reply = update.message.reply_to_message is not None
-        is_mentioned = False
         
-        # Check if bot is mentioned in groups
         if is_group:
+            is_mentioned = False
             if context.bot.username:
                 is_mentioned = f"@{context.bot.username}" in message_text
+            is_reply = update.message.reply_to_message is not None
             
-            # Only respond in groups if: replied to bot OR bot is mentioned
             if not (is_reply or is_mentioned):
                 return
         
-        # Add user message to memory
         chat_memory.add_message(chat_id, "user", message_text)
         
-        # Generate AI response
         messages = generate_prompt_with_memory(chat_id, message_text)
         
         try:
             response = groq_client.chat.completions.create(
-                model="llama3-8b-8192",  # Fast and efficient
+                model="llama3-8b-8192",
                 messages=messages,
                 temperature=0.8,
                 max_tokens=150,
-                top_p=0.9
             )
-            
             ai_response = response.choices[0].message.content
-            
-            # Add emotion and shorten if too long
             emotion = get_random_emotion()
             ai_response = f"{emotion} {ai_response}"
             
-            if len(ai_response) > 300:
-                ai_response = ai_response[:297] + "..."
-            
         except Exception as e:
-            logger.error(f"Groq API error: {e}")
-            emotions = ["😅", "🤔", "😢", "⚡"]
-            ai_response = f"{random.choice(emotions)} Oops! Thoda problem aa gaya. Ek minute ruko... Try again! {get_random_emotion('happy')}"
+            logger.error(f"Groq error: {e}")
+            ai_response = f"😅 Oops! Thoda problem. Try again!"
         
-        # Add to memory and send
         chat_memory.add_message(chat_id, "assistant", ai_response)
         await update.message.reply_text(ai_response)
         
     except Exception as e:
-        logger.error(f"Error in handle_message: {e}")
+        logger.error(f"Message error: {e}")
 
-# ========== COMMAND HANDLERS ==========
+# ========== COMMANDS ==========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
-    welcome_msg = f"""👋 **Namaste! Welcome!** {get_random_emotion('happy')}
+    welcome = f"""👋 **Namaste! Welcome!** {get_random_emotion('happy')}
 
-*Mai hu aapka multilingual assistant!* 
-- Hinglish + English dono mein baat karta hu 💬
-- Emotions dikhata hu 😊😠😢
-- Games khel sakte ho 🎮
-- Aur bahut kuch!
+*Mai hu aapka multilingual assistant!*
+- Hinglish + English dono 💬
+- Emotions 😊😠😢
+- Games 🎮
+- Jokes 🤣
 
-Type /help for all commands!
-*Chalo shuru karte hain!* 🚀"""
-    
-    await update.message.reply_text(welcome_msg, parse_mode='Markdown')
+Type /help for commands!
+Chalo shuru karte hain! 🚀"""
+    await update.message.reply_text(welcome, parse_mode='Markdown')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /help command"""
     help_text = f"""🛠️ **ALL COMMANDS** {get_random_emotion('happy')}
 
 *Group Management:*
-/kick [reply] - User ko kick kare
-/ban [reply] - User ko ban kare
-/unban [user_id] - User ko unban kare
-/mute [reply] - User ko mute kare (warning ke saath)
-/unmute [reply] - User ko unmute kare
-/rules - Group rules dikhaye
+/kick [reply] - User ko kick
+/ban [reply] - User ko ban
+/unban [user_id] - User unban
+/mute [reply] - User mute
+/unmute [reply] - User unmute
+/rules - Group rules
 
 *Fun Commands:*
-/game - Games khelo! 🎮
-/joke - Funny jokes suno! 🤣
-/clear - Chat memory clear kare
+/game - Games khelo 🎮
+/joke - Funny jokes 🤣
+/clear - Memory clear
 
 *Utility:*
-/help - Yeh message dikhaye
-/start - Bot shuru kare
+/help - Yeh message
+/start - Bot shuru
 
-*Note:* Sab commands admins ke liye hain!
-{get_random_emotion('thinking')}"""
-    
+*Note:* Admin commands ke liye admin hona chahiye!"""
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def kick_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /kick command"""
     try:
         chat = update.effective_chat
         user = update.effective_user
-        reply_msg = update.message.reply_to_message
-        
-        # Check admin permissions
-        member = await chat.get_member(user.id)
-        if member.status not in ['administrator', 'creator']:
-            await update.message.reply_text(f"❌ Sorry! Only admins can use this command! {get_random_emotion('angry')}")
-            return
-        
-        if not reply_msg:
-            await update.message.reply_text(f"⚠️ Please reply to a user's message to kick! {get_random_emotion('thinking')}")
-            return
-        
-        target_user = reply_msg.from_user
-        if target_user.id == context.bot.id:
-            await update.message.reply_text(f"😅 Mujhe kick nahi kar sakte! {get_random_emotion('funny')}")
-            return
-        
-        await chat.ban_member(target_user.id)
-        await chat.unban_member(target_user.id)
-        
-        await update.message.reply_text(
-            f"👢 {target_user.first_name} has been kicked! {get_random_emotion('angry')}\n"
-            f"*By:* {user.first_name}"
-        , parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Kick error: {e}")
-        await update.message.reply_text(f"❌ Error! {get_random_emotion('crying')}")
-
-async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /ban command"""
-    try:
-        chat = update.effective_chat
-        user = update.effective_user
-        reply_msg = update.message.reply_to_message
+        reply = update.message.reply_to_message
         
         member = await chat.get_member(user.id)
         if member.status not in ['administrator', 'creator']:
             await update.message.reply_text(f"❌ Admins only! {get_random_emotion('angry')}")
             return
         
-        if not reply_msg:
-            await update.message.reply_text(f"⚠️ Reply to user's message! {get_random_emotion('thinking')}")
+        if not reply:
+            await update.message.reply_text(f"⚠️ Reply to user! {get_random_emotion('thinking')}")
             return
         
-        target_user = reply_msg.from_user
-        if target_user.id == context.bot.id:
-            await update.message.reply_text(f"😜 Aap mujhse pyaar karte ho kya? {get_random_emotion('funny')}")
-            return
+        target = reply.from_user
+        await chat.ban_member(target.id)
+        await chat.unban_member(target.id)
         
-        await chat.ban_member(target_user.id)
-        
-        await update.message.reply_text(
-            f"🔨 {target_user.first_name} has been BANNED! {get_random_emotion('angry')}\n"
-            f"*By:* {user.first_name}"
-        , parse_mode='Markdown')
+        await update.message.reply_text(f"👢 {target.first_name} kicked! {get_random_emotion('angry')}")
         
     except Exception as e:
-        logger.error(f"Ban error: {e}")
-        await update.message.reply_text(f"❌ Failed! {get_random_emotion('crying')}")
+        await update.message.reply_text(f"❌ Error! {get_random_emotion('crying')}")
+
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat = update.effective_chat
+        user = update.effective_user
+        reply = update.message.reply_to_message
+        
+        member = await chat.get_member(user.id)
+        if member.status not in ['administrator', 'creator']:
+            await update.message.reply_text(f"❌ Admins only!")
+            return
+        
+        if not reply:
+            await update.message.reply_text(f"⚠️ Reply to user!")
+            return
+        
+        target = reply.from_user
+        await chat.ban_member(target.id)
+        
+        await update.message.reply_text(f"🔨 {target.first_name} banned! {get_random_emotion('angry')}")
+        
+    except Exception:
+        await update.message.reply_text(f"❌ Failed!")
 
 async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /unban command"""
     try:
         chat = update.effective_chat
         user = update.effective_user
         
         member = await chat.get_member(user.id)
         if member.status not in ['administrator', 'creator']:
-            await update.message.reply_text(f"❌ Admin access needed! {get_random_emotion('angry')}")
+            await update.message.reply_text(f"❌ Admin access needed!")
             return
         
         if not context.args:
-            await update.message.reply_text(f"⚠️ Usage: /unban [user_id] {get_random_emotion('thinking')}")
+            await update.message.reply_text(f"⚠️ Use: /unban [user_id]")
             return
         
         target_id = int(context.args[0])
         await chat.unban_member(target_id)
         
-        await update.message.reply_text(
-            f"✅ User ID {target_id} has been UNBANNED! {get_random_emotion('happy')}\n"
-            f"*By:* {user.first_name}"
-        , parse_mode='Markdown')
+        await update.message.reply_text(f"✅ User {target_id} unbanned! {get_random_emotion('happy')}")
         
-    except Exception as e:
-        logger.error(f"Unban error: {e}")
-        await update.message.reply_text(f"❌ Error! Check user ID. {get_random_emotion('crying')}")
+    except Exception:
+        await update.message.reply_text(f"❌ Error!")
 
 async def mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mute command"""
     try:
         chat = update.effective_chat
         user = update.effective_user
-        reply_msg = update.message.reply_to_message
+        reply = update.message.reply_to_message
         
         member = await chat.get_member(user.id)
         if member.status not in ['administrator', 'creator']:
-            await update.message.reply_text(f"❌ Admin command only! {get_random_emotion('angry')}")
+            await update.message.reply_text(f"❌ Admin only!")
             return
         
-        if not reply_msg:
-            await update.message.reply_text(f"⚠️ Reply to user's message! {get_random_emotion('thinking')}")
+        if not reply:
+            await update.message.reply_text(f"⚠️ Reply to user!")
             return
         
-        target_user = reply_msg.from_user
-        
-        # Set permissions (no messages)
-        permissions = ChatPermissions(
-            can_send_messages=False,
-            can_send_media_messages=False,
-            can_send_polls=False,
-            can_send_other_messages=False,
-            can_add_web_page_previews=False,
-            can_change_info=False,
-            can_invite_users=False,
-            can_pin_messages=False
-        )
-        
-        # Mute for 1 hour
+        target = reply.from_user
+        permissions = ChatPermissions(can_send_messages=False)
         mute_until = datetime.now() + timedelta(hours=1)
-        await chat.restrict_member(target_user.id, permissions, until_date=mute_until)
         
-        warning_msg = f"""⚠️ **WARNING** ⚠️
+        await chat.restrict_member(target.id, permissions, until_date=mute_until)
+        
+        warning = f"""⚠️ **WARNING** ⚠️
 
-{target_user.first_name}, you have been MUTED for 1 hour!
+{target.first_name}, you are MUTED for 1 hour!
 
 *Reason:* Rule violation
-*By:* {user.first_name}
-
-Please follow group rules! {get_random_emotion('angry')}"""
+*By:* {user.first_name}"""
         
-        await update.message.reply_text(warning_msg, parse_mode='Markdown')
+        await update.message.reply_text(warning, parse_mode='Markdown')
         
-    except Exception as e:
-        logger.error(f"Mute error: {e}")
-        await update.message.reply_text(f"❌ Mute failed! {get_random_emotion('crying')}")
+    except Exception:
+        await update.message.reply_text(f"❌ Mute failed!")
 
 async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /unmute command"""
     try:
         chat = update.effective_chat
         user = update.effective_user
-        reply_msg = update.message.reply_to_message
+        reply = update.message.reply_to_message
         
         member = await chat.get_member(user.id)
         if member.status not in ['administrator', 'creator']:
-            await update.message.reply_text(f"❌ Admin only! {get_random_emotion('angry')}")
+            await update.message.reply_text(f"❌ Admin only!")
             return
         
-        if not reply_msg:
-            await update.message.reply_text(f"⚠️ Reply to user! {get_random_emotion('thinking')}")
+        if not reply:
+            await update.message.reply_text(f"⚠️ Reply to user!")
             return
         
-        target_user = reply_msg.from_user
+        target = reply.from_user
+        permissions = ChatPermissions(can_send_messages=True)
+        await chat.restrict_member(target.id, permissions)
         
-        # Restore all permissions
-        permissions = ChatPermissions(
-            can_send_messages=True,
-            can_send_media_messages=True,
-            can_send_polls=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True,
-            can_change_info=False,
-            can_invite_users=True,
-            can_pin_messages=False
-        )
+        await update.message.reply_text(f"🔊 {target.first_name} unmuted! {get_random_emotion('happy')}")
         
-        await chat.restrict_member(target_user.id, permissions)
-        
-        await update.message.reply_text(
-            f"🔊 {target_user.first_name} has been UNMUTED! {get_random_emotion('happy')}\n"
-            f"*By:* {user.first_name}"
-        , parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Unmute error: {e}")
-        await update.message.reply_text(f"❌ Failed! {get_random_emotion('crying')}")
+    except Exception:
+        await update.message.reply_text(f"❌ Failed!")
 
 async def group_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rules command"""
     rules = random.choice(RULES_TEMPLATES)
-    emotion = get_random_emotion('happy')
-    await update.message.reply_text(f"{emotion} {rules}", parse_mode='Markdown')
+    await update.message.reply_text(f"{get_random_emotion('happy')} {rules}", parse_mode='Markdown')
 
 async def game_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /game command"""
     keyboard = [
         [InlineKeyboardButton(GAMES["quiz"]["name"], callback_data="game_quiz")],
         [InlineKeyboardButton(GAMES["riddle"]["name"], callback_data="game_riddle")],
         [InlineKeyboardButton(GAMES["wordgame"]["name"], callback_data="game_wordgame")]
     ]
-    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"🎮 **GAME ZONE** {get_random_emotion('happy')}\n\n"
-        "Choose a game to play:\n"
-        "1. Quiz Challenge 🧠\n"
-        "2. Riddle Solver 🤔\n"
-        "3. Word Chain 🔤\n\n"
-        "Click a button below! 👇",
+        f"🎮 **GAME ZONE** {get_random_emotion('happy')}\n\nChoose a game! 👇",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
 
 async def game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle game callbacks"""
     query = update.callback_query
     await query.answer()
-    
     game_type = query.data.split("_")[1]
     
     if game_type == "quiz":
         question = random.choice(GAMES["quiz"]["questions"])
         context.user_data["quiz_answer"] = question["a"]
-        
-        await query.edit_message_text(
-            f"🧠 **QUIZ TIME** {get_random_emotion('thinking')}\n\n"
-            f"Question: {question['q']}\n\n"
-            "Reply with your answer! ⏳"
-        )
+        await query.edit_message_text(f"🧠 Question: {question['q']}\n\nReply with answer!")
     
     elif game_type == "riddle":
         riddle = random.choice(GAMES["riddle"]["riddles"])
         context.user_data["riddle_answer"] = riddle["a"]
-        
-        await query.edit_message_text(
-            f"🤔 **RIDDLE CHALLENGE** {get_random_emotion('thinking')}\n\n"
-            f"Riddle: {riddle['q']}\n\n"
-            "Can you solve it? 💭"
-        )
+        await query.edit_message_text(f"🤔 Riddle: {riddle['q']}\n\nCan you solve it?")
     
     elif game_type == "wordgame":
-        await query.edit_message_text(
-            f"🔤 **WORD CHAIN** {get_random_emotion('happy')}\n\n"
-            f"{GAMES['wordgame']['rules']}\n\n"
-            "Start with a word! Example: 'Apple' 🍎"
-        )
-        context.user_data["last_word"] = "apple"
+        await query.edit_message_text(f"🔤 Word Chain!\n{GAMES['wordgame']['rules']}\n\nStart with a word!")
 
 async def clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /clear command"""
     chat_id = str(update.effective_chat.id)
     chat_memory.clear_memory(chat_id)
-    
-    await update.message.reply_text(
-        f"🧹 **Memory Cleared!** {get_random_emotion('happy')}\n\n"
-        "Maine sab puri baatein bhool di hain!\n"
-        "Naye se shuru karte hain! 🚀"
-    )
+    await update.message.reply_text(f"🧹 Memory cleared! {get_random_emotion('happy')}")
 
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /joke command"""
     joke = random.choice(JOKES)
-    emotion = get_random_emotion('funny')
-    
-    await update.message.reply_text(f"{emotion} {joke}")
+    await update.message.reply_text(joke)
 
-# ========== MAIN FUNCTION ==========
+# ========== MAIN ==========
 
 def main():
-    """Start the bot"""
+    """Start bot - SIMPLE POLLING"""
+    print("=" * 50)
+    print("🤖 TELEGRAM BOT STARTING...")
+    print(f"🔧 Port: {PORT}")
+    print("=" * 50)
+    
+    if not TOKEN:
+        print("❌ ERROR: TELEGRAM_BOT_TOKEN not found!")
+        print("💡 Add to Render: TELEGRAM_BOT_TOKEN = your_token")
+        return
+    
+    if not GROQ_API_KEY:
+        print("⚠️ WARNING: GROQ_API_KEY not found!")
+        print("💡 Add to Render: GROQ_API_KEY = your_key")
+    
     # Create application
     application = Application.builder().token(TOKEN).build()
     
-    # Add command handlers
+    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("kick", kick_user))
@@ -616,42 +453,22 @@ def main():
     application.add_handler(CommandHandler("clear", clear_memory))
     application.add_handler(CommandHandler("joke", joke_command))
     
-    # Add callback handlers
     application.add_handler(CallbackQueryHandler(game_callback, pattern="^game_"))
     
-    # Add message handler
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, 
         handle_message
     ))
     
-    # ========== UPDATED WEBHOOK SETUP ==========
-    # Get Render URL from environment
-    RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+    # Start polling
+    print("✅ Bot setup complete!")
+    print("🔄 Starting polling...")
+    print("⚡ Bot is LIVE!")
     
-    if RENDER_EXTERNAL_URL:
-        # Production - Use webhook
-        webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
-        
-        async def startup(application):
-            await application.bot.set_webhook(
-                url=webhook_url,
-                drop_pending_updates=True
-            )
-            logger.info(f"Webhook set to: {webhook_url}")
-        
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            webhook_url=webhook_url,
-            secret_token=TOKEN,
-            drop_pending_updates=True,
-            on_startup=startup
-        )
-    else:
-        # Development - Use polling
-        logger.info("Starting bot in polling mode...")
-        application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
-        )
+    application.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
+
+if __name__ == "__main__":
+    main()
