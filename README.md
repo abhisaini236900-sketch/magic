@@ -63,6 +63,6 @@
 ## 📸 **Demo**
 
 ### **Live Bot**
-[@YourBotUsername](https://t.me/YourBotUsername)
+[@](https://t.me/YourBotUsername)
 
 ### **Screenshots**
