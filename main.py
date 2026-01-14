@@ -615,7 +615,6 @@ def main():
     application.add_handler(CommandHandler("game", game_command))
     application.add_handler(CommandHandler("clear", clear_memory))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("image", generate_image))
     
     # Add callback handlers
     application.add_handler(CallbackQueryHandler(game_callback, pattern="^game_"))
@@ -626,13 +625,33 @@ def main():
         handle_message
     ))
     
-    # Start webhook for Render
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TOKEN,
-        webhook_url=f"https://your-bot-name.onrender.com/{TOKEN}"
-    )
-
-if __name__ == "__main__":
-    main()
+    # ========== UPDATED WEBHOOK SETUP ==========
+    # Get Render URL from environment
+    RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+    
+    if RENDER_EXTERNAL_URL:
+        # Production - Use webhook
+        webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
+        
+        async def startup(application):
+            await application.bot.set_webhook(
+                url=webhook_url,
+                drop_pending_updates=True
+            )
+            logger.info(f"Webhook set to: {webhook_url}")
+        
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=webhook_url,
+            secret_token=TOKEN,
+            drop_pending_updates=True,
+            on_startup=startup
+        )
+    else:
+        # Development - Use polling
+        logger.info("Starting bot in polling mode...")
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
