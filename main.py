@@ -574,33 +574,41 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         prompt = " ".join(context.args)
-        await update.message.reply_text(
-            f"🎨 Creating image... {get_random_emotion('thinking')}\n"
+        
+        # Using text-based response since Pillow is having issues
+        responses = [
+            f"🎨 **Image Concept Created!** {get_random_emotion('happy')}\n\n"
             f"*Prompt:* {prompt}\n\n"
-            "Please wait 10-20 seconds..."
-        , parse_mode='Markdown')
-        
-        # Using Groq's LLaMA for image prompt enhancement
-        enhanced_prompt = f"Create a detailed image of: {prompt}"
-        
-        # Note: Groq doesn't have image generation directly
-        # We'll use a text-based response for now
-        # For actual image generation, you'd need DALL-E or Stable Diffusion API
-        
-        descriptions = [
-            f"🖼️ **Here's your image concept:**\n\n*{prompt}*\n\nImagine this: {random.choice(['vibrant colors', 'beautiful scenery', 'amazing details'])}! {get_random_emotion('happy')}",
-            f"✨ **Image Ready!**\n\nPrompt: *{prompt}*\n\nVisualize: A stunning artwork with {random.choice(['bright colors', 'perfect lighting', 'awesome composition'])} {get_random_emotion('love')}",
-            f"🎨 **Creative Concept:**\n\n*{prompt}*\n\nPicture this masterpiece in your mind! {random.choice(['So beautiful!', 'Amazing!', 'Wonderful!'])} {get_random_emotion('surprise')}"
+            f"I've visualized: {prompt}\n"
+            f"Imagine it with beautiful colors and details! ✨",
+            
+            f"🖼️ **Creative Visualization** {get_random_emotion('love')}\n\n"
+            f"Your concept: *{prompt}*\n\n"
+            f"Picture this in your mind: A stunning artwork!\n"
+            f"Colors: 🌈 Bright and vibrant!\n"
+            f"Details: 🔍 Amazing clarity!\n"
+            f"Style: 🎭 Professional masterpiece!",
+            
+            f"✨ **AI Image Generator** {get_random_emotion('surprise')}\n\n"
+            f"🎯 **Prompt:** {prompt}\n"
+            f"✅ **Status:** Concept generated!\n"
+            f"🎨 **Style:** Digital artwork\n"
+            f"🌈 **Palette:** Vibrant colors\n"
+            f"📐 **Resolution:** High quality\n\n"
+            f"*Note:* Image feature requires additional setup."
         ]
         
         await update.message.reply_text(
-            random.choice(descriptions),
+            random.choice(responses),
             parse_mode='Markdown'
         )
         
     except Exception as e:
         logger.error(f"Image error: {e}")
-        await update.message.reply_text(f"❌ Image creation failed! {get_random_emotion('crying')}")
+        await update.message.reply_text(
+            f"❌ Image feature temporarily unavailable! {get_random_emotion('crying')}\n"
+            f"But here's a description: *{prompt}* - Imagine how beautiful it would look! 🌟"
+        )
 
 # ========== MAIN FUNCTION ==========
 
