@@ -6,8 +6,6 @@ import json
 from dotenv import load_dotenv
 import requests
 from groq import Groq
-from PIL import Image
-import io
 import random
 
 # Telegram Bot Imports
@@ -288,7 +286,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *Fun Commands:*
 /game - Games khelo! 🎮
 /joke - Funny jokes suno! 🤣
-/image [prompt] - AI images banaye 🖼️
 /clear - Chat memory clear kare
 
 *Utility:*
@@ -562,53 +559,6 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emotion = get_random_emotion('funny')
     
     await update.message.reply_text(f"{emotion} {joke}")
-
-async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /image command"""
-    try:
-        if not context.args:
-            await update.message.reply_text(
-                f"⚠️ Usage: /image [prompt]\n"
-                f"Example: /image a beautiful sunset {get_random_emotion('thinking')}"
-            )
-            return
-        
-        prompt = " ".join(context.args)
-        
-        # Using text-based response since Pillow is having issues
-        responses = [
-            f"🎨 **Image Concept Created!** {get_random_emotion('happy')}\n\n"
-            f"*Prompt:* {prompt}\n\n"
-            f"I've visualized: {prompt}\n"
-            f"Imagine it with beautiful colors and details! ✨",
-            
-            f"🖼️ **Creative Visualization** {get_random_emotion('love')}\n\n"
-            f"Your concept: *{prompt}*\n\n"
-            f"Picture this in your mind: A stunning artwork!\n"
-            f"Colors: 🌈 Bright and vibrant!\n"
-            f"Details: 🔍 Amazing clarity!\n"
-            f"Style: 🎭 Professional masterpiece!",
-            
-            f"✨ **AI Image Generator** {get_random_emotion('surprise')}\n\n"
-            f"🎯 **Prompt:** {prompt}\n"
-            f"✅ **Status:** Concept generated!\n"
-            f"🎨 **Style:** Digital artwork\n"
-            f"🌈 **Palette:** Vibrant colors\n"
-            f"📐 **Resolution:** High quality\n\n"
-            f"*Note:* Image feature requires additional setup."
-        ]
-        
-        await update.message.reply_text(
-            random.choice(responses),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Image error: {e}")
-        await update.message.reply_text(
-            f"❌ Image feature temporarily unavailable! {get_random_emotion('crying')}\n"
-            f"But here's a description: *{prompt}* - Imagine how beautiful it would look! 🌟"
-        )
 
 # ========== MAIN FUNCTION ==========
 
