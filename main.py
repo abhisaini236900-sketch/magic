@@ -2,6 +2,7 @@ import os
 import logging
 from typing import Dict, List
 from datetime import datetime, timedelta
+from flask import Flask
 from dotenv import load_dotenv
 from groq import Groq
 import random
@@ -9,6 +10,17 @@ import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 
+# --- RENDER PORT BINDING ---
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def health_check():
+    return "Bot is Alive!", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host='0.0.0.0', port=port)
+    
 # Load environment
 load_dotenv()
 
@@ -422,8 +434,10 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========== MAIN ==========
 
 def main():
-    """Start bot"""
-    print("🤖 Bot starting...")
+    # 1. Start Flask in background
+    Thread(target=run_flask).start()
+
+    
     
     # Create application with polling
     app = Application.builder().token(TOKEN).build()
@@ -445,7 +459,8 @@ def main():
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("✅ Bot started! Running...")
-    
-    # Simple polling
+    print("🤖 Bot is live on Render!")
     app.run_polling()
+
+if __name__ == '__main__':
+    main()
