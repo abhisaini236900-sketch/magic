@@ -422,53 +422,30 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========== MAIN ==========
 
 def main():
-    """Start bot - SIMPLE POLLING"""
-    print("=" * 50)
-    print("🤖 TELEGRAM BOT STARTING...")
-    print(f"🔧 Port: {PORT}")
-    print("=" * 50)
+    """Start bot"""
+    print("🤖 Bot starting...")
     
-    if not TOKEN:
-        print("❌ ERROR: TELEGRAM_BOT_TOKEN not found!")
-        print("💡 Add to Render: TELEGRAM_BOT_TOKEN = your_token")
-        return
-    
-    if not GROQ_API_KEY:
-        print("⚠️ WARNING: GROQ_API_KEY not found!")
-        print("💡 Add to Render: GROQ_API_KEY = your_key")
-    
-    # Create application
-    application = Application.builder().token(TOKEN).build()
+    # Create application with polling
+    app = Application.builder().token(TOKEN).build()
     
     # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("kick", kick_user))
-    application.add_handler(CommandHandler("ban", ban_user))
-    application.add_handler(CommandHandler("unban", unban_user))
-    application.add_handler(CommandHandler("mute", mute_user))
-    application.add_handler(CommandHandler("unmute", unmute_user))
-    application.add_handler(CommandHandler("rules", group_rules))
-    application.add_handler(CommandHandler("game", game_command))
-    application.add_handler(CommandHandler("clear", clear_memory))
-    application.add_handler(CommandHandler("joke", joke_command))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("kick", kick_user))
+    app.add_handler(CommandHandler("ban", ban_user))
+    app.add_handler(CommandHandler("unban", unban_user))
+    app.add_handler(CommandHandler("mute", mute_user))
+    app.add_handler(CommandHandler("unmute", unmute_user))
+    app.add_handler(CommandHandler("rules", group_rules))
+    app.add_handler(CommandHandler("game", game_command))
+    app.add_handler(CommandHandler("clear", clear_memory))
+    app.add_handler(CommandHandler("joke", joke_command))
     
-    application.add_handler(CallbackQueryHandler(game_callback, pattern="^game_"))
+    app.add_handler(CallbackQueryHandler(game_callback, pattern="^game_"))
     
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, 
-        handle_message
-    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Start polling
-    print("✅ Bot setup complete!")
-    print("🔄 Starting polling...")
-    print("⚡ Bot is LIVE!")
+    print("✅ Bot started! Running...")
     
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
-    )
-
-if __name__ == "__main__":
-    main()
+    # Simple polling
+    app.run_polling()
