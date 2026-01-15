@@ -105,11 +105,38 @@ async def clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Select a game:\n1. /dice - Luck check\n2. /dart - Nishana lagao\n3. /slots - Jackpot try karo")
 
+# ---- MESSAGE HANDLER ----
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if bot is mentioned or it's a private chat
-    if update.message.chat.type == 'private' or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or f"@{context.bot.username}" in update.message.text:
-        resp = await get_ai_response(update.effective_chat.id, update.message.text)
+    # Message text nikalna
+    user_text = update.message.text
+    if not user_text:
+        return
+
+    chat_id = update.effective_chat.id
+    bot_username = context.bot.username
+
+    # Conditions check karna: 
+    # 1. Private chat ho
+    # 2. Bot ko reply diya gaya ho
+    # 3. Bot ka naam mention kiya gaya ho
+    is_private = update.message.chat.type == 'private'
+    is_reply_to_bot = update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id
+    is_mentioned = f"@{bot_username}" in user_text
+
+    if is_private or is_reply_to_bot or is_mentioned:
+        # Groq se response mangwana
+        try:
+            resp = await get_ai_response(chat_id, user_text)
+            await update.message.reply_text(resp)
+        except Exception as e:
+            print(f"Error: {e}")
+            await update.message.reply_text("Yaar mera dimaag thoda garam hai (API Error), baad me baat karte hain! 😡")
+    else:
+        # Agar aap chahte hain ki bina mention ke bhi har msg pe bole, to niche wali line uncomment karein:
+        # resp = await get_ai_response(chat_id, user_text
         await update.message.reply_text(resp)
+        return
+
 
 def main():
     token = os.getenv("BOT_TOKEN")
