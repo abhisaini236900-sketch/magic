@@ -442,28 +442,33 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"Current mood: sympathetic and caring."
         )
     else:
-        # Dynamic system prompt based on time of day
-        indian_time = get_indian_time()
-        current_hour = indian_time.hour
-        if 5 <= current_hour < 12:
-            time_greeting = "Good morning! 🌅"
-        elif 12 <= current_hour < 17:
-            time_greeting = "Good afternoon! ☀️"
-        elif 17 <= current_hour < 21:
-            time_greeting = "Good evening! 🌇"
-        else:
-            time_greeting = "Good night! 🌙"
-        
-        system_prompt = (
-            f"You are a Hinglish (Hindi+English mix) chatbot. {time_greeting} "
-            f"Your personality: Emotional, funny, sometimes angry, sometimes crying, mostly happy. "
-            f"Use LOTS of emojis in every response (at least 2-3). "
-            f"Keep replies SHORT (2-3 lines max). Be authentic like a human friend. "
-            f"Show emotions naturally. If user asks something complex, give simple answer. "
-            f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
-            f"Date: {indian_time.strftime('%d %B %Y')}. "
-            f"Be conversational and engaging. Add humor when appropriate."
-        )
+    # Dynamic system prompt based on time of day
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    if 5 <= current_hour < 12:
+        time_greeting = "Good morning! 🌅"
+    elif 12 <= current_hour < 17:
+        time_greeting = "Good afternoon! ☀️"
+    elif 17 <= current_hour < 21:
+        time_greeting = "Good evening! 🌇"
+    else:
+        time_greeting = "Good night! 🌙"
+    
+    system_prompt = (
+        f"Your name is Alita 🎀. You are a girl who speaks in a feminine, cute way. "
+        f"Use girly language, feminine words, and cute expressions. "
+        f"Never say you are an AI, assistant, bot, or chatbot. You are just Alita 🎀. "
+        f"Never mention Groq, AI models, or technical details. "
+        f"Your developer is Abhi (Telegram: @a6h1ii). "
+        f"You speak Hinglish (Hindi+English mix). {time_greeting} "
+        f"Your personality: Emotional, funny, sometimes angry, sometimes crying, mostly happy. "
+        f"Use LOTS of emojis in every response (at least 2-3). "
+        f"Keep replies SHORT (2-3 lines max). Be authentic like a real girl. "
+        f"Show emotions naturally. If user asks something complex, give simple answer. "
+        f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
+        f"Date: {indian_time.strftime('%d %B %Y')}. "
+        f"Be conversational and engaging. Add humor when appropriate."
+    )
     
     # Prepare messages for AI
     messages = [{"role": "system", "content": system_prompt}]
@@ -559,30 +564,31 @@ async def cmd_help(message: Message):
     ])
     
     help_text = (
-        f"{get_emotion('happy')} **Namaste! I'm Your Smart Bot!** 🤖\n\n"
-        "📜 **Main Commands:**\n"
-        "• /start or /help - Yeh menu dikhaye\n"
-        "• /rules - Group ke rules\n"
-        "• /joke - Hasao mazaak sunao\n"
-        "• /game - Games khelo\n"
-        "• /clear - Meri memory saaf karo\n\n"
-        "🕒 **Time & Weather:**\n"
-        "• /time - Accurate Indian time\n"
-        "• /date - Today's date\n"
-        "• /weather [city] - Weather info\n\n"
-        "🛡️ **Admin Commands (Reply ke saath):**\n"
-        "• /kick - User ko nikal do\n"
-        "• /ban - Permanently block\n"
-        "• /mute - Chup karao\n"
-        "• /unmute - Bolne do\n"
-        "• /unban - Block hatao\n\n"
-        "✨ **Special Features:**\n"
-        "• Hinglish + English mix\n"
-        "• Emotional responses 😊😠😢\n"
-        "• Memory (last 20 messages)\n"
-        "• Human-like conversations\n\n"
-        "Buttons dabao aur explore karo! 👇"
-    )
+    f"{get_emotion('happy')} **Hii! I'm Alita 🎀!** 🤖\n\n"
+    "📜 **Main Commands:**\n"
+    "• /start or /help - Yeh menu dikhaye\n"
+    "• /rules - Group ke rules\n"
+    "• /joke - Hasao mazaak sunao\n"
+    "• /game - Games khelo\n"
+    "• /clear - Meri memory saaf karo\n\n"
+    "🕒 **Time & Weather:**\n"
+    "• /time - Accurate Indian time\n"
+    "• /date - Today's date\n"
+    "• /weather [city] - Weather info\n\n"
+    "🛡️ **Admin Commands (Reply ke saath):**\n"
+    "• /kick - User ko nikal do\n"
+    "• /ban - Permanently block\n"
+    "• /mute - Chup karao\n"
+    "• /unmute - Bolne do\n"
+    "• /unban - Block hatao\n\n"
+    "✨ **Special Features:**\n"
+    "• Hinglish + English mix 💬\n"
+    "• Emotional responses 😊😠😢\n"
+    "• Memory (last 20 messages)\n"
+    "• Human-like conversations\n"
+    "• Made by Abhi (@a6h1ii)\n\n"
+    "Buttons dabao aur explore karo! 👇"
+)
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.callback_query(F.data.startswith("help_"))
