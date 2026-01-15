@@ -5,83 +5,84 @@ from collections import deque
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ChatMemberUpdated
-from groq import Groq
+from groq import AsyncGroq  # Async version use kar rahe hain
+from aiohttp import web
 
-# Configuration
+# --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 
-client = Groq(api_key=GROQ_API_KEY)
+# Initialize Clients
+client = AsyncGroq(api_key=GROQ_API_KEY)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Memory Storage: {chat_id: deque(maxlen=20)}
+# Memory: {chat_id: deque}
 chat_memory = {}
 
-# --- SYSTEM PROMPT (Bot Personality) ---
 SYSTEM_PROMPT = (
     "You are a Hinglish chatbot. Mood: Emotional, can get angry, happy, or cry. "
     "Use emojis freely. Keep replies VERY SHORT. Stay authentic. "
     "Talk naturally like a human friend."
 )
 
-def get_ai_response(chat_id, user_text):
+# --- AI LOGIC ---
+async def get_ai_response(chat_id, user_text):
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=20)
     
-    # Add user msg to memory
     chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(chat_memory[chat_id])
     
-    completion = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=messages,
-        max_tokens=150
-    )
-    
-    ai_reply = completion.choices[0].message.content
-    chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-    return ai_reply
+    try:
+        completion = await client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=messages,
+            max_tokens=150
+        )
+        ai_reply = completion.choices[0].message.content
+        chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
+        return ai_reply
+    except Exception as e:
+        return f"Arre yaar, dimaag kaam nahi kar raha! (Error: {str(e)})"
 
 # --- COMMANDS ---
-
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     help_text = (
-        "📜 **My Commands:**\n"
-        "/help - Show this list\n/kick - Kick user\n/ban - Ban user\n"
-        "/unban - Unban user\n/mute - Mute & Warn\n/unmute - Unmute\n"
-        "/rules - Group rules\n/game - Play games\n/clear - Clear my memory\n/joke - Get a joke"
+        "📜 **Commands List:**\n"
+        "/help - Ye list dikhaye\n/kick - User ko nikalne ke liye\n"
+        "/ban - Block karne ke liye\n/unban - Unblock karne ke liye\n"
+        "/mute - Chup karwane ke liye\n/unmute - Bolne dene ke liye\n"
+        "/rules - Group ke asool\n/game - Masti maza\n"
+        "/clear - Meri yaadasht saaf karein\n/joke - Hasne ke liye"
     )
     await message.reply(help_text, parse_mode="Markdown")
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
-    rules = [
-        "1. No spamming 🚫", "2. Respect everyone 🙏", 
-        "3. No links allowed 🔗", "4. Be happy! 😊"
-    ]
+    rules = ["No Spamming 🚫", "Respect Admin 👑", "No Links 🔗", "Be Chill 😎"]
     random.shuffle(rules)
-    await message.reply(f"Group Rules:\n" + "\n".join(rules))
+    await message.reply(f"📜 **Group Rules:**\n" + "\n".join(rules))
 
 @dp.message(Command("joke"))
 async def cmd_joke(message: Message):
     jokes = [
-        "Teacher: Kal kyun nahi aaye? Student: Sir gir gaya tha. Teacher: Kahan? Student: Bed pe aur neend aa gayi. 😂",
-        "Pappu: Yaar meri biwi ne mujhe ghar se nikaal diya. Friend: Kyun? Pappu: Usne pucha kaisa lag raha hoon, maine bol diya 'bhains' jaisa. 😭"
+        "Pappu: Mummy, sab mujhe dactor dactor kyun kehte hain?\nMummy: Kyun ki beta teri likhai samajh nahi aati! 😂",
+        "Teacher: Kal school kyun nahi aaye?\nBacha: Sir kal gir gaya tha.\nTeacher: Kahan?\nBacha: Bed pe, aur phir neend aa gayi. 😴"
     ]
     await message.reply(random.choice(jokes))
 
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
-    chat_memory[message.chat.id] = deque(maxlen=20)
-    await message.reply("Memory cleared! Sab bhool gaya main. ✨")
+    if message.chat.id in chat_memory:
+        chat_memory[message.chat.id].clear()
+    await message.reply("Memory saaf! ✨ Ab hum ajnabee hain.")
 
 @dp.message(Command("game"))
 async def cmd_game(message: Message):
-    await message.reply("🎮 **Select a Game:**\n1. /dice - Luck test\n2. /slot - Casino vibes\n3. /football - Goal marna hai!")
+    await message.reply("🎮 **Khel Shuru Karein?**\n\n1. /dice - Luck test\n2. /slot - Casino\n3. /football - Goal marna hai!")
 
 @dp.message(Command("dice", "slot", "football"))
 async def play_games(message: Message):
@@ -89,64 +90,68 @@ async def play_games(message: Message):
     cmd = message.text.split()[0][1:]
     await bot.send_dice(message.chat.id, emoji=emoji_map.get(cmd, "🎲"))
 
-# --- ADMIN COMMANDS ---
-
+# --- ADMIN ACTIONS ---
 @dp.message(Command("kick", "ban", "unban", "mute", "unmute"))
 async def admin_cmds(message: Message):
     if not message.reply_to_message:
-        return await message.reply("Reply to someone to use this!")
+        return await message.reply("Kisi ke message par reply karke command do!")
     
-    user_id = message.reply_to_message.from_user.id
+    uid = message.reply_to_message.from_user.id
     cmd = message.text.split()[0][1:]
-    
     try:
         if cmd == "kick":
-            await bot.ban_chat_member(message.chat.id, user_id)
-            await bot.unban_chat_member(message.chat.id, user_id)
-            await message.reply(f"Kicked! Nikal gaya 🏃💨")
+            await bot.ban_chat_member(message.chat.id, uid)
+            await bot.unban_chat_member(message.chat.id, uid)
+            await message.reply("Nikal gaya! 🏃💨")
         elif cmd == "ban":
-            await bot.ban_chat_member(message.chat.id, user_id)
-            await message.reply(f"Banned! Dubara mat aana 🚫")
+            await bot.ban_chat_member(message.chat.id, uid)
+            await message.reply("Banned! 🚫 Khatam tata bye bye.")
         elif cmd == "mute":
-            await bot.restrict_chat_member(message.chat.id, user_id, permissions={"can_send_messages": False})
-            await message.reply(f"Chup! ⚠️ Warning mil gayi.")
+            await bot.restrict_chat_member(message.chat.id, uid, permissions={"can_send_messages": False})
+            await message.reply("Chup! ⚠️ Bolna band.")
         elif cmd == "unmute":
-            await bot.restrict_chat_member(message.chat.id, user_id, permissions={"can_send_messages": True})
-            await message.reply(f"Theek hai, ab bol sakte ho.")
-    except Exception as e:
-        await message.reply(f"Error: Admin power nahi hai mere paas ya user admin hai!")
+            await bot.restrict_chat_member(message.chat.id, uid, permissions={"can_send_messages": True})
+            await message.reply("Theek hai, ab bol lo. 🎤")
+    except:
+        await message.reply("Mere paas powers nahi hain ya wo admin hai! ❌")
 
-# --- WELCOME & CHAT ---
-
+# --- EVENTS ---
 @dp.chat_member()
 async def welcome_member(event: ChatMemberUpdated):
     if event.new_chat_member.status == "member":
-        welcomes = ["Aao ji", "Welcome", "Swagat hai", "Hello"]
-        name = event.new_chat_member.user.first_name
-        await bot.send_message(event.chat.id, f"{random.choice(welcomes)} @{name}! 🎉 Kaise ho?")
+        welcomes = ["Swagat hai", "Aao ji", "Welcome", "Namaste"]
+        await bot.send_message(event.chat.id, f"{random.choice(welcomes)} @{event.new_chat_member.user.first_name}! 🎉")
 
 @dp.message()
 async def handle_chat(message: Message):
-    # Handle DMs or Mentions or Replies
+    if not message.text: return
     is_private = message.chat.type == "private"
-    is_mention = message.text and (f"@{bot._me.username}" in message.text)
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
+    is_mention = f"@{ (await bot.get_me()).username }" in message.text
 
-    if is_private or is_mention or is_reply:
-        response = get_ai_response(message.chat.id, message.text)
+    if is_private or is_reply or is_mention:
+        # Bot ko mention ya reply karne par hi AI bolega groups mein
+        clean_text = message.text.replace(f"@{ (await bot.get_me()).username }", "").strip()
+        response = await get_ai_response(message.chat.id, clean_text)
         await message.reply(response)
 
-# --- DEPLOYMENT WEBHOOK (For Render) ---
-from aiohttp import web
+# --- DEPLOYMENT HANDLER ---
+async def handle_ping(request):
+    return web.Response(text="Bot is Alive!")
 
-async def on_startup(bot: Bot):
-    await bot.set_webhook(url=f"{os.getenv('RENDER_EXTERNAL_URL')}/webhook")
-
-def main():
+async def start_server():
     app = web.Application()
-    app.router.add_post("/webhook", lambda request: dp.feed_update(bot, request))
-    # Dummy server for Render port check
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+async def main():
+    # Start background dummy server for Render
+    asyncio.create_task(start_server())
+    # Start Bot Polling
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling(bot))
+    asyncio.run(main())
