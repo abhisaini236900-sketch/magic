@@ -443,9 +443,9 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         )
     else:
     # Dynamic system prompt based on time of day
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    if 5 <= current_hour < 12:
+        indian_time = get_indian_time()
+        current_hour = indian_time.hour
+        if 5 <= current_hour < 12:
         time_greeting = "Good morning! 🌅"
     elif 12 <= current_hour < 17:
         time_greeting = "Good afternoon! ☀️"
