@@ -73,7 +73,7 @@ async def cmd_help(message: Message):
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
-    rules = ["• Be kind and polite 🤗","• No hate speech ❌","• Share knowledge 📚","• No self-promotion without permission","• Use appropriate language","• Report issues to admins","• Keep discussions friendly","*Let's build a positive community!* 🌟"]
+    rules = ["• Be kind and polite 🤗","• No hate speech ❌","• Share knowledge 📚","• No self-promotion without permission","• Use appropriate language","• Report issues to admins","• Keep discussions friendly"]
     random.shuffle(rules)
     await message.reply(f"📜 **Group Rules:**\n" + "\n".join(rules))
 
