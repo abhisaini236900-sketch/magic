@@ -9,21 +9,33 @@ from aiogram.filters import Command
 from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
 from groq import AsyncGroq
 from aiohttp import web
+import pytz
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 
-# Initialize Clients
-client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+# Timezone for India
+INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
+
+# Initialize with MemoryStorage
+storage = MemoryStorage()
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=storage)
+
+# Initialize Groq client
+client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # Memory: {chat_id: deque}
 chat_memory: Dict[int, deque] = {}
+
+# Game states storage: {user_id: game_data}
+active_games: Dict[int, Dict] = {}
+game_sessions: Dict[int, Dict] = {}  # Store game sessions separately
 
 # Emotional states for each user
 user_emotions: Dict[int, str] = {}
@@ -34,7 +46,7 @@ class GameStates(StatesGroup):
     playing_quiz = State()
     playing_riddle = State()
     playing_word = State()
-    waiting_for_answer = State()
+    waiting_answer = State()
 
 # --- HUMAN-LIKE BEHAVIOUR IMPROVEMENTS ---
 
@@ -81,6 +93,24 @@ QUICK_RESPONSES = {
         "Bhool gaya tha! Sorry bhai! 🥺",
         "I messed up! Forgive me? 💔"
     ]
+}
+
+# Get Indian time
+def get_indian_time():
+    utc_now = datetime.now(pytz.utc)
+    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
+    return indian_time
+
+# Weather data (static for demo - you can integrate real API later)
+WEATHER_DATA = {
+    "mumbai": {"temp": "32°C", "condition": "Sunny ☀️", "humidity": "65%"},
+    "delhi": {"temp": "28°C", "condition": "Partly Cloudy ⛅", "humidity": "55%"},
+    "bangalore": {"temp": "26°C", "condition": "Light Rain 🌦️", "humidity": "70%"},
+    "kolkata": {"temp": "30°C", "condition": "Humid 💦", "humidity": "75%"},
+    "chennai": {"temp": "33°C", "condition": "Hot 🔥", "humidity": "68%"},
+    "hyderabad": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "60%"},
+    "ahmedabad": {"temp": "31°C", "condition": "Sunny ☀️", "humidity": "58%"},
+    "pune": {"temp": "27°C", "condition": "Pleasant 😊", "humidity": "62%"}
 }
 
 # Get random emotion based on context
@@ -224,6 +254,116 @@ GROUP_RULES = [
 *This is our digital family!* 💖"""
 ]
 
+# --- FIXED GAME LOGIC ---
+
+def start_word_game(user_id: int):
+    """Start a new word chain game"""
+    start_words = ["PYTHON", "APPLE", "TIGER", "ELEPHANT", "RAINBOW", "COMPUTER", "TELEGRAM", "BOT"]
+    start_word = random.choice(start_words)
+    
+    game_sessions[user_id] = {
+        "game": "word_chain",
+        "last_word": start_word.lower(),
+        "score": 0,
+        "words_used": [start_word.lower()],
+        "last_letter": start_word[-1].lower(),
+        "started_at": datetime.now()
+    }
+    
+    return start_word
+
+def check_word_game(user_id: int, user_word: str):
+    """Check if word is valid in word chain game"""
+    if user_id not in game_sessions:
+        return False, "No active game! Start with /game"
+    
+    game_data = game_sessions[user_id]
+    user_word_lower = user_word.lower().strip()
+    
+    # Check if word starts with correct letter
+    if not user_word_lower.startswith(game_data["last_letter"]):
+        return False, f"Word must start with '{game_data['last_letter'].upper()}'!"
+    
+    # Check if word already used
+    if user_word_lower in game_data["words_used"]:
+        return False, f"'{user_word}' already used! Try different word."
+    
+    # Check if word is valid (at least 3 letters)
+    if len(user_word_lower) < 3:
+        return False, "Word must be at least 3 letters!"
+    
+    # Update game state
+    game_data["words_used"].append(user_word_lower)
+    game_data["last_word"] = user_word_lower
+    game_data["last_letter"] = user_word_lower[-1]
+    game_data["score"] += 10
+    
+    return True, game_data
+
+# --- TIME AND WEATHER FUNCTIONS ---
+
+async def get_weather_info(city: str = None):
+    """Get weather information (simulated for now)"""
+    if not city:
+        # Default cities
+        default_cities = ["Mumbai", "Delhi", "Bangalore", "Kolkata", "Chennai"]
+        city = random.choice(default_cities)
+    
+    city_lower = city.lower()
+    
+    # Check if we have data for this city
+    for city_key in WEATHER_DATA.keys():
+        if city_key in city_lower or city_lower in city_key:
+            weather = WEATHER_DATA[city_key]
+            return (
+                f"🌤️ **Weather in {city_key.title()}**\n"
+                f"• Temperature: {weather['temp']}\n"
+                f"• Condition: {weather['condition']}\n"
+                f"• Humidity: {weather['humidity']}\n"
+                f"• Updated: Just now\n\n"
+                f"*Note: This is demo data. For real weather, use weather apps.*"
+            )
+    
+    # If city not found, show random city weather
+    random_city = random.choice(list(WEATHER_DATA.keys()))
+    weather = WEATHER_DATA[random_city]
+    return (
+        f"🌤️ **Weather Info**\n"
+        f"Couldn't find '{city}'. Here's weather in {random_city.title()}:\n"
+        f"• Temperature: {weather['temp']}\n"
+        f"• Condition: {weather['condition']}\n"
+        f"• Humidity: {weather['humidity']}\n\n"
+        f"*Tip: Try 'Mumbai', 'Delhi', 'Bangalore' etc.*"
+    )
+
+def get_time_info():
+    """Get accurate Indian time"""
+    indian_time = get_indian_time()
+    
+    # Format time beautifully
+    time_str = indian_time.strftime("%I:%M %p")
+    date_str = indian_time.strftime("%A, %d %B %Y")
+    
+    # Get appropriate greeting based on time
+    hour = indian_time.hour
+    if 5 <= hour < 12:
+        greeting = "Good Morning! 🌅"
+    elif 12 <= hour < 17:
+        greeting = "Good Afternoon! ☀️"
+    elif 17 <= hour < 21:
+        greeting = "Good Evening! 🌇"
+    else:
+        greeting = "Good Night! 🌙"
+    
+    return (
+        f"🕒 **Indian Standard Time (IST)**\n"
+        f"• Time: {time_str}\n"
+        f"• Date: {date_str}\n"
+        f"• {greeting}\n"
+        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
+        f"*Time is accurate to Indian timezone!*"
+    )
+
 # --- AI LOGIC WITH HUMAN-LIKE TOUCH ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Initialize memory for chat if not exists
@@ -257,12 +397,41 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         if random.random() < 0.4:
             return f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}"
     
+    # Check if this is a game response
+    if user_id in game_sessions:
+        game_data = game_sessions[user_id]
+        if game_data["game"] == "word_chain":
+            # This is a word chain game response - handle it specially
+            is_valid, message = check_word_game(user_id, user_text)
+            if is_valid:
+                # Successful word - continue game
+                next_letter = game_data["last_letter"].upper()
+                score = game_data["score"]
+                return (
+                    f"{get_emotion('happy')} **✅ Correct!**\n\n"
+                    f"• Your word: {user_text.upper()}\n"
+                    f"• Next letter: **{next_letter}**\n"
+                    f"• Your score: **{score} points**\n\n"
+                    f"Now give me a word starting with **{next_letter}**"
+                )
+            else:
+                # Invalid word - end game
+                score = game_data["score"]
+                del game_sessions[user_id]
+                return (
+                    f"{get_emotion('crying')} **❌ Game Over!**\n\n"
+                    f"{message}\n"
+                    f"• Final Score: **{score} points**\n"
+                    f"• Words used: {len(game_data['words_used'])}\n\n"
+                    f"Play again with /game 🎮"
+                )
+    
     # Check if user is angry or upset
     if user_id and user_id in user_emotions and user_emotions[user_id] == "angry":
         system_prompt = (
             f"You are a Hinglish chatbot. User seems angry. "
             f"Try to calm them down. Be extra polite and understanding. "
-            f"Use soothing tone. Current time: {datetime.now().strftime('%H:%M')}. "
+            f"Use soothing tone. Current Indian time: {get_indian_time().strftime('%I:%M %p')}. "
             f"Show you care. Use emojis like {get_emotion('crying')} or {get_emotion('love')}."
         )
     elif user_id and user_id in user_emotions and user_emotions[user_id] == "crying":
@@ -274,7 +443,8 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         )
     else:
         # Dynamic system prompt based on time of day
-        current_hour = datetime.now().hour
+        indian_time = get_indian_time()
+        current_hour = indian_time.hour
         if 5 <= current_hour < 12:
             time_greeting = "Good morning! 🌅"
         elif 12 <= current_hour < 17:
@@ -290,7 +460,8 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"Use LOTS of emojis in every response (at least 2-3). "
             f"Keep replies SHORT (2-3 lines max). Be authentic like a human friend. "
             f"Show emotions naturally. If user asks something complex, give simple answer. "
-            f"Current time: {datetime.now().strftime('%I:%M %p')}. "
+            f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
+            f"Date: {indian_time.strftime('%d %B %Y')}. "
             f"Be conversational and engaging. Add humor when appropriate."
         )
     
@@ -339,6 +510,39 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         ]
         return random.choice(error_responses)
 
+# --- NEW COMMANDS: TIME AND WEATHER ---
+
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
+    """Show accurate Indian time"""
+    time_info = get_time_info()
+    await message.reply(time_info, parse_mode="Markdown")
+
+@dp.message(Command("weather"))
+async def cmd_weather(message: Message):
+    """Show weather information"""
+    city = None
+    if len(message.text.split()) > 1:
+        city = ' '.join(message.text.split()[1:])
+    
+    weather_info = await get_weather_info(city)
+    await message.reply(weather_info, parse_mode="Markdown")
+
+@dp.message(Command("date"))
+async def cmd_date(message: Message):
+    """Show current date"""
+    indian_time = get_indian_time()
+    date_str = indian_time.strftime("%A, %d %B %Y")
+    
+    await message.reply(
+        f"{get_emotion('happy')} **📅 Today's Date**\n"
+        f"• {date_str}\n"
+        f"• Day: {indian_time.strftime('%A')}\n"
+        f"• Indian Standard Time 🇮🇳\n\n"
+        f"*Have a great day!* ✨",
+        parse_mode="Markdown"
+    )
+
 # --- COMMANDS WITH IMPROVED RESPONSES ---
 
 @dp.message(Command("start", "help"))
@@ -350,7 +554,7 @@ async def cmd_help(message: Message):
         ],
         [
             InlineKeyboardButton(text="😊 Fun", callback_data="help_fun"),
-            InlineKeyboardButton(text="🔧 Utility", callback_data="help_utility")
+            InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
         ]
     ])
     
@@ -362,6 +566,10 @@ async def cmd_help(message: Message):
         "• /joke - Hasao mazaak sunao\n"
         "• /game - Games khelo\n"
         "• /clear - Meri memory saaf karo\n\n"
+        "🕒 **Time & Weather:**\n"
+        "• /time - Accurate Indian time\n"
+        "• /date - Today's date\n"
+        "• /weather [city] - Weather info\n\n"
         "🛡️ **Admin Commands (Reply ke saath):**\n"
         "• /kick - User ko nikal do\n"
         "• /ban - Permanently block\n"
@@ -386,12 +594,15 @@ async def help_callback(callback: types.CallbackQuery):
             f"{get_emotion('funny')} **🎮 GAMES SECTION 🎮**\n\n"
             "Available Games:\n"
             "• /game - Select game menu\n"
-            "• /quiz - Quick quiz challenge\n"
-            "• /riddle - Solve riddles\n"
-            "• /wordgame - Word chain game\n"
-            "• /dice - Roll dice (1-6)\n"
-            "• /slot - Casino slot machine\n"
-            "• /football - Football game\n\n"
+            "• Word Chain - Type words in sequence\n"
+            "• Quiz - Answer questions\n"
+            "• Riddles - Solve puzzles\n"
+            "• Luck Games - Dice, slots, etc.\n\n"
+            "**How to play Word Chain:**\n"
+            "1. Start with /game → Word Game\n"
+            "2. I give first word (e.g., PYTHON)\n"
+            "3. You reply with word starting with N\n"
+            "4. Continue the chain!\n\n"
             "Games are fun! Let's play! 🎯"
         )
     elif help_type == "admin":
@@ -400,37 +611,37 @@ async def help_callback(callback: types.CallbackQuery):
             "**Usage:** Reply to user's message with command\n\n"
             "• /kick - Remove user (can rejoin)\n"
             "• /ban - Permanent ban\n"
-            "• /mute - Restrict messaging\n"
+            "• /mute - Restrict messaging (1 hour)\n"
             "• /unmute - Remove restrictions\n"
             "• /unban - Remove ban\n"
-            "• /warn - Give warning\n\n"
+            "• /warn - Give warning (coming soon)\n\n"
             "*Note:* Bot needs admin rights for these!"
         )
     elif help_type == "fun":
         text = (
             f"{get_emotion('happy')} **😊 FUN COMMANDS 😊**\n\n"
             "• /joke - Random joke\n"
-            "• /quote - Motivational quote\n"
-            "• /fact - Interesting fact\n"
-            "• /compliment - Nice compliment\n"
-            "• /roast - Friendly roast 😂\n"
+            "• /quote - Motivational quote (coming soon)\n"
+            "• /fact - Interesting fact (coming soon)\n"
+            "• /compliment - Nice compliment (coming soon)\n"
+            "• /roast - Friendly roast 😂 (coming soon)\n"
             "• /mood - Check bot's mood\n"
-            "• /time - Current time\n"
-            "• /weather - Weather info (coming soon)\n\n"
+            "• /time - Accurate Indian time\n"
+            "• /weather - Weather info\n\n"
             "Let's have some fun! 🎉"
         )
-    else:  # utility
+    else:  # weather
         text = (
-            f"{get_emotion('thinking')} **🔧 UTILITY COMMANDS 🔧**\n\n"
-            "• /clear - Clear chat memory\n"
-            "• /stats - Bot statistics\n"
-            "• /ping - Check bot latency\n"
-            "• /id - Get chat/user ID\n"
-            "• /translate - Translate text\n"
-            "• /calc - Calculator\n"
-            "• /remind - Set reminder\n"
-            "• /search - Web search\n\n"
-            "Useful tools for you! 🛠️"
+            f"{get_emotion('thinking')} **🌤️ WEATHER & TIME 🌤️**\n\n"
+            "**Time Commands:**\n"
+            "• /time - Shows Indian Standard Time\n"
+            "• /date - Today's date\n\n"
+            "**Weather Commands:**\n"
+            "• /weather - Random city weather\n"
+            "• /weather mumbai - Mumbai weather\n"
+            "• /weather delhi - Delhi weather\n"
+            "• /weather bangalore - Bangalore weather\n\n"
+            "*Note: Weather data is simulated for demo.*"
         )
     
     await callback.message.edit_text(text, parse_mode="Markdown")
@@ -455,8 +666,16 @@ async def cmd_joke(message: Message):
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
     chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    # Clear chat memory
     if chat_id in chat_memory:
         chat_memory[chat_id].clear()
+    
+    # Clear any active games for this user
+    if user_id in game_sessions:
+        del game_sessions[user_id]
+    
     responses = [
         f"{get_emotion()} Memory clear! Ab nayi shuruwat! ✨",
         f"{get_emotion('happy')} Sab bhool gaya! Naye se baat karte hain! 🧹",
@@ -464,17 +683,17 @@ async def cmd_clear(message: Message):
     ]
     await message.reply(random.choice(responses))
 
-# --- GAME COMMANDS IMPROVED ---
+# --- FIXED GAME COMMANDS ---
 
 @dp.message(Command("game"))
 async def cmd_game(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz"),
-            InlineKeyboardButton(text="🤔 Riddle", callback_data="game_riddle")
+            InlineKeyboardButton(text="🔤 Word Chain", callback_data="game_word"),
+            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz")
         ],
         [
-            InlineKeyboardButton(text="🔤 Word Game", callback_data="game_word"),
+            InlineKeyboardButton(text="🤔 Riddle", callback_data="game_riddle"),
             InlineKeyboardButton(text="🎲 Luck Games", callback_data="game_luck")
         ],
         [
@@ -492,18 +711,40 @@ async def cmd_game(message: Message):
 @dp.callback_query(F.data.startswith("game_"))
 async def game_callback(callback: types.CallbackQuery, state: FSMContext):
     game_type = callback.data.split("_")[1]
+    user_id = callback.from_user.id
     
     if game_type == "close":
         await callback.message.delete()
         await callback.answer("Menu closed! ✅")
         return
     
-    if game_type == "quiz":
+    elif game_type == "word":
+        # Start word chain game
+        start_word = start_word_game(user_id)
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **🔤 WORD CHAIN GAME 🔤**\n\n"
+            "**Rules:**\n"
+            "1. I give a word\n"
+            "2. You reply with word starting with last letter\n"
+            "3. Continue the chain!\n\n"
+            "**Example:**\n"
+            "Apple → Elephant → Tiger → Rabbit\n\n"
+            f"**Let's start!**\n"
+            f"First word: **{start_word}**\n\n"
+            f"Now reply with a word starting with **{start_word[-1].upper()}**",
+            parse_mode="Markdown"
+        )
+        await state.set_state(GameStates.playing_word)
+        await callback.answer("Word chain game started! ✅")
+    
+    elif game_type == "quiz":
         question = random.choice(QUIZ_QUESTIONS)
         await state.update_data(
             game="quiz",
             answer=question["answer"].lower(),
-            hint=question["hint"]
+            hint=question["hint"],
+            attempts=3,
+            question=question["question"]
         )
         await callback.message.edit_text(
             f"{get_emotion('thinking')} **🧠 QUIZ CHALLENGE 🧠**\n\n"
@@ -513,6 +754,7 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             parse_mode="Markdown"
         )
         await state.set_state(GameStates.playing_quiz)
+        await callback.answer("Quiz started! 🧠")
         
     elif game_type == "riddle":
         riddle = random.choice(RIDDLES)
@@ -520,7 +762,8 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             game="riddle",
             answer=riddle["answer"].lower(),
             hint=riddle["hint"],
-            attempts=3
+            attempts=3,
+            riddle=riddle["riddle"]
         )
         await callback.message.edit_text(
             f"{get_emotion()} **🤔 RIDDLE TIME 🤔**\n\n"
@@ -530,21 +773,7 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             parse_mode="Markdown"
         )
         await state.set_state(GameStates.playing_riddle)
-        
-    elif game_type == "word":
-        await callback.message.edit_text(
-            f"{get_emotion('happy')} **🔤 WORD CHAIN GAME 🔤**\n\n"
-            "**Rules:**\n"
-            "1. I'll give a word\n"
-            "2. You reply with a word starting with last letter\n"
-            "3. Continue the chain!\n\n"
-            "Example: Apple → Elephant → Tiger\n\n"
-            "Let's start! First word: **'PYTHON'**\n"
-            "Your turn! Reply with a word starting with 'N'",
-            parse_mode="Markdown"
-        )
-        await state.set_state(GameStates.playing_word)
-        await state.update_data(last_word="python", score=0)
+        await callback.answer("Riddle game started! 🤔")
         
     elif game_type == "luck":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -554,11 +783,11 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             ],
             [
                 InlineKeyboardButton(text="⚽ Football", callback_data="luck_football"),
-                InlineKeyboardButton(text="🏀 Basketball", callback_data="luck_basketball")
+                InlineKeyboardButton(text="🎳 Bowling", callback_data="luck_bowling")
             ],
             [
                 InlineKeyboardButton(text="🎯 Darts", callback_data="luck_darts"),
-                InlineKeyboardButton(text="🎳 Bowling", callback_data="luck_bowling")
+                InlineKeyboardButton(text="🏀 Basketball", callback_data="luck_basketball")
             ]
         ])
         await callback.message.edit_text(
@@ -566,8 +795,7 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             "Test your luck! Choose a game:",
             reply_markup=keyboard
         )
-    
-    await callback.answer()
+        await callback.answer()
 
 @dp.callback_query(F.data.startswith("luck_"))
 async def luck_game_callback(callback: types.CallbackQuery):
@@ -651,6 +879,8 @@ async def admin_commands(message: Message):
             await message.reply(random.choice(responses))
             
         elif cmd == "mute":
+            # Mute for 1 hour
+            mute_until = datetime.now() + timedelta(hours=1)
             await bot.restrict_chat_member(
                 message.chat.id, 
                 target_user.id, 
@@ -659,13 +889,17 @@ async def admin_commands(message: Message):
                     can_send_media_messages=False,
                     can_send_polls=False,
                     can_send_other_messages=False,
-                    can_add_web_page_previews=False
-                )
+                    can_add_web_page_previews=False,
+                    can_change_info=False,
+                    can_invite_users=False,
+                    can_pin_messages=False
+                ),
+                until_date=mute_until
             )
             responses = [
                 f"{get_emotion()} {target_user.first_name} muted for 1 hour! 🔇",
                 f"{get_emotion('thinking')} {target_user.first_name} ko chup kara diya! 🤫",
-                f"{get_emotion('angry')} {target_user.first_name}, ab bolna band! ⚠️"
+                f"{get_emotion('angry')} {target_user.first_name}, ab 1 ghante tak bolna band! ⚠️"
             ]
             await message.reply(random.choice(responses))
             
@@ -678,7 +912,10 @@ async def admin_commands(message: Message):
                     can_send_media_messages=True,
                     can_send_polls=True,
                     can_send_other_messages=True,
-                    can_add_web_page_previews=True
+                    can_add_web_page_previews=True,
+                    can_change_info=False,
+                    can_invite_users=True,
+                    can_pin_messages=False
                 )
             )
             responses = [
@@ -729,22 +966,107 @@ async def welcome_new_member(event: ChatMemberUpdated):
             parse_mode="Markdown"
         )
 
-# --- MESSAGE HANDLER WITH IMPROVED LOGIC ---
+# --- MAIN MESSAGE HANDLER WITH GAME SUPPORT ---
 
 @dp.message()
-async def handle_all_messages(message: Message):
+async def handle_all_messages(message: Message, state: FSMContext):
     if not message.text:
         return
     
     user_id = message.from_user.id
     chat_id = message.chat.id
+    user_text = message.text
     
     # Update last interaction time
     user_last_interaction[user_id] = datetime.now()
     
+    # Check if this is a game response
+    current_state = await state.get_state()
+    
+    # Handle word chain game separately
+    if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
+        # This is a word chain game response
+        is_valid, result = check_word_game(user_id, user_text)
+        
+        if is_valid:
+            # Game continues
+            game_data = result
+            next_letter = game_data["last_letter"].upper()
+            score = game_data["score"]
+            
+            await message.reply(
+                f"{get_emotion('happy')} **✅ Correct!**\n\n"
+                f"• Your word: {user_text.upper()}\n"
+                f"• Next letter: **{next_letter}**\n"
+                f"• Your score: **{score} points**\n\n"
+                f"Now give me a word starting with **{next_letter}**\n"
+                f"Or type 'stop' to end game.",
+                parse_mode="Markdown"
+            )
+            return
+        else:
+            # Game over or invalid word
+            if user_text.lower() == 'stop':
+                if user_id in game_sessions:
+                    score = game_sessions[user_id]["score"]
+                    words_count = len(game_sessions[user_id]["words_used"])
+                    del game_sessions[user_id]
+                    await message.reply(
+                        f"{get_emotion()} **🏁 Game Ended!**\n\n"
+                        f"• Final Score: **{score} points**\n"
+                        f"• Words used: **{words_count}**\n\n"
+                        f"Well played! Play again with /game 🎮",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                await message.reply(
+                    f"{get_emotion('crying')} **❌ {result}**\n\n"
+                    f"Game over! Play again with /game 🎮",
+                    parse_mode="Markdown"
+                )
+                if user_id in game_sessions:
+                    del game_sessions[user_id]
+                return
+    
+    # Handle quiz and riddle games
+    elif current_state in [GameStates.playing_quiz, GameStates.playing_riddle]:
+        data = await state.get_data()
+        correct_answer = data.get("answer", "").lower()
+        user_answer = user_text.lower().strip()
+        
+        if user_answer == correct_answer:
+            await state.clear()
+            responses = [
+                f"{get_emotion('happy')} **🎉 CORRECT!**\n\nSabash! Perfect answer! 💫",
+                f"{get_emotion('surprise')} **✅ RIGHT!**\n\nWah! Kya jawab hai! 🌟",
+                f"{get_emotion('funny')} **👍 PERFECT!**\n\nTum to master nikle! 🏆"
+            ]
+            await message.reply(random.choice(responses))
+        else:
+            attempts = data.get("attempts", 3) - 1
+            if attempts > 0:
+                await state.update_data(attempts=attempts)
+                hint = data.get("hint", "")
+                responses = [
+                    f"{get_emotion('thinking')} **❌ Not quite right!**\n\nTry again! {attempts} attempts left.\n*Hint:* {hint}",
+                    f"{get_emotion('crying')} **😅 Wrong answer!**\n\n{attempts} more tries!\n*Hint:* {hint}",
+                    f"{get_emotion()} **🤔 Close but not exact!**\n\n{attempts} attempts remaining.\n*Hint:* {hint}"
+                ]
+                await message.reply(random.choice(responses))
+            else:
+                await state.clear()
+                await message.reply(
+                    f"{get_emotion('crying')} **❌ GAME OVER!**\n\n"
+                    f"Correct answer was: **{correct_answer.upper()}**\n"
+                    f"Better luck next time! Play again with /game 🎮",
+                    parse_mode="Markdown"
+                )
+        return
+    
     # Check if bot was mentioned or it's a reply to bot
     bot_username = (await bot.get_me()).username
-    is_mention = f"@{bot_username}" in message.text if bot_username else False
+    is_mention = f"@{bot_username}" in user_text if bot_username else False
     is_reply_to_bot = (
         message.reply_to_message and 
         message.reply_to_message.from_user.id == bot.id
@@ -762,7 +1084,7 @@ async def handle_all_messages(message: Message):
     
     if should_respond:
         # Clean the message text (remove mention if present)
-        clean_text = message.text
+        clean_text = user_text
         if bot_username and f"@{bot_username}" in clean_text:
             clean_text = clean_text.replace(f"@{bot_username}", "").strip()
         
@@ -777,9 +1099,6 @@ async def handle_all_messages(message: Message):
         
         # Send response
         await message.reply(response)
-    
-    # Handle game state responses
-    # (You can add game state handling here if needed)
 
 # --- DEPLOYMENT HANDLER ---
 
@@ -799,7 +1118,8 @@ async def start_server():
 async def main():
     print("=" * 50)
     print("🤖 MULTILINGUAL TELEGRAM BOT")
-    print("🚀 Starting with improved human-like behaviour...")
+    print(f"🚀 Version: 3.0 - FIXED GAMES & TIME")
+    print(f"🕒 Indian Timezone: Asia/Kolkata")
     print("=" * 50)
     
     # Start health check server
