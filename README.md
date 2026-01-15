@@ -40,7 +40,7 @@
 - Memory clearing command
 - Chat history management
 
-### ⚡ **Admin Power Tools**
+### ⚡ **Admin commands Tools**
 - Kick, Ban, Mute, Unmute users
 - Group rules generator
 - Warning system
