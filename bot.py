@@ -73,15 +73,32 @@ async def cmd_help(message: Message):
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
-    rules = ["No Spamming 🚫", "Respect Admin 👑", "No Links 🔗", "Be Chill 😎"]
+    rules = [⚖️ **COMMUNITY GUIDELINES** ⚖️
+
+• Be kind and polite 🤗
+• No hate speech ❌
+• Share knowledge 📚
+• No self-promotion without permission
+• Use appropriate language
+• Report issues to admins
+• Keep discussions friendly
+
+*Let's build a positive community!* 🌟]
     random.shuffle(rules)
     await message.reply(f"📜 **Group Rules:**\n" + "\n".join(rules))
 
 @dp.message(Command("joke"))
 async def cmd_joke(message: Message):
     jokes = [
-        "Pappu: Mummy, sab mujhe dactor dactor kyun kehte hain?\nMummy: Kyun ki beta teri likhai samajh nahi aati! 😂",
-        "Teacher: Kal school kyun nahi aaye?\nBacha: Sir kal gir gaya tha.\nTeacher: Kahan?\nBacha: Bed pe, aur phir neend aa gayi. 😴"
+        "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
+        "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
+        "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
+        "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
+        "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
+        "😜 Boyfriend: Tum meri life ki battery ho! Girlfriend: Toh charging khatam kyun ho jati hai?",
+        "😁 Boss: Kal se late mat aana. Employee: Aaj hi late kyun bola? Kal bata dete!",
+        "😄 Bhai: Behen, tum kyun ro rahi ho? Behen: Mera boyfriend mujhse break-up kar raha hai! Bhai: Uske liye ro rahi ho ya uske jaane ke baad free time ke liye?",
+        "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!"
     ]
     await message.reply(random.choice(jokes))
 
