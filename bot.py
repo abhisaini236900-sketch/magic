@@ -27,7 +27,7 @@ SYSTEM_PROMPT = (
     "Talk naturally like a human friend."
 )
 
-# --- AI LOGIC ---
+# --- AI LOGIC (Updated Model Name) ---
 async def get_ai_response(chat_id, user_text):
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=20)
@@ -37,7 +37,8 @@ async def get_ai_response(chat_id, user_text):
     
     try:
         completion = await client.chat.completions.create(
-            model="llama3-70b-8192",
+            
+            model="llama-3.3-70b-versatile", 
             messages=messages,
             max_tokens=150
         )
@@ -45,7 +46,17 @@ async def get_ai_response(chat_id, user_text):
         chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
         return ai_reply
     except Exception as e:
-        return f"Arre yaar, dimaag kaam nahi kar raha! (Error: {str(e)})"
+        
+        try:
+            completion = await client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                max_tokens=150
+            )
+            return completion.choices[0].message.content
+        except:
+            return f"Arre yaar, Groq mana kar raha hai! (Error: {str(e)})"
+            
 
 # --- COMMANDS ---
 @dp.message(Command("help"))
