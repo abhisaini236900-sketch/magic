@@ -550,46 +550,33 @@ async def cmd_date(message: Message):
 
 # --- COMMANDS WITH IMPROVED RESPONSES ---
 
-@dp.message(Command("start", "help"))
-async def cmd_help(message: Message):
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    # Create welcome buttons - APNA CHANNEL USERNAME DAALNA YAHAN
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🎮 Games", callback_data="help_games"),
-            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin")
-        ],
-        [
-            InlineKeyboardButton(text="😊 Fun", callback_data="help_fun"),
-            InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
+            InlineKeyboardButton(text="🌟 Join My Channel", url="https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="👨‍💻 Contact Developer", url="https://t.me/a6h1ii")
         ]
     ])
     
-    help_text = (
-    f"{get_emotion('happy')} **Hii! I'm Alita 🎀!** 🤖\n\n"
-    "📜 **Main Commands:**\n"
-    "• /start or /help - Yeh menu dikhaye\n"
-    "• /rules - Group ke rules\n"
-    "• /joke - Hasao mazaak sunao\n"
-    "• /game - Games khelo\n"
-    "• /clear - Meri memory saaf karo\n\n"
-    "🕒 **Time & Weather:**\n"
-    "• /time - Accurate Indian time\n"
-    "• /date - Today's date\n"
-    "• /weather [city] - Weather info\n\n"
-    "🛡️ **Admin Commands (Reply ke saath):**\n"
-    "• /kick - User ko nikal do\n"
-    "• /ban - Permanently block\n"
-    "• /mute - Chup karao\n"
-    "• /unmute - Bolne do\n"
-    "• /unban - Block hatao\n\n"
-    "✨ **Special Features:**\n"
-    "• Hinglish + English mix 💬\n"
-    "• Emotional responses 😊😠😢\n"
-    "• Memory (last 20 messages)\n"
-    "• Human-like conversations\n"
-    "• Made by Abhi (@a6h1ii)\n\n"
-    "Buttons dabao aur explore karo! 👇"
-)
-    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+    welcome_text = (
+        f"{get_emotion('happy')} **Hii! I'm Alita 🎀**\n\n"
+        
+        "✨ **Welcome to my world!** ✨\n\n"
+        
+        "💖 *Main hu Alita... Ek sweet si girl!* 😊\n\n"
+        
+        "🌟 **Made with love by:**\n"
+        "• **Developer:** Abhi (@a6h1ii)\n"
+        "• **Channel:** @abhi0w0\n\n"
+        
+        "📢 **Please join my channel for updates!** 🎉\n\n"
+        
+        "Type /help for all commands! 💕"
+    )
+    
+    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.callback_query(F.data.startswith("help_"))
 async def help_callback(callback: types.CallbackQuery):
@@ -945,31 +932,37 @@ async def admin_commands(message: Message):
 async def welcome_new_member(event: ChatMemberUpdated):
     if event.new_chat_member.status == "member":
         member = event.new_chat_member.user
-        welcomes = [
-            f"🎉 Welcome {member.first_name}! Khush aamdeed! 😊",
-            f"🌟 Aao ji {member.first_name}! Group me welcome! 🫂",
-            f"✨ Hey {member.first_name}! Great to have you here! 💖",
-            f"🥳 {member.first_name} aa gaya! Party shuru! 🎊",
-            f"😊 Namaste {member.first_name}! Aapka swagat hai! 🙏"
-        ]
         
-        # Random chance to add extra message
-        extra_messages = [
-            "\n\nGroup rules padh lena! 📜",
-            "\n\nApna intro dedo sabko! 👋",
-            "\n\nEnjoy your stay! 🎯",
-            "\n\nFeel free to ask anything! 💬",
-            "\n\nLet's have fun together! 🎮"
+        # Create welcome buttons
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/your_channel_username"),
+                InlineKeyboardButton(text="👋 Say Hi to Alita", url=f"https://t.me/{(await bot.get_me()).username}?start=hello")
+            ]
+        ])
+        
+        welcomes = [
+            f"🎉 Welcome {member.first_name}! Khush aamdeed! 😊\n\nI'm Alita 🎀 - group ki sweet assistant!",
+            f"🌟 Aao ji {member.first_name}! Group me welcome! 🫂\n\nMain hu Alita 🎀 - aapki nayi friend!",
+            f"✨ Hey {member.first_name}! Great to have you here! 💖\n\nAlita 🎀 here to help you!",
+            f"🥳 {member.first_name} hye 👀 welcome 😋🎀! 🎊\n\nAlita 🎀 ki taraf se welcome!",
+            f"😊 Namaste {member.first_name}! Aapka swagat hai! 🎀😊\n\nMain hu Alita 🎀 - group ki helper!"
         ]
         
         welcome_msg = random.choice(welcomes)
-        if random.random() < 0.5:  # 50% chance
-            welcome_msg += random.choice(extra_messages)
+        
+        # Add about section
+        welcome_msg += (
+            f"\n\n📢 **Don't forget to join our channel!**\n"
+            f"**Developer:** Abhi (@a6h1ii)\n"
+            f"**Channel:** @abhi0w0"
+        )
         
         await bot.send_message(
             event.chat.id,
             welcome_msg,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=keyboard
         )
 
 # --- MAIN MESSAGE HANDLER WITH GAME SUPPORT ---
