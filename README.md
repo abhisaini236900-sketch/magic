@@ -333,9 +333,9 @@ SOFTWARE.
 ⚠️ Copyright Warning
 
 ```text
-╔══════════════════════════════════════════════════════════╗
-║                    ⚠️  COPYRIGHT NOTICE  ⚠️               ║
-╠══════════════════════════════════════════════════════════╣
+╔═════════════════════════════════════════════════╗
+║                ⚠️  COPYRIGHT NOTICE  ⚠️                  ║
+╠═════════════════════════════════════════════════╣
 ║ This software is proprietary and owned by TECHY ABHI.    ║
 ║                                                          ║
 ║ UNAUTHORIZED COPYING, DISTRIBUTION, OR MODIFICATION      ║
@@ -345,7 +345,7 @@ SOFTWARE.
 ║ Copyright Act, 1957 and international IP laws.           ║
 ║                                                          ║
 ║ For licensing inquiries: contact@youremail.com           ║
-╚══════════════════════════════════════════════════════════╝
+╚═════════════════════════════════════════════════╝
 ```
 
 Fair Use Policy
@@ -398,21 +398,21 @@ https://img.shields.io/github/issues-pr/yourusername/telegram-bot
 · v5.0 - Plugin system
 
 ---
-
 <div align="center">
 
-Made with ❤️ by TECHY ABHI 🔱
+# 🔱 TECHY ABHI 🔱
 
-If you like this project, don't forget to give it a ⭐!
-
-```text
-████████╗███████╗ ██████╗██╗  ██╗██╗   ██╗ █████╗ ██████╗ ██╗  ██╗██╗
-╚══██╔══╝██╔════╝██╔════╝██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██║  ██║██║
-   ██║   █████╗  ██║     ███████║ ╚████╔╝ ███████║██████╔╝███████║██║
-   ██║   ██╔══╝  ██║     ██╔══██║  ╚██╔╝  ██╔══██║██╔══██╗██╔══██║██║
-   ██║   ███████╗╚██████╗██║  ██║   ██║   ██║  ██║██║  ██║██║  ██║██║
-   ╚═╝   ╚══════╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝
 ```
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+█                                                           █
+█                    T E C H Y   A B H I                    █
+█                                                           █
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+
+```
+
+**Building Tomorrow's Tech Today** 🚀
 
 </div>
 ```
