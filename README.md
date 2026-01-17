@@ -95,29 +95,17 @@ Choose a game to play! 🎯
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/telegram-bot.git
+git clone https://github.com/magic/telegram-bot.git
 cd telegram-bot
 
-# 2. Create virtual environment
-python -m venv venv
-
-# 3. Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# 4. Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 5. Configure environment
-cp .env.example .env
-# Edit .env file with your API keys
 ```
 
 Environment Variables
 
-Create .env file with:
+Create environment on render with key and values:
 
 ```env
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
@@ -205,7 +193,6 @@ Command Description Example
 Command Description Example
 /game Play games /game
 /joke Get random joke /joke
-/image Create image concept /image sunset mountains
 
 🔧 Utility
 
@@ -244,9 +231,6 @@ Command Description Example
 telegram-bot/
 ├── main.py                 # Main bot application
 ├── requirements.txt        # Python dependencies
-├── render.yaml            # Render deployment config
-├── .env.example           # Environment template
-├── .gitignore            # Git ignore rules
 ├── README.md             # This file
 └── assets/               # Optional assets
 ```
@@ -312,8 +296,8 @@ We welcome contributions! Please follow these steps:
 
 Contributors
 
-<a href="https://github.com/yourusername/telegram-bot/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=yourusername/telegram-bot" />
+<a href="https://github.com/abhi0404/telegram-bot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=abhi0404/telegram-bot" />
 </a>
 
 ---
