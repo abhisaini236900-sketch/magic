@@ -1,140 +1,129 @@
-# 🤖 Multi-Language Telegram Bot with AI
-
+```markdown
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python&logoColor=white)
-![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?logo=telegram&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-LLM-00A67E?logo=groq&logoColor=white)
-![Render](https://img.shields.io/badge/Deploy-Render-46B3E0?logo=render&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+<!-- Banner with Typing Animation -->
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=30&duration=3000&pause=1000&color=FF69B4&center=true&vCenter=true&width=435&lines=✨+Alita+🎀+Bot;🤖+AI+Telegram+Bot;💖+Hinglish+Assistant;🎮+Fun+Games+Included" alt="Typing SVG" />
 
-*A powerful bilingual Telegram bot with emotions, memory, and admin features*
+<!-- ASCII Art Header -->
+```
 
-**Developer:** **TECHY ABHI** 🔱  
-**Version:** 2.0.0  
-**Status:** 🚀 Production Ready
+╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                                                                                                                                   ║
+║  ░█████╗░██╗░░░░░██╗██╗████████╗░█████╗░  ░█████╗░██████╗░██╗░░██╗██╗  ██████╗░░█████╗░████████╗  ██████╗░░█████╗░████████╗██╗░░░░░░██████╗░███████╗███████╗                                    ║
+║  ██╔══██╗██║░░░░░██║██║╚══██╔══╝██╔══██╗  ██╔══██╗██╔══██╗██║░██╔╝██║  ██╔══██╗██╔══██╗╚══██╔══╝  ██╔══██╗██╔══██╗╚══██╔══╝██║░░░░░██╔════╝░██╔════╝██╔════╝                                    ║
+║  ███████║██║░░░░░██║██║░░░██║░░░███████║  ███████║██████╦╝█████═╝░██║  ██████╦╝███████║░░░██║░░░  ██████╦╝██║░░██║░░░██║░░░██║░░░░░██║░░██╗░█████╗░░█████╗░░                                    ║
+║  ██╔══██║██║░░░░░██║██║░░░██║░░░██╔══██║  ██╔══██║██╔══██╗██╔═██╗░██║  ██╔══██╗██╔══██║░░░██║░░░  ██╔══██╗██║░░██║░░░██║░░░██║░░░░░██║░░╚██╗██╔══╝░░██╔══╝░░                                    ║
+║  ██║░░██║███████╗██║██║░░░██║░░░██║░░██║  ██║░░██║██████╦╝██║░╚██╗██║  ██████╦╝██║░░██║░░░██║░░░  ██████╦╝╚█████╔╝░░░██║░░░███████╗╚██████╔╝███████╗███████╗                                    ║
+║  ╚═╝░░╚═╝╚══════╝╚═╝╚═╝░░░╚═╝░░░╚═╝░░╚═╝  ╚═╝░░╚═╝╚═════╝░╚═╝░░╚═╝╚═╝  ╚═════╝░╚═╝░░╚═╝░░░╚═╝░░░  ╚═════╝░░╚════╝░░░░╚═╝░░░╚══════╝░╚═════╝░╚══════╝╚══════╝                                    ║
+║                                                                                                                                                                                                   ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 
-[Features](#-features) • [Demo](#-demo) • [Setup](#-setup) • [Deployment](#-deployment) • [Commands](#-commands) • [Support](#-support)
+```
+
+<!-- Badges -->
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Aiogram-3.13.1-26A5E4?logo=telegram&logoColor=white" />
+  <img src="https://img.shields.io/badge/Groq-LLM-00A67E?logo=groq&logoColor=white" />
+  <img src="https://img.shields.io/badge/Telegram-Bot-2CA5E0?logo=telegram&logoColor=white" />
+  <img src="https://img.shields.io/badge/Deploy-Render-46B3E0?logo=render&logoColor=white" />
+</p>
+
+<!-- Links -->
+<p align="center">
+  <a href="https://t.me/a6hiIi_bot"><img src="https://img.shields.io/badge/🤖_Try_Alita_Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+  <a href="https://t.me/abhi0w0"><img src="https://img.shields.io/badge/📢_Join_Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
 
 </div>
 
 ---
 
-## 🌟 **Features**
+## 🌟 **About Alita 🎀**
 
-### 🤝 **Dual Language Support**
-- **Hinglish** (Hindi + English mix) conversations
-- **English** responses
-- Automatic language detection
-- Cultural context understanding
+**Alita** is an advanced, multilingual Telegram bot with human-like emotions and intelligent conversations. She speaks in **Hinglish** (Hindi + English mix) with a feminine, cute personality, making interactions feel natural and engaging.
 
-### 😊 **Emotional Intelligence**
-- Happy 😊, Angry 😠, Crying 😢 emotions
-- Context-aware emotional responses
-- Emoji-rich conversations
-- Mood-based interactions
-
-### 🧠 **Smart Memory**
-- Remembers last 20 conversations
-- Contextual responses
-- Memory clearing command
-- Chat history management
-
-### ⚡ **Admin commands Tools**
-- Kick, Ban, Mute, Unmute users
-- Group rules generator
-- Warning system
-- Comprehensive moderation
-
-### 🎮 **Entertainment Suite**
-- 3 Interactive games (Quiz, Riddles, Word Chain)
-- AI-powered joke generator
-- Image concept creator
-- Fun commands
-
-### 🔒 **Privacy Focused**
-- Group chat privacy controls
-- Mentions-only responses
-- Reply-based interactions
-- No spam, clean operation
+### ✨ **Key Features**
+- 🎭 **Emotional Intelligence** - Happy, angry, crying, loving responses
+- 💬 **Bilingual Conversations** - Fluent in Hinglish & English
+- 🧠 **Memory System** - Remembers last 20 conversations
+- 🎮 **Interactive Games** - Word chain, quizzes, riddles, luck games
+- 🛡️ **Group Management** - Admin tools with warnings
+- 🕒 **Accurate Time** - Indian Standard Time (IST)
+- 🌤️ **Weather Information** - City-based weather updates
+- 🤖 **AI-Powered** - Groq LLM integration for smart responses
 
 ---
 
-## 📸 **Demo**
-[CLICK HERE](https://youtube.com/shorts/ZROUvm9qDWA?si=c_cPCsQ7dOiSHX0B)
+## 📸 **Preview**
 
-### **Live Bot**
-[click here](https://t.me/a6hiIi_bot)
+<div align="center">
+
+### **Conversation Example**
 ```
-🎭 Sample Conversation:
 
-User: Kaise ho bot?
-Bot: 😊 Main bilkul mast hu! Aap sunao, kaise ho?
+👤 User: Hi Alita! Kaise ho?
+🤖 Alita: 🎀 Hii cutie! Main bilkul mast hu! 😊 Aap sunao, aaj ka din kaisa raha?
 
-User: /joke
-Bot: 🤣 Teacher: Tumhare ghar me sabse smart kaun hai? 
+👤 User: /joke
+🤖 Alita: 🤣 Teacher: Tumhare ghar me sabse smart kaun hai? 
 Student: Wifi router! Kyuki sab use hi puchte hain!
 
-User: /game
-Bot: 🎮 GAME ZONE 🥳
-Choose a game to play! 🎯
+👤 User: /game
+🤖 Alita: 🎮 GAME ZONE 🎀
+Choose a game to play! 👇
 
 ```
 
+### **Admin Features**
+```
+
+👤 Admin: /kick (reply to user)
+🤖 Alita: 👢 User has been kicked! 🏃💨
+
+👤 Admin: /mute (reply to user)
+🤖 Alita: 🔇 User muted for 1 hour! ⚠️
+
+```
+
+</div>
+
 ---
 
-## 🚀 **Quick Setup**
+## 🚀 **Quick Start**
 
 ### **Prerequisites**
-- Python 3.9 or higher
-- Telegram account
-- Groq API key (FREE)
-- Render account (FREE)
+- Python 3.11 or higher
+- Telegram Bot Token from [@BotFather](https://t.me/botfather)
+- Groq API Key from [Groq Console](https://console.groq.com)
 
-### **Local Installation**
-
+### **Local Deployment**
 ```bash
 # 1. Clone repository
-git clone https://github.com/magic/telegram-bot.git
-cd telegram-bot
+git clone https://github.com/abhi04110/alita-telegram-bot.git
+cd alita-telegram-bot
 
-# 2. Install dependencies
+# 2. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
 
+# 4. Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# 5. Run the bot
+python bot.py
 ```
 
 Environment Variables
 
-Create environment on render with key and values:
-
 ```env
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+BOT_TOKEN=your_telegram_bot_token_here
 GROQ_API_KEY=your_groq_api_key_here
 PORT=10000
-```
-
----
-
-🔧 API Keys Setup
-
-1. Telegram Bot Token
-
-```markdown
-1. Open Telegram, search for @BotFather
-2. Send `/newbot` command
-3. Choose bot name (e.g., `SmartBot`)
-4. Choose username (must end with 'bot')
-5. Copy the API token provided
-```
-
-2. Groq API Key
-
-```markdown
-1. Visit: https://console.groq.com
-2. Sign up for FREE account
-3. Go to "API Keys" section
-4. Click "Create API Key"
-5. Copy the generated key
 ```
 
 ---
@@ -145,142 +134,126 @@ Option 1: Render (Recommended)
 
 https://render.com/images/deploy-to-render-button.svg
 
-Manual Steps:
+1. Fork this repository
+2. Create a new Web Service on Render
+3. Connect your GitHub repository
+4. Configure environment variables
+5. Deploy - Bot will be live in minutes!
 
-1. Push code to GitHub
-2. Create Render account
-3. New Web Service → Connect GitHub repo
-4. Configure:
-   · Name: telegram-bot
-   · Environment: Python 3
-   · Build Command: pip install -r requirements.txt
-   · Start Command: python main.py
-5. Add Environment Variables:
-   · TELEGRAM_BOT_TOKEN = (your token)
-   · GROQ_API_KEY = (your key)
-   · PORT = 10000
-6. Click "Create Web Service"
+Option 2: Railway
 
-Option 2: Railway / Heroku
+https://railway.app/button.svg
 
-Similar process with respective platforms.
+Option 3: Heroku
 
-Keep Alive (Free Tier)
-
-```markdown
-1. Use UptimeRobot (FREE)
-2. Set monitor to ping every 5 minutes
-3. URL: https://your-bot.onrender.com
-4. Bot stays active 24/7
-```
+https://www.herokucdn.com/deploy/button.svg
 
 ---
 
-📋 Commands Reference
+🎯 Commands Reference
 
-👥 Group Management
-
-Command Description Example
-/kick Kick user from group Reply to user + /kick
-/ban Ban user from group Reply to user + /ban
-/unban Unban user /unban user_id
-/mute Mute user (1 hour) Reply + /mute
-/unmute Unmute user Reply + /unmute
-/rules Show group rules /rules
-
-🎮 Entertainment
-
-Command Description Example
-/game Play games /game
-/joke Get random joke /joke
-
-🔧 Utility
+🤖 Basic Commands
 
 Command Description Example
 /start Start the bot /start
 /help Show all commands /help
-/clear Clear chat memory /clear
+/rules Group rules /rules
+/joke Get random joke /joke
+/clear Clear memory /clear
 
----
+🎮 Game Commands
 
-🎮 Games Included
+Command Description Usage
+/game Game menu /game
+Word Chain Type words sequentially Reply with words
+Quiz Answer questions Reply with answers
+Riddles Solve puzzles Reply with solutions
+Luck Games Dice, slots, etc. Interactive buttons
 
-1. 🧠 Quiz Challenge
+🛡️ Admin Commands (Reply to user)
 
-· 5 difficulty levels
-· Instant scoring
-· Educational content
+Command Description Usage
+/kick Kick user Reply + /kick
+/ban Ban user Reply + /ban
+/mute Mute for 1 hour Reply + /mute
+/unmute Unmute user Reply + /unmute
+/unban Unban user /unban user_id
 
-2. 🤔 Riddle Solver
+🕒 Utility Commands
 
-· Traditional riddles
-· Hint system
-· Solution explanations
-
-3. 🔤 Word Chain
-
-· Vocabulary builder
-· Time-based challenges
-· Multiplayer support
+Command Description Example
+/time Indian time /time
+/date Current date /date
+/weather Weather info /weather mumbai
 
 ---
 
 🏗️ Project Structure
 
 ```
-telegram-bot/
-├── main.py                 # Main bot application
-├── requirements.txt        # Python dependencies
-├── README.md             # This file
-└── assets/               # Optional assets
+alita-telegram-bot/
+├── bot.py                 # Main bot application
+├── requirements.txt       # Python dependencies
+├── render.yaml           # Render deployment configuration
+├── .env.example          # Environment template
+├── .gitignore           # Git ignore rules
+├── README.md            # This file
+└── assets/              # Images and resources
 ```
+
+Technical Stack
+
+· Framework: Aiogram 3.13.1 (Async Telegram Bot API)
+· AI Engine: Groq LLM (Llama 3.3 70B)
+· Web Server: AioHTTP for health checks
+· Timezone: pytz for accurate Indian time
+· Memory: Collections.deque for chat history
 
 ---
 
-🧪 Testing
+🔧 Advanced Features
 
-```bash
-# Test locally
-python -m pytest tests/
+🧠 Smart Memory System
 
-# Run bot locally
-python main.py
+```python
+# Stores last 20 messages per chat
+chat_memory[chat_id] = deque(maxlen=20)
+```
 
-# Check environment
-python -c "from dotenv import load_dotenv; load_dotenv(); import os; print('Token:', bool(os.getenv('TELEGRAM_BOT_TOKEN'))); print('Groq:', bool(os.getenv('GROQ_API_KEY')))"
+🎭 Emotional Intelligence
+
+```python
+# Detects emotion from user messages
+if 'angry' in message: user_emotions[user_id] = "angry"
+if 'love' in message: user_emotions[user_id] = "love"
+```
+
+🤖 AI Configuration
+
+```python
+# Groq LLM with custom personality
+system_prompt = "Your name is Alita 🎀. You are a girl who speaks in feminine, cute way..."
+```
+
+🌐 Web Server Integration
+
+```python
+# Health check endpoint for Render
+@app.route('/health')
+def health():
+    return {"status": "healthy", "bot": "Alita 🎀"}
 ```
 
 ---
 
 📊 Performance
 
-· Response Time: < 2 seconds
-· Uptime: 99.9% (with UptimeRobot)
-· Memory: Stores last 20 messages
-· Scalability: Handles multiple groups
-· API: Groq LLaMA 8B (Fast & Efficient)
-
----
-
-⚠️ Troubleshooting
-
-Issue Solution
-Bot not responding Check webhook: https://api.telegram.org/bot<TOKEN>/getWebhookInfo
-Commands not working Make bot admin in group
-Memory not saving Bot restarts on free tier - use /clear
-API errors Check Groq API key validity
-Deployment failed Check Render logs for errors
-
----
-
-🔒 Security Features
-
-· ✅ Encrypted communications
-· ✅ Admin-only commands
-· ✅ No data storage
-· ✅ Regular updates
-· ✅ Rate limiting
-· ✅ Input sanitization
+Metric Value
+Response Time < 2 seconds
+Uptime 99.9% (with Render)
+Memory Usage ~100MB
+Concurrent Users 100+
+API Calls Groq LLM optimized
 
 ---
 
@@ -294,22 +267,72 @@ We welcome contributions! Please follow these steps:
 4. Push to branch (git push origin feature/AmazingFeature)
 5. Open Pull Request
 
-Contributors
+Development Setup
 
-<a href="https://github.com/abhi0404/telegram-bot/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=abhi0404/telegram-bot" />
-</a>
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest tests/
+
+# Check code quality
+flake8 bot.py
+black bot.py --check
+```
+
+---
+
+🐛 Troubleshooting
+
+Common Issues
+
+Issue Solution
+Bot not responding Check webhook with https://api.telegram.org/bot<TOKEN>/getWebhookInfo
+ModuleNotFoundError Run pip install -r requirements.txt
+API errors Verify Groq API key at console.groq.com
+Deployment failed Check Render logs for errors
+
+Debug Mode
+
+```python
+# Enable debug logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+---
+
+📞 Support & Contact
+
+Developer Information
+
+· Name: TECHY ABHI 🔱
+· GitHub: @abhi04110
+· Portfolio: https://abhiiport.netlify.app/
+· Telegram: @a6h1ii
+· Email: abhisheksaini32320@gmail.com
+· YouTube: @techyabhi04
+
+Bot & Channel
+
+· 🤖 Bot: @a6hiIi_bot
+· 📢 Channel: @abhi0w0
+
+Need Help?
+
+· Open an Issue
+· Join our Telegram Group
+· Email: abhisheksaini32320@gmail.com
 
 ---
 
 📄 License & Copyright
 
-Copyright © 2024 TECHY ABHI 🔱
-
 ```text
 MIT License
 
-Copyright (c) 2024 TECHY ABHI
+Copyright (c) 2024 TECHY ABHI 🔱
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -330,85 +353,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-⚠️ Copyright Warning
+⚠️ Attribution Required
 
-```text
-╔═════════════════════════════════════════════════╗
-║                ⚠️  COPYRIGHT NOTICE  ⚠️                  ║
-╠═════════════════════════════════════════════════╣
-║ This software is proprietary and owned by TECHY ABHI.    ║
-║                                                          ║
-║ UNAUTHORIZED COPYING, DISTRIBUTION, OR MODIFICATION      ║
-║ WITHOUT EXPLICIT PERMISSION IS STRICTLY PROHIBITED.      ║
-║                                                          ║
-║ Violators will face legal consequences under Indian      ║
-║ Copyright Act, 1957 and international IP laws.           ║
-║                                                          ║
-║ For licensing inquiries: contact@youremail.com           ║
-╚═════════════════════════════════════════════════╝
-```
+Please give proper credit when using this code:
 
-Fair Use Policy
-
-· ✅ Personal use allowed
-· ✅ Educational purposes
-· ✅ Non-commercial projects
-· ❌ Commercial use requires license
-· ❌ Redistribution without permission
-· ❌ Claiming as own work
+· Developer: TECHY ABHI 🔱
+· GitHub: abhi04110
+· Telegram: @a6h1ii
 
 ---
 
-🌐 Connect with Developer
-
-<!-- Contact -->
-<h3 align="center">📫 Connect with me</h3>
-<p align="center">
-  <a href="https://t.me/a6h1ii"><img src="https://img.shields.io/badge/Telegram-@a6h1ii-26A5E4?style=for-the-badge&logo=telegram" /></a>
-  <a href="mailto:abhisheksaini32320@gmail.com"><img src="https://img.shields.io/badge/Email-Contact-D14836?style=for-the-badge&logo=gmail" /></a>
-  <a href="http://github.com/abhi04110"><img src="https://img.shields.io/badge/GitHub-Follow-181717?style=for-the-badge&logo=github" /></a>
-</p>
-
-</div>
-```
-
-
----
-
-📈 Stats
-
-https://img.shields.io/github/stars/yourusername/telegram-bot?style=social
-https://img.shields.io/github/forks/yourusername/telegram-bot?style=social
-https://img.shields.io/github/issues/yourusername/telegram-bot
-https://img.shields.io/github/issues-pr/yourusername/telegram-bot
-
----
-
-🎯 Roadmap
-
-· v1.0 - Basic bot with commands
-· v2.0 - AI integration + Emotions
-· v3.0 - Voice message support
-· v4.0 - Multi-language translation
-· v5.0 - Plugin system
-
----
 <div align="center">
 
-# 🔱 TECHY ABHI 🔱
+🎀 Meet Alita - Your New AI Friend!
 
+https://img.shields.io/badge/TRY_ALITA_NOW-FF69B4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=000000
+https://img.shields.io/badge/JOIN_CHANNEL-7289DA?style=for-the-badge&logo=telegram&logoColor=white&labelColor=000000
+
+🌟 Star this repository if you like Alita!
+
+```bash
+# Show your support
+git star
 ```
 
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-█                                                           █
-█                    T E C H Y   A B H I                    █
-█                                                           █
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+Made with 💖 by TECHY ABHI 🔱
 
 ```
-
-**Building Tomorrow's Tech Today** 🚀
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║          🚀 BUILDING THE FUTURE OF CONVERSATIONAL AI 🚀         ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
 
 </div>
 ```
-
