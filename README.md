@@ -361,22 +361,17 @@ Fair Use Policy
 
 🌐 Connect with Developer
 
-<div align="center">
-
-TECHY ABHI 🔱
-Full Stack Developer & AI Enthusiast
-
-https://img.shields.io/badge/https://abhiiport.netlify.app/?style=for-the-badge&logo=About.me&logoColor=white
-https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white
-https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white
-https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white
-
-Support the Project
-
-https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black
-https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white
+<!-- Contact -->
+<h3 align="center">📫 Connect with me</h3>
+<p align="center">
+  <a href="https://t.me/a6h1ii"><img src="https://img.shields.io/badge/Telegram-@a6h1ii-26A5E4?style=for-the-badge&logo=telegram" /></a>
+  <a href="mailto:your.email@example.com"><img src="https://img.shields.io/badge/Email-Contact-D14836?style=for-the-badge&logo=gmail" /></a>
+  <a href="https://github.com/yourusername"><img src="https://img.shields.io/badge/GitHub-Follow-181717?style=for-the-badge&logo=github" /></a>
+</p>
 
 </div>
+```
+
 
 ---
 
