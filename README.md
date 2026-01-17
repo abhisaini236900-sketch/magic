@@ -145,13 +145,13 @@ SOFTWARE.
 If you like this project, give it a star! ⭐
 
 ```
-╔══════════════════════════════════════════════════╗
-║                                                  ║
-║     Made with 💖 by TECHY ABHI 🔱               ║
-║                                                  ║
-╚══════════════════════════════════════════════════╝
+╔════════════════════════════════════╗
+║                                          ║
+║     Made with 💖 by TECHY ABHI 🔱        ║
+║                                          ║
+╚════════════════════════════════════╝
 ```
-
-https://img.shields.io/badge/⭐_Star_Repository-FFD700?style=for-the-badge&logo=github&logoColor=black
-
+<p>
+<img src="https://img.shields.io/badge/⭐_Star_Repository-FFD700?style=for-the-badge&logo=github&logoColor=black" />
+</p>
 </div>
