@@ -61,7 +61,7 @@
 ---
 
 ## 📸 **Demo**
-(https://youtube.com/shorts/ZROUvm9qDWA?si=c_cPCsQ7dOiSHX0B)
+[CLICK HERE](https://youtube.com/shorts/ZROUvm9qDWA?si=c_cPCsQ7dOiSHX0B)
 
 ### **Live Bot**
-[@](https://t.me/a6hiIi_bot)
+[click here](https://t.me/a6hiIi_bot)
