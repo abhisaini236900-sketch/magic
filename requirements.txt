@@ -1,6 +1,8 @@
-aiogram==3.13.1
-groq==0.11.0
-httpx==0.27.2
-aiohttp==3.10.5
-python-dotenv==1.0.1
-pytz==2023.3
+aiogram==3.3.0
+groq==0.4.2
+motor==3.3.2
+pytz==2023.3.post1
+aiohttp==3.9.1
+aiofiles==23.2.1
+Pillow==10.1.0
+python-dotenv==1.0.0
