@@ -4,5 +4,5 @@ motor==3.3.2
 pytz==2023.3.post1
 aiohttp==3.9.1
 aiofiles==23.2.1
-Pillow==10.1.0
+Pillow>=10.3.0
 python-dotenv==1.0.0
