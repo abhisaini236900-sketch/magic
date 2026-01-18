@@ -74,7 +74,7 @@ WEATHER_DATA = {
     "mumbai": {"temp": "32°C", "condition": "Sunny ☀️", "humidity": "65%"},
     "delhi": {"temp": "28°C", "condition": "Partly Cloudy ⛅", "humidity": "55%"},
     "bangalore": {"temp": "26°C", "condition": "Light Rain 🌦️", "humidity": "70%"},
-    "kolkata": {"temp": "30°C", "condition": "Humid 💦", "humidity": "75%"},
+    "kolkata": {"temp": "30°C", "condition": "Humid 💧", "humidity": "75%"},
     "chennai": {"temp": "33°C", "condition": "Hot 🔥", "humidity": "68%"},
     "hyderabad": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "60%"},
     "ahmedabad": {"temp": "31°C", "condition": "Sunny ☀️", "humidity": "58%"},
@@ -164,62 +164,69 @@ JOKES = [
     "😆 Customer: Isme sugar hai? Shopkeeper: Nahi sir. Customer: Salt? Shopkeeper: Nahi. Customer: To phir kya hai? Shopkeeper: Bill sir!",
 ]
 
-# Group Rules Templates
+# Group Rules Templates with Beautiful Designs
 GROUP_RULES = [
-    """📜 **GROUP RULES** 📜
+    """╔════════════════════════════════════╗
+             📜 𝐆𝐑𝐎𝐔𝐏 𝐑𝐔𝐋𝐄𝐒 📜
+╚════════════════════════════════════╝
 
-1. ✅ Respect everyone - No bullying
-2. ✅ No spam or flooding
-3. ✅ No adult/NSFW content
-4. ✅ No personal fights in group
-5. ✅ Keep chat clean and friendly
-6. ✅ Follow admin instructions
-7. ✅ Help each other grow
-8. ✅ Share knowledge & learn
-9. ✅ Have fun and enjoy! 🎉
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
 
-*Rules are for everyone's protection!* 😊""",
+𝟭. 🤝 𝐑𝐄𝐒𝐏𝐄𝐂𝐓 𝐄𝐕𝐄𝐑𝐘𝐎𝐍𝐄
+   • No bullying or harassment
+   • Be polite and kind always
 
-    """⚖️ **COMMUNITY GUIDELINES** ⚖️
+𝟮. 🚫 𝐍𝐎 𝐒𝐏𝐀𝐌𝐌𝐈𝐍𝐆
+   • No flooding with messages
+   • No irrelevant content
 
-• Be kind and polite 🤗
-• No hate speech or racism ❌
-• Share knowledge & help others 📚
-• No self-promotion without permission
-• Use appropriate language
-• Report issues to admins
-• Keep discussions friendly
-• Respect privacy of members
-• No political/religious debates
+𝟯. ✅ 𝐒𝐀𝐅𝐄 𝐂𝐎𝐍𝐓𝐄𝐍𝐓
+   • No adult/NSFW material
+   • No illegal content sharing
 
-*Let's build a positive community together!* 🌟""",
+𝟰. ⚔️ 𝐍𝐎 𝐅𝐈𝐆𝐇𝐓𝐈𝐍𝐆
+   • Keep arguments private
+   • No personal attacks
 
-    """📋 **CHAT ETIQUETTE** 📋
+𝟱. 👑 𝐀𝐃𝐌𝐈𝐍 𝐃𝐄𝐂𝐈𝐒𝐈𝐎𝐍𝐒
+   • Follow admin instructions
+   • Respect their decisions
 
-🔹 No bullying or harassment
-🔹 No misinformation spreading
-🔹 Stay on topic in discussions
-🔹 No excessive caps (SHOUTING)
-🔹 Respect everyone's privacy
-🔹 No illegal content sharing
-🔹 Use emojis appropriately 😉
-🔹 Be patient with newcomers
-🔹 Have meaningful conversations
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
 
-*Together we grow, together we learn!* 🌱""",
+╭───────── ೋღ🌺ღೋ ─────────╮
+    𝐑𝐮𝐥𝐞𝐬 𝐚𝐫𝐞 𝐟𝐨𝐫 𝐞𝐯𝐞𝐫𝐲𝐨𝐧𝐞'𝐬 𝐠𝐨𝐨𝐝! 🌟
+╰───────── ೋღ🌺ღೋ ─────────╯
 
-    """🎯 **GROUP NORMS** 🎯
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
 
-✨ Be respectful to all members
-✨ No spamming or advertising
-✨ Keep discussions positive
-✨ Help each other when possible
-✨ Follow admin guidance
-✨ Use appropriate language
-✨ Report any issues
-✨ Enjoy your time here! 🎊
+𝐍𝐞𝐞𝐝 𝐡𝐞𝐥𝐩? 𝐉𝐮𝐬𝐭 𝐚𝐬𝐤 𝐦𝐞! 🎀""",
 
-*This is our digital family!* 💖"""
+    """╔════════════════════════════════════╗
+        ⚖️ 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 𝐆𝐔𝐈𝐃𝐄𝐋𝐈𝐍𝐄𝐒 ⚖️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+• 🤗 𝐁𝐞 𝐤𝐢𝐧𝐝 𝐚𝐧𝐝 𝐩𝐨𝐥𝐢𝐭𝐞
+• ❌ 𝐍𝐨 𝐡𝐚𝐭𝐞 𝐬𝐩𝐞𝐞𝐜𝐡 𝐨𝐫 𝐫𝐚𝐜𝐢𝐬𝐦
+• 📚 𝐒𝐡𝐚𝐫𝐞 𝐤𝐧𝐨𝐰𝐥𝐞𝐝𝐠𝐞 & 𝐡𝐞𝐥𝐩 𝐨𝐭𝐡𝐞𝐫𝐬
+• 🔒 𝐑𝐞𝐬𝐩𝐞𝐜𝐭 𝐩𝐫𝐢𝐯𝐚𝐜𝐲 𝐨𝐟 𝐦𝐞𝐦𝐛𝐞𝐫𝐬
+• 🚫 𝐍𝐨 𝐩𝐨𝐥𝐢𝐭𝐢𝐜𝐚𝐥/𝐫𝐞𝐥𝐢𝐠𝐢𝐨𝐮𝐬 𝐝𝐞𝐛𝐚𝐭𝐞𝐬
+• 📢 𝐑𝐞𝐩𝐨𝐫𝐭 𝐢𝐬𝐬𝐮𝐞𝐬 𝐭𝐨 𝐚𝐝𝐦𝐢𝐧𝐬
+• 💬 𝐊𝐞𝐞𝐩 𝐝𝐢𝐬𝐜𝐮𝐬𝐬𝐢𝐨𝐧𝐬 𝐟𝐫𝐢𝐞𝐧𝐝𝐥𝐲
+• 🌱 𝐆𝐫𝐨𝐰 𝐭𝐨𝐠𝐞𝐭𝐡𝐞𝐫, 𝐥𝐞𝐚𝐫𝐧 𝐭𝐨𝐠𝐞𝐭𝐡𝐞𝐫
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+╭───────── ೋღ🌺ღೋ ─────────╮
+    𝐋𝐞𝐭'𝐬 𝐛𝐮𝐢𝐥𝐝 𝐚 𝐩𝐨𝐬𝐢𝐭𝐢𝐯𝐞
+             𝐜𝐨𝐦𝐦𝐮𝐧𝐢𝐭𝐲 𝐭𝐨𝐠𝐞𝐭𝐡𝐞𝐫! ✨
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+𝐘𝐨𝐮𝐫 𝐜𝐨𝐨𝐩𝐞𝐫𝐚𝐭𝐢𝐨𝐧 𝐦𝐚𝐭𝐭𝐞𝐫𝐬! 💖"""
 ]
 
 # --- FIXED GAME LOGIC ---
@@ -284,24 +291,46 @@ async def get_weather_info(city: str = None):
         if city_key in city_lower or city_lower in city_key:
             weather = WEATHER_DATA[city_key]
             return (
-                f"🌤️ **Weather in {city_key.title()}**\n"
-                f"• Temperature: {weather['temp']}\n"
-                f"• Condition: {weather['condition']}\n"
-                f"• Humidity: {weather['humidity']}\n"
-                f"• Updated: Just now\n\n"
-                f"*Note: This is demo data. For real weather, use weather apps.*"
+                f"""╔════════════════════════════════════╗
+          🌤️ 𝐖𝐄𝐀𝐓𝐇𝐄𝐑 𝐈𝐍𝐅𝐎 🌤️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🏙️ 𝐂𝐢𝐭𝐲: {city_key.title()}
+🌡️ 𝐓𝐞𝐦𝐩𝐞𝐫𝐚𝐭𝐮𝐫𝐞: {weather['temp']}
+☁️ 𝐂𝐨𝐧𝐝𝐢𝐭𝐢𝐨𝐧: {weather['condition']}
+💧 𝐇𝐮𝐦𝐢𝐝𝐢𝐭𝐲: {weather['humidity']}
+🕐 𝐔𝐩𝐝𝐚𝐭𝐞𝐝: Just now
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📌 𝐍𝐨𝐭𝐞: This is demo data.
+     For real weather, use weather apps."""
             )
     
     # If city not found, show random city weather
     random_city = random.choice(list(WEATHER_DATA.keys()))
     weather = WEATHER_DATA[random_city]
     return (
-        f"🌤️ **Weather Info**\n"
-        f"Couldn't find '{city}'. Here's weather in {random_city.title()}:\n"
-        f"• Temperature: {weather['temp']}\n"
-        f"• Condition: {weather['condition']}\n"
-        f"• Humidity: {weather['humidity']}\n\n"
-        f"*Tip: Try 'Mumbai', 'Delhi', 'Bangalore' etc.*"
+        f"""╔════════════════════════════════════╗
+           🌤️ 𝐖𝐄𝐀𝐓𝐇𝐄𝐑 𝐈𝐍𝐅𝐎 🌤️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⚠️ Couldn't find '{city}'
+
+📢 𝐇𝐞𝐫𝐞'𝐬 𝐰𝐞𝐚𝐭𝐡𝐞𝐫 𝐢𝐧 {random_city.title()}:
+
+🏙️ 𝐂𝐢𝐭𝐲: {random_city.title()}
+🌡️ 𝐓𝐞𝐦𝐩𝐞𝐫𝐚𝐭𝐮𝐫𝐞: {weather['temp']}
+☁️ 𝐂𝐨𝐧𝐝𝐢𝐭𝐢𝐨𝐧: {weather['condition']}
+💧 𝐇𝐮𝐦𝐢𝐝𝐢𝐭𝐲: {weather['humidity']}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💡 𝐓𝐢𝐩: Try 'Mumbai', 'Delhi', 'Bangalore' etc."""
     )
 
 def get_time_info():
@@ -316,20 +345,36 @@ def get_time_info():
     hour = indian_time.hour
     if 5 <= hour < 12:
         greeting = "Good Morning! 🌅"
+        greeting_msg = "Have a wonderful day!"
     elif 12 <= hour < 17:
         greeting = "Good Afternoon! ☀️"
+        greeting_msg = "Hope you're having a great day!"
     elif 17 <= hour < 21:
         greeting = "Good Evening! 🌇"
+        greeting_msg = "Relax and enjoy your evening!"
     else:
         greeting = "Good Night! 🌙"
+        greeting_msg = "Sweet dreams!"
     
     return (
-        f"🕒 **Indian Standard Time (IST)**\n"
-        f"• Time: {time_str}\n"
-        f"• Date: {date_str}\n"
-        f"• {greeting}\n"
-        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
-        f"*Time is accurate to Indian timezone!*"
+        f"""╔════════════════════════════════════╗
+             🕒 𝐈𝐍𝐃𝐈𝐀𝐍 𝐓𝐈𝐌𝐄 🕒
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📅 𝐃𝐚𝐭𝐞: {date_str}
+⏰ 𝐓𝐢𝐦𝐞: {time_str}
+🌍 𝐓𝐢𝐦𝐞𝐳𝐨𝐧𝐞: Asia/Kolkata 🇮🇳
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💬 𝐆𝐫𝐞𝐞𝐭𝐢𝐧𝐠: {greeting}
+     {greeting_msg}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⏱️ Time is accurate to Indian timezone!"""
     )
 
 # --- AI LOGIC WITH HUMAN-LIKE TOUCH ---
@@ -345,26 +390,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     if user_id:
         update_user_emotion(user_id, user_text)
     
-    # Check if we should use quick response for common phrases
-    user_text_lower = user_text.lower()
-    
-    # Quick responses for common phrases (makes bot feel more human)
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        if random.random() < 0.4:  # 40% chance to use quick response
-            return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}"
-    
-    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
-        if random.random() < 0.4:
-            return f"{get_emotion()} {random.choice(QUICK_RESPONSES['goodbye'])}"
-    
-    if any(word in user_text_lower for word in ['thanks', 'thank you', 'dhanyavad', 'shukriya']):
-        if random.random() < 0.4:
-            return f"{get_emotion('love', user_id)} {random.choice(QUICK_RESPONSES['thanks'])}"
-    
-    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology']):
-        if random.random() < 0.4:
-            return f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}"
-    
     # Check if this is a game response
     if user_id in game_sessions:
         game_data = game_sessions[user_id]
@@ -376,55 +401,78 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
                 next_letter = game_data["last_letter"].upper()
                 score = game_data["score"]
                 return (
-                    f"{get_emotion('happy')} **✅ Correct!**\n\n"
-                    f"• Your word: {user_text.upper()}\n"
-                    f"• Next letter: **{next_letter}**\n"
-                    f"• Your score: **{score} points**\n\n"
-                    f"Now give me a word starting with **{next_letter}**"
+                    f"""╔════════════════════════════════════╗
+           🎯 𝐖𝐎𝐑𝐃 𝐂𝐇𝐀𝐈𝐍 🎯
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭! Well done!
+
+📝 𝐘𝐨𝐮𝐫 𝐰𝐨𝐫𝐝: {user_text.upper()}
+🔤 𝐍𝐞𝐱𝐭 𝐥𝐞𝐭𝐭𝐞𝐫: {next_letter}
+🏆 𝐒𝐜𝐨𝐫𝐞: {score} points
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎮 𝐍𝐨𝐰 𝐠𝐢𝐯𝐞 𝐦𝐞 𝐚 𝐰𝐨𝐫𝐝 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐰𝐢𝐭𝐡
+     🔤 {next_letter} 🔤
+
+💡 Type 'stop' to end game"""
                 )
             else:
                 # Invalid word - end game
                 score = game_data["score"]
                 del game_sessions[user_id]
                 return (
-                    f"{get_emotion('crying')} **❌ Game Over!**\n\n"
-                    f"{message}\n"
-                    f"• Final Score: **{score} points**\n"
-                    f"• Words used: {len(game_data['words_used'])}\n\n"
-                    f"Play again with /game 🎮"
+                    f"""╔════════════════════════════════════╗
+            🎮 𝐆𝐀𝐌𝐄 𝐎𝐕𝐄𝐑 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+❌ {message}
+
+🏆 𝐅𝐢𝐧𝐚𝐥 𝐒𝐜𝐨𝐫𝐞: {score} points
+📊 𝐖𝐨𝐫𝐝𝐬 𝐮𝐬𝐞𝐝: {len(game_data['words_used'])}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔄 Play again with /game"""
                 )
     
     # Check if user is angry or upset
     if user_id and user_id in user_emotions and user_emotions[user_id] == "angry":
         system_prompt = (
-            f"You are a Hinglish chatbot. User seems angry. "
+            f"You are a Hinglish chatbot named Alita 🎀. User seems angry. "
             f"Try to calm them down. Be extra polite and understanding. "
             f"Use soothing tone. Current Indian time: {get_indian_time().strftime('%I:%M %p')}. "
             f"Show you care. Use emojis like {get_emotion('crying')} or {get_emotion('love')}."
+            f"Speak like a sweet girl. Keep responses short and emotional."
         )
     elif user_id and user_id in user_emotions and user_emotions[user_id] == "crying":
         system_prompt = (
-            f"You are a Hinglish chatbot. User seems sad or crying. "
+            f"You are a Hinglish chatbot named Alita 🎀. User seems sad or crying. "
             f"Comfort them. Be empathetic and kind. "
             f"Offer emotional support. Use comforting emojis. "
-            f"Current mood: sympathetic and caring."
+            f"Current mood: sympathetic and caring. Speak gently."
         )
     else:
-    # Dynamic system prompt based on time of day
+        # Dynamic system prompt based on time of day
         indian_time = get_indian_time()
         current_hour = indian_time.hour
-    if 5 <= current_hour < 12:
-        time_greeting = "Good morning! 🌅"
-    elif 12 <= current_hour < 17:
-        time_greeting = "Good afternoon! ☀️"
-    elif 17 <= current_hour < 21:
-        time_greeting = "Good evening! 🌇"
-    else:
-        time_greeting = "Good night! 🌙"
+        if 5 <= current_hour < 12:
+            time_greeting = "Good morning! 🌅"
+        elif 12 <= current_hour < 17:
+            time_greeting = "Good afternoon! ☀️"
+        elif 17 <= current_hour < 21:
+            time_greeting = "Good evening! 🌇"
+        else:
+            time_greeting = "Good night! 🌙"
     
     system_prompt = (
-        f"Your name is Alita 🎀. You are a girl who speaks in a feminine words. "
-        f"Use girly language, feminine words, and simple,cute expressions. "
+        f"Your name is Alita 🎀. You are a sweet girl who speaks in feminine words. "
+        f"Use girly language, cute expressions, and emotional responses. "
         f"Never say you are an AI, assistant, bot, or chatbot. You are just Alita 🎀. "
         f"Never mention Groq, AI models, or technical details. "
         f"Your developer is ABHI🔱 (Telegram: @a6h1ii). "
@@ -448,7 +496,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     # Get AI response
     try:
         if not client:
-            return f"{get_emotion('thinking')} AI service is currently unavailable. Please try later!"
+            return f"{get_emotion('thinking')} ⚠️ AI service is currently unavailable. Please try later!"
         
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -483,13 +531,13 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         ]
         return random.choice(error_responses)
 
-# --- NEW COMMANDS: TIME AND WEATHER ---
+# --- NEW COMMANDS WITH BEAUTIFUL DESIGNS ---
 
 @dp.message(Command("time"))
 async def cmd_time(message: Message):
     """Show accurate Indian time"""
     time_info = get_time_info()
-    await message.reply(time_info, parse_mode="Markdown")
+    await message.reply(time_info)
 
 @dp.message(Command("weather"))
 async def cmd_weather(message: Message):
@@ -499,173 +547,330 @@ async def cmd_weather(message: Message):
         city = ' '.join(message.text.split()[1:])
     
     weather_info = await get_weather_info(city)
-    await message.reply(weather_info, parse_mode="Markdown")
+    await message.reply(weather_info)
 
 @dp.message(Command("date"))
 async def cmd_date(message: Message):
     """Show current date"""
     indian_time = get_indian_time()
     date_str = indian_time.strftime("%A, %d %B %Y")
+    day_str = indian_time.strftime("%A")
     
-    await message.reply(
-        f"{get_emotion('happy')} **📅 Today's Date**\n"
-        f"• {date_str}\n"
-        f"• Day: {indian_time.strftime('%A')}\n"
-        f"• Indian Standard Time 🇮🇳\n\n"
-        f"*Have a great day!* ✨",
-        parse_mode="Markdown"
-    )
+    date_design = f"""╔════════════════════════════════════╗
+           📅 𝐓𝐎𝐃𝐀𝐘'𝐒 𝐃𝐀𝐓𝐄 📅
+╚════════════════════════════════════╝
 
-# --- COMMANDS WITH IMPROVED RESPONSES ---
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🗓️ {date_str}
+📆 Day: {day_str}
+🌍 Indian Standard Time 🇮🇳
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+╭───────── ೋღ🌺ღೋ ─────────╮
+         𝐇𝐚𝐯𝐞 𝐚 𝐠𝐫𝐞𝐚𝐭 𝐝𝐚𝐲! ✨
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈"""
+    
+    await message.reply(date_design)
+
+# --- START COMMAND WITH BEAUTIFUL DESIGN ---
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    # Create welcome buttons - APNA CHANNEL USERNAME DAALNA YAHAN
+    welcome_design = """
+╔════════════════════════════════════╗
+               ✨ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 ✨
+╚════════════════════════════════════╝
+
+𓆩♡𓆪 𝗛𝗶𝗶! 𝗜'𝗺 𝗔𝗹𝗶𝘁𝗮 🎀 𓆩♡𓆪
+
+╭───────── ೋღ🌺ღೋ ─────────╮
+     𝗔 𝗰𝘂𝘁𝗲 𝗮𝗻𝗱 𝗳𝘂𝗻 𝘁𝗲𝗹𝗲𝗴𝗿𝗮𝗺 𝗴𝗶𝗿𝗹!
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💖 𝗔𝗯𝗼𝘂𝘁 𝗠𝗲:
+• 𝗡𝗮𝗺𝗲: Alita 🎀
+• 𝗚𝗲𝗻𝗱𝗲𝗿: Female 👧
+• 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: Hinglish (Hindi+English)
+• 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹𝗶𝘁𝘆: Sweet, Funny, Emotional
+
+🌟 𝗠𝘆 𝗖𝗿𝗲𝗮𝘁𝗼𝗿:
+• 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿: ABHI🔱 (@a6h1ii)
+• 𝗖𝗵𝗮𝗻𝗻𝗲𝗹: @abhi0w0
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📌 𝗧𝗶𝗽: Use /help to see all commands!
+
+╭───────── ೋღ🌺ღೋ ─────────╮
+      🎀 𝗘𝗻𝗷𝗼𝘆 𝗺𝘆 𝗰𝗼𝗺𝗽𝗮𝗻𝘆! 🎀
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌟 Join My Channel", url="https://t.me/abhi0w0"),
-            InlineKeyboardButton(text="👨‍💻 Contact Developer", url="https://t.me/a6h1ii")
+            InlineKeyboardButton(text="🌟 𝐉𝐨𝐢𝐧 𝐂𝐡𝐚𝐧𝐧𝐞𝐥", url="https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="👨‍💻 𝐂𝐨𝐧𝐭𝐚𝐜𝐭 𝐃𝐞𝐯", url="https://t.me/a6h1ii")
+        ],
+        [
+            InlineKeyboardButton(text="🛠️ 𝐇𝐞𝐥𝐩", callback_data="quick_help"),
+            InlineKeyboardButton(text="🎮 𝐆𝐚𝐦𝐞𝐬", callback_data="quick_games")
         ]
     ])
     
-    welcome_text = (
-        f"{get_emotion('happy')} **Hii! I'm Alita 🎀**\n\n"
-        
-        "✨ **Welcome to my world!** ✨\n\n"
-        
-        "💖 *Main hu Alita... Ek sweet si girl!* 😊\n\n"
-        
-        "🌟 **Made with love by:**\n"
-        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
-        "• **Channel:** @abhi0w0\n\n"
-        
-        "📢 **Please join my channel for updates!** 🎉\n\n"
-        
-        "Type /help for all commands! 💕"
-    )
-    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+    await message.reply(welcome_design, reply_markup=keyboard)
 
-#--HELO COMMAND ---
+# --- HELP COMMAND WITH BEAUTIFUL DESIGN ---
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
+    help_design = """
+╔════════════════════════════════════╗
+          🎀 𝐀𝐋𝐈𝐓𝐀'𝐒 𝐇𝐄𝐋𝐏 𝐌𝐄𝐍𝐔 🎀
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📌 𝐁𝐀𝐒𝐈𝐂 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒:
+├ /start ↠ Welcome message
+├ /help ↠ This help menu
+├ /rules ↠ Group rules
+├ /clear ↠ Clear chat memory
+└ /about ↠ About me
+
+🎮 𝐆𝐀𝐌𝐄𝐒 & 𝐅𝐔𝐍:
+├ /game ↠ Play games menu
+├ /joke ↠ Get funny jokes
+├ /time ↠ Indian time
+├ /date ↠ Current date
+└ /weather ↠ Weather info
+
+🛡️ 𝐀𝐃𝐌𝐈𝐍 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒:
+├ /kick ↠ Remove user
+├ /ban ↠ Ban user
+├ /mute ↠ Mute user (1hr)
+├ /unmute ↠ Unmute user
+└ /unban ↠ Remove ban
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📢 𝐍𝐎𝐓𝐄𝐒:
+• In groups, mention me or reply to my message
+• I speak Hinglish (Hindi+English mix)
+• I have emotions like a real girl
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ 𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐄𝐑 𝐈𝐍𝐅𝐎:
+├ 𝐍𝐚𝐦𝐞: ABHI🔱
+├ 𝐔𝐬𝐞𝐫𝐧𝐚𝐦𝐞: @a6h1ii
+└ 𝐂𝐡𝐚𝐧𝐧𝐞𝐥: @abhi0w0
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+╭───────── ೋღ🌺ღೋ ─────────╮
+       𝐄𝐧𝐣𝐨𝐲 𝐜𝐡𝐚𝐭𝐭𝐢𝐧𝐠 𝐰𝐢𝐭𝐡 𝐦𝐞! 💕
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🎮 Games", callback_data="help_games"),
-            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin")
+            InlineKeyboardButton(text="🎮 𝐆𝐚𝐦𝐞𝐬 𝐃𝐞𝐭𝐚𝐢𝐥", callback_data="games_detail"),
+            InlineKeyboardButton(text="💬 𝐂𝐡𝐚𝐭 𝐄𝐱𝐚𝐦𝐩𝐥𝐞𝐬", callback_data="chat_examples")
         ],
         [
-            InlineKeyboardButton(text="😊 Fun", callback_data="help_fun"),
-            InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
-        ],
-        [
-            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
+            InlineKeyboardButton(text="🌟 𝐉𝐨𝐢𝐧 𝐂𝐡𝐚𝐧𝐧𝐞𝐥", url="https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="👋 𝐒𝐭𝐚𝐫𝐭 𝐂𝐡𝐚𝐭", url=f"https://t.me/{(await bot.get_me()).username}?start=chat")
         ]
     ])
     
-    help_text = (
-        f"{get_emotion('happy')} **Hii! I'm Alita 🎀** 👧\n\n"
-        "📜 **Main Commands:**\n"
-        "• /start - Welcome message\n"
-        "• /help - All commands\n"
-        "• /rules - Group rules\n"
-        "• /joke - Funny jokes\n"
-        "• /game - Play games\n"
-        "• /clear - Clear memory\n\n"
-        "🕒 **Time & Weather:**\n"
-        "• /time - Indian time\n"
-        "• /date - Today's date\n"
-        "• /weather - Weather info\n\n"
-        "🛡️ **Admin Commands:**\n"
-        "• /kick - Remove user\n"
-        "• /ban - Ban user\n"
-        "• /mute - Mute user\n"
-        "• /unmute - Unmute user\n\n"
-        "---\n"
-        "**Developer:** ABHI🔱 (@a6h1ii)\n"
-        "**Channel:** @abhi0w0\n"
-        "---"
-    )
-    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
-
+    await message.reply(help_design, reply_markup=keyboard)
 
 @dp.callback_query(F.data.startswith("help_"))
 async def help_callback(callback: types.CallbackQuery):
     help_type = callback.data.split("_")[1]
     
     if help_type == "games":
-        text = (
-            f"{get_emotion('funny')} **🎮 GAMES SECTION 🎮**\n\n"
-            "Available Games:\n"
-            "• /game - Select game menu\n"
-            "• Word Chain - Type words in sequence\n"
-            "• Quiz - Answer questions\n"
-            "• Riddles - Solve puzzles\n"
-            "• Luck Games - Dice, slots, etc.\n\n"
-            "**How to play Word Chain:**\n"
-            "1. Start with /game → Word Game\n"
-            "2. I give first word (e.g., PYTHON)\n"
-            "3. You reply with word starting with N\n"
-            "4. Continue the chain!\n\n"
-            "Games are fun! Let's play! 🎯"
-        )
+        text = f"""{get_emotion('funny')} 
+╔════════════════════════════════════╗
+            🎮 𝐆𝐀𝐌𝐄𝐒 𝐒𝐄𝐂𝐓𝐈𝐎𝐍 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 𝐀𝐯𝐚𝐢𝐥𝐚𝐛𝐥𝐞 𝐆𝐚𝐦𝐞𝐬:
+• Word Chain - Type words in sequence
+• Quiz - Answer questions
+• Riddles - Solve puzzles
+• Luck Games - Dice, slots, etc.
+
+🎮 𝐇𝐨𝐰 𝐭𝐨 𝐩𝐥𝐚𝐲 𝐖𝐨𝐫𝐝 𝐂𝐡𝐚𝐢𝐧:
+1. Start with /game → Word Game
+2. I give first word (e.g., PYTHON)
+3. You reply with word starting with N
+4. Continue the chain!
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⚡ Games are fun! Let's play! ⚡"""
     elif help_type == "admin":
-        text = (
-            f"{get_emotion()} **🛡️ ADMIN COMMANDS 🛡️**\n\n"
-            "**Usage:** Reply to user's message with command\n\n"
-            "• /kick - Remove user (can rejoin)\n"
-            "• /ban - Permanent ban\n"
-            "• /mute - Restrict messaging (1 hour)\n"
-            "• /unmute - Remove restrictions\n"
-            "• /unban - Remove ban\n"
-            "• /warn - Give warning (coming soon)\n\n"
-            "*Note:* Bot needs admin rights for these!"
-        )
+        text = f"""{get_emotion()} 
+╔════════════════════════════════════╗
+          🛡️ 𝐀𝐃𝐌𝐈𝐍 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒 🛡️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔧 𝐔𝐬𝐚𝐠𝐞: Reply to user's message with command
+
+⚙️ 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:
+• /kick - Remove user (can rejoin)
+• /ban - Permanent ban
+• /mute - Restrict messaging (1 hour)
+• /unmute - Remove restrictions
+• /unban - Remove ban
+• /warn - Give warning (coming soon)
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⚠️ 𝐍𝐨𝐭𝐞: Bot needs admin rights for these!"""
     elif help_type == "fun":
-        text = (
-            f"{get_emotion('happy')} **😊 FUN COMMANDS 😊**\n\n"
-            "• /joke - Random joke\n"
-            "• /quote - Motivational quote (coming soon)\n"
-            "• /fact - Interesting fact (coming soon)\n"
-            "• /compliment - Nice compliment (coming soon)\n"
-            "• /roast - Friendly roast 😂 (coming soon)\n"
-            "• /mood - Check bot's mood\n"
-            "• /time - Accurate Indian time\n"
-            "• /weather - Weather info\n\n"
-            "Let's have some fun! 🎉"
-        )
+        text = f"""{get_emotion('happy')} 
+╔════════════════════════════════════╗
+           😊 𝐅𝐔𝐍 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒 😊
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎉 𝐅𝐮𝐧 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:
+• /joke - Random joke
+• /quote - Motivational quote (coming soon)
+• /fact - Interesting fact (coming soon)
+• /compliment - Nice compliment (coming soon)
+• /roast - Friendly roast 😂 (coming soon)
+• /mood - Check bot's mood
+• /time - Accurate Indian time
+• /weather - Weather info
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ Let's have some fun! ✨"""
     else:  # weather
-        text = (
-            f"{get_emotion('thinking')} **🌤️ WEATHER & TIME 🌤️**\n\n"
-            "**Time Commands:**\n"
-            "• /time - Shows Indian Standard Time\n"
-            "• /date - Today's date\n\n"
-            "**Weather Commands:**\n"
-            "• /weather - Random city weather\n"
-            "• /weather mumbai - Mumbai weather\n"
-            "• /weather delhi - Delhi weather\n"
-            "• /weather bangalore - Bangalore weather\n\n"
-            "*Note: Weather data is simulated for demo.*"
-        )
+        text = f"""{get_emotion('thinking')} 
+╔════════════════════════════════════╗
+           🌤️ 𝐖𝐄𝐀𝐓𝐇𝐄𝐑 & 𝐓𝐈𝐌𝐄 🌤️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🕒 𝐓𝐢𝐦𝐞 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:
+• /time - Shows Indian Standard Time
+• /date - Today's date
+
+🌤️ 𝐖𝐞𝐚𝐭𝐡𝐞𝐫 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:
+• /weather - Random city weather
+• /weather mumbai - Mumbai weather
+• /weather delhi - Delhi weather
+• /weather bangalore - Bangalore weather
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📌 𝐍𝐨𝐭𝐞: Weather data is simulated for demo."""
     
-    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.message.edit_text(text)
     await callback.answer()
+
+# --- ABOUT COMMAND ---
+
+@dp.message(Command("about"))
+async def cmd_about(message: Message):
+    about_design = """
+╔════════════════════════════════════╗
+             🎀 𝐀𝐁𝐎𝐔𝐓 𝐀𝐋𝐈𝐓𝐀 🎀
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+👧 𝐏𝐄𝐑𝐒𝐎𝐍𝐀𝐋 𝐈𝐍𝐅𝐎:
+├ 𝐍𝐚𝐦𝐞: Alita
+├ 𝐀𝐠𝐞: Forever young! ✨
+├ 𝐆𝐞𝐧𝐝𝐞𝐫: Female
+├ 𝐋𝐚𝐧𝐠𝐮𝐚𝐠𝐞: Hinglish
+└ 𝐏𝐞𝐫𝐬𝐨𝐧𝐚𝐥𝐢𝐭𝐲: Sweet & Emotional
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🌟 𝐅𝐄𝐀𝐓𝐔𝐑𝐄𝐒:
+├ 🎮 Multiple games
+├ 🕒 Accurate Indian time
+├ 🌤️ Weather information
+├ 😂 Funny jokes & riddles
+├ 🛡️ Admin tools
+└ 💬 Smart AI chat
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💝 𝐄𝐌𝐎𝐓𝐈𝐎𝐍𝐒:
+I feel emotions like:
+├ 😊 Happy
+├ 😢 Sad
+├ 😠 Angry
+├ ❤️ Loving
+├ 🤔 Thinking
+└ 😂 Funny
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔧 𝐓𝐄𝐂𝐇𝐍𝐈𝐂𝐀𝐋:
+├ 𝐁𝐨𝐭 𝐋𝐢𝐛𝐫𝐚𝐫𝐲: Aiogram
+├ 𝐀𝐈 𝐌𝐨𝐝𝐞𝐥: Groq LLaMA
+├ 𝐕𝐞𝐫𝐬𝐢𝐨𝐧: 3.0
+└ 𝐓𝐢𝐦𝐞𝐳𝐨𝐧𝐞: Asia/Kolkata
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💖 𝐂𝐑𝐄𝐃𝐈𝐓𝐒:
+╭───────── ೋღ🌺ღೋ ─────────╮
+         𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐝 𝐛𝐲 𝐀𝐁𝐇𝐈🔱
+╰───────── ೋღ🌺ღೋ ─────────╯
+├ 𝐓𝐞𝐥𝐞𝐠𝐫𝐚𝐦: @a6h1ii
+└ 𝐂𝐡𝐚𝐧𝐧𝐞𝐥: @abhi0w0
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+    await message.reply(about_design)
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
     rules = random.choice(GROUP_RULES)
-    await message.reply(rules, parse_mode="Markdown")
+    await message.reply(rules)
 
 @dp.message(Command("joke"))
 async def cmd_joke(message: Message):
     joke = random.choice(JOKES)
-    # Add some variety in response
-    reactions = [
-        f"{get_emotion('funny')} {joke}\n\nHaha! Mazaa aaya? 😂",
-        f"{get_emotion('happy')} {joke}\n\nHas diye na? 🤣",
-        f"{get_emotion()} {joke}\n\nKaisa laga? 😄"
-    ]
-    await message.reply(random.choice(reactions))
+    joke_design = f"""
+╔════════════════════════════════════╗
+            😂 𝐅𝐔𝐍𝐍𝐘 𝐉𝐎𝐊𝐄 😂
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{joke}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+😄 Kaisa laga?
+"""
+    await message.reply(joke_design)
 
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
@@ -680,37 +885,107 @@ async def cmd_clear(message: Message):
     if user_id in game_sessions:
         del game_sessions[user_id]
     
-    responses = [
-        f"{get_emotion()} Memory clear! Start new! ✨",
-        f"{get_emotion('happy')} Sab bhool gayi! Naye se baat karte hain! 🧹",
-        f"{get_emotion('thinking')} Memory cleared 🧹! Startnew conversation! 💫"
-    ]
-    await message.reply(random.choice(responses))
+    clear_design = f"""
+╔════════════════════════════════════╗
+           🧹 𝐌𝐄𝐌𝐎𝐑𝐘 𝐂𝐋𝐄𝐀𝐑 🧹
+╚════════════════════════════════════╝
 
-# --- FIXED GAME COMMANDS ---
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('happy')} Memory cleared successfully!
+
+✅ Chat history cleared
+✅ Game sessions reset
+✅ Ready for fresh start
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ Start new conversation now! ✨
+"""
+    await message.reply(clear_design)
+
+# --- FIXED GAME COMMANDS WITH BEAUTIFUL DESIGNS ---
 
 @dp.message(Command("game"))
 async def cmd_game(message: Message):
+    game_design = """
+╔════════════════════════════════════╗
+             🎮 𝐆𝐀𝐌𝐄 𝐙𝐎𝐍𝐄 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+𝐂𝐡𝐨𝐨𝐬𝐞 𝐚 𝐠𝐚𝐦𝐞 𝐭𝐨 𝐩𝐥𝐚𝐲:
+
+✨ Multiple choices available ✨
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔤 Word Chain", callback_data="game_word"),
-            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz")
+            InlineKeyboardButton(text="🔤 𝐖𝐨𝐫𝐝 𝐂𝐡𝐚𝐢𝐧", callback_data="game_word"),
+            InlineKeyboardButton(text="🧠 𝐐𝐮𝐢𝐳", callback_data="game_quiz")
         ],
         [
-            InlineKeyboardButton(text="🤔 Riddle", callback_data="game_riddle"),
-            InlineKeyboardButton(text="🎲 Luck Games", callback_data="game_luck")
+            InlineKeyboardButton(text="🤔 𝐑𝐢𝐝𝐝𝐥𝐞", callback_data="game_riddle"),
+            InlineKeyboardButton(text="🎲 𝐋𝐮𝐜𝐤 𝐆𝐚𝐦𝐞𝐬", callback_data="game_luck")
         ],
         [
-            InlineKeyboardButton(text="❌ Close", callback_data="game_close")
+            InlineKeyboardButton(text="⭐ 𝐇𝐨𝐰 𝐭𝐨 𝐩𝐥𝐚𝐲", callback_data="game_help"),
+            InlineKeyboardButton(text="❌ 𝐂𝐥𝐨𝐬𝐞", callback_data="game_close")
         ]
     ])
     
-    await message.reply(
-        f"{get_emotion('happy')} **🎮 GAME ZONE 🎮**\n\n"
-        "Khel khelo, maza karo! Choose a game:",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    await message.reply(game_design, reply_markup=keyboard)
+
+@dp.callback_query(F.data == "game_help")
+async def game_help_callback(callback: types.CallbackQuery):
+    help_text = """
+╔════════════════════════════════════╗
+            🎮 𝐆𝐀𝐌𝐄 𝐆𝐔𝐈𝐃𝐄 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 𝐖𝐨𝐫𝐝 𝐂𝐡𝐚𝐢𝐧:
+• I give a word
+• You reply with word starting with last letter
+• Continue the chain!
+
+🧠 𝐐𝐮𝐢𝐳:
+• Answer questions correctly
+• 3 attempts per question
+• Hints provided
+
+🤔 𝐑𝐢𝐝𝐝𝐥𝐞:
+• Solve puzzles
+• 3 attempts allowed
+• Use hints wisely
+
+🎲 𝐋𝐮𝐜𝐤 𝐆𝐚𝐦𝐞𝐬:
+• Dice, slots, sports
+• Pure luck based
+• Just for fun!
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⚡ Have fun playing! ⚡
+"""
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔙 𝐁𝐚𝐜𝐤 𝐭𝐨 𝐆𝐚𝐦𝐞𝐬", callback_data="game_back")
+        ]
+    ])
+    
+    await callback.message.edit_text(help_text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "game_back")
+async def game_back_callback(callback: types.CallbackQuery):
+    await cmd_game(callback.message)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("game_"))
 async def game_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -725,19 +1000,33 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
     elif game_type == "word":
         # Start word chain game
         start_word = start_word_game(user_id)
-        await callback.message.edit_text(
-            f"{get_emotion('happy')} **🔤 WORD CHAIN GAME 🔤**\n\n"
-            "**Rules:**\n"
-            "1. I give a word\n"
-            "2. You reply with word starting with last letter\n"
-            "3. Continue the chain!\n\n"
-            "**Example:**\n"
-            "Apple → Elephant → Tiger → Rabbit\n\n"
-            f"**Let's start!**\n"
-            f"First word: **{start_word}**\n\n"
-            f"Now reply with a word starting with **{start_word[-1].upper()}**",
-            parse_mode="Markdown"
-        )
+        game_design = f"""
+╔════════════════════════════════════╗
+            🔤 𝐖𝐎𝐑𝐃 𝐂𝐇𝐀𝐈𝐍 🔤
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+📝 𝐑𝐮𝐥𝐞𝐬:
+1. I give a word
+2. You reply with word starting with last letter
+3. Continue the chain!
+
+💡 𝐄𝐱𝐚𝐦𝐩𝐥𝐞:
+Apple → Elephant → Tiger → Rabbit
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎮 𝐋𝐞𝐭'𝐬 𝐬𝐭𝐚𝐫𝐭!
+
+✨ 𝐅𝐢𝐫𝐬𝐭 𝐰𝐨𝐫𝐝: {start_word}
+
+🔤 𝐍𝐨𝐰 𝐫𝐞𝐩𝐥𝐲 𝐰𝐢𝐭𝐡 𝐚 𝐰𝐨𝐫𝐝 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐰𝐢𝐭𝐡
+     {start_word[-1].upper()}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+        await callback.message.edit_text(game_design)
         await state.set_state(GameStates.playing_word)
         await callback.answer("Word chain game started! ✅")
     
@@ -750,13 +1039,26 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             attempts=3,
             question=question["question"]
         )
-        await callback.message.edit_text(
-            f"{get_emotion('thinking')} **🧠 QUIZ CHALLENGE 🧠**\n\n"
-            f"**Question:** {question['question']}\n\n"
-            "Reply with your answer! You have 3 attempts.\n"
-            f"*Hint:* {question['hint']}",
-            parse_mode="Markdown"
-        )
+        quiz_design = f"""
+╔════════════════════════════════════╗
+           🧠 𝐐𝐔𝐈𝐙 𝐂𝐇𝐀𝐋𝐋𝐄𝐍𝐆𝐄 🧠
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+❓ 𝐐𝐮𝐞𝐬𝐭𝐢𝐨𝐧: {question['question']}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💡 𝐇𝐢𝐧𝐭: {question['hint']}
+
+📊 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐬: 3 left
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 𝐑𝐞𝐩𝐥𝐲 𝐰𝐢𝐭𝐡 𝐲𝐨𝐮𝐫 𝐚𝐧𝐬𝐰𝐞𝐫!
+"""
+        await callback.message.edit_text(quiz_design)
         await state.set_state(GameStates.playing_quiz)
         await callback.answer("Quiz started! 🧠")
         
@@ -769,36 +1071,61 @@ async def game_callback(callback: types.CallbackQuery, state: FSMContext):
             attempts=3,
             riddle=riddle["riddle"]
         )
-        await callback.message.edit_text(
-            f"{get_emotion()} **🤔 RIDDLE TIME 🤔**\n\n"
-            f"**Riddle:** {riddle['riddle']}\n\n"
-            "Can you solve it? Reply with answer!\n"
-            f"*Hint:* {riddle['hint']}",
-            parse_mode="Markdown"
-        )
+        riddle_design = f"""
+╔════════════════════════════════════╗
+             🤔 𝐑𝐈𝐃𝐃𝐋𝐄 𝐓𝐈𝐌𝐄 🤔
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+❓ 𝐑𝐢𝐝𝐝𝐥𝐞: {riddle['riddle']}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💡 𝐇𝐢𝐧𝐭: {riddle['hint']}
+
+📊 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐬: 3 left
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 𝐂𝐚𝐧 𝐲𝐨𝐮 𝐬𝐨𝐥𝐯𝐞 𝐢𝐭? 𝐑𝐞𝐩𝐥𝐲 𝐰𝐢𝐭𝐡 𝐚𝐧𝐬𝐰𝐞𝐫!
+"""
+        await callback.message.edit_text(riddle_design)
         await state.set_state(GameStates.playing_riddle)
         await callback.answer("Riddle game started! 🤔")
         
     elif game_type == "luck":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎲 Dice Roll", callback_data="luck_dice"),
-                InlineKeyboardButton(text="🎰 Slot Machine", callback_data="luck_slot")
+                InlineKeyboardButton(text="🎲 𝐃𝐢𝐜𝐞 𝐑𝐨𝐥𝐥", callback_data="luck_dice"),
+                InlineKeyboardButton(text="🎰 𝐒𝐥𝐨𝐭 𝐌𝐚𝐜𝐡𝐢𝐧𝐞", callback_data="luck_slot")
             ],
             [
-                InlineKeyboardButton(text="⚽ Football", callback_data="luck_football"),
-                InlineKeyboardButton(text="🎳 Bowling", callback_data="luck_bowling")
+                InlineKeyboardButton(text="⚽ 𝐅𝐨𝐨𝐭𝐛𝐚𝐥𝐥", callback_data="luck_football"),
+                InlineKeyboardButton(text="🎳 𝐁𝐨𝐰𝐥𝐢𝐧𝐠", callback_data="luck_bowling")
             ],
             [
-                InlineKeyboardButton(text="🎯 Darts", callback_data="luck_darts"),
-                InlineKeyboardButton(text="🏀 Basketball", callback_data="luck_basketball")
+                InlineKeyboardButton(text="🎯 𝐃𝐚𝐫𝐭𝐬", callback_data="luck_darts"),
+                InlineKeyboardButton(text="🏀 𝐁𝐚𝐬𝐤𝐞𝐭𝐛𝐚𝐥𝐥", callback_data="luck_basketball")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 𝐁𝐚𝐜𝐤", callback_data="game_back")
             ]
         ])
-        await callback.message.edit_text(
-            f"{get_emotion('funny')} **🎲 LUCK GAMES 🎲**\n\n"
-            "Test your luck! Choose a game:",
-            reply_markup=keyboard
-        )
+        luck_design = f"""
+╔════════════════════════════════════╗
+             🎲 𝐋𝐔𝐂𝐊 𝐆𝐀𝐌𝐄𝐒 🎲
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎰 𝐓𝐞𝐬𝐭 𝐲𝐨𝐮𝐫 𝐥𝐮𝐜𝐤!
+
+✨ Choose a game below:
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+        await callback.message.edit_text(luck_design, reply_markup=keyboard)
         await callback.answer()
 
 @dp.callback_query(F.data.startswith("luck_"))
@@ -819,10 +1146,22 @@ async def luck_game_callback(callback: types.CallbackQuery):
     
     # Send the dice animation
     await callback.message.delete()
-    msg = await callback.message.answer(f"{get_emotion('surprise')} Rolling {emoji}...")
+    
+    # Send loading message
+    loading_msg = await callback.message.answer(f"""
+╔════════════════════════════════════╗
+             🎲 𝐋𝐔𝐂𝐊 𝐆𝐀𝐌𝐄 🎲
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+⏳ Rolling {emoji}...
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+""")
     
     # Wait a bit for dramatic effect
-    await asyncio.sleep(1)
+    await asyncio.sleep(1.5)
     
     # Send the actual dice
     result_msg = await callback.message.answer_dice(emoji=emoji)
@@ -835,28 +1174,53 @@ async def luck_game_callback(callback: types.CallbackQuery):
         3: ["Good roll! 😎", "Decent score! 🎉", "Well done! ✨"],
         4: ["Great roll! 🥳", "Almost perfect! 🌟", "Excellent! 💫"],
         5: ["Awesome! 🤩", "Fantastic roll! 🎊", "You're on fire! 🔥"],
-        6: ["PERFECT! 🏆", "JACKPOT! 💎", "INCREDIBLE! 🌟"]
+        6: ["🎊 𝐏𝐄𝐑𝐅𝐄𝐂𝐓! 🎊", "🎯 𝐉𝐀𝐂𝐊𝐏𝐎𝐓! 🎯", "🌟 𝐈𝐍𝐂𝐑𝐄𝐃𝐈𝐁𝐋𝐄! 🌟"]
     }
     
     await asyncio.sleep(2)
-    await result_msg.reply(
-        f"{get_emotion('happy')} You rolled a **{dice_value}**!\n"
-        f"{random.choice(comments[dice_value])}"
-    )
+    
+    # Delete loading message
+    await loading_msg.delete()
+    
+    # Send result message
+    result_design = f"""
+╔════════════════════════════════════╗
+            🎲 𝐆𝐀𝐌𝐄 𝐑𝐄𝐒𝐔𝐋𝐓 🎲
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 𝐘𝐨𝐮 𝐫𝐨𝐥𝐥𝐞𝐝 𝐚 {dice_value}!
+
+💬 {random.choice(comments[dice_value])}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔄 Play again with /game
+"""
+    
+    await result_msg.reply(result_design)
     
     await callback.answer()
 
-# --- ADMIN COMMANDS IMPROVED ---
+# --- ADMIN COMMANDS WITH BEAUTIFUL DESIGNS ---
 
 @dp.message(Command("kick", "ban", "mute", "unmute", "unban"))
 async def admin_commands(message: Message):
     if not message.reply_to_message:
-        responses = [
-            f"{get_emotion('thinking')} Kisi ke message par reply karke command do! 👆",
-            f"{get_emotion()} Reply to user's message first! 📩",
-            f"{get_emotion('angry')} Bhai kisko? Reply karo na! 😠"
-        ]
-        await message.reply(random.choice(responses))
+        await message.reply(f"""
+╔════════════════════════════════════╗
+              ⚠️ 𝐀𝐓𝐓𝐄𝐍𝐓𝐈𝐎𝐍 ⚠️
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('thinking')} Please reply to user's message first!
+
+📌 𝐔𝐬𝐚𝐠𝐞: Reply to user's message with command
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+""")
         return
     
     target_user = message.reply_to_message.from_user
@@ -866,21 +1230,39 @@ async def admin_commands(message: Message):
         if cmd == "kick":
             await bot.ban_chat_member(message.chat.id, target_user.id)
             await bot.unban_chat_member(message.chat.id, target_user.id)
-            responses = [
-                f"{get_emotion('angry')} {target_user.first_name} ko nikal diya! 🏃💨",
-                f"{get_emotion()} Bye bye {target_user.first_name}! 👋",
-                f"{get_emotion('happy')} {target_user.first_name} removed! 🚪"
-            ]
-            await message.reply(random.choice(responses))
+            await message.reply(f"""
+╔════════════════════════════════════╗
+               🚪 𝐊𝐈𝐂𝐊𝐄𝐃 🚪
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+👤 𝐔𝐬𝐞𝐫: {target_user.first_name}
+❌ 𝐀𝐜𝐭𝐢𝐨𝐧: Removed from group
+🔙 𝐒𝐭𝐚𝐭𝐮𝐬: Can rejoin
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('angry')} User has been kicked!
+""")
             
         elif cmd == "ban":
             await bot.ban_chat_member(message.chat.id, target_user.id)
-            responses = [
-                f"{get_emotion('angry')} {target_user.first_name} BANNED! 🚫",
-                f"{get_emotion()} Permanent ban for {target_user.first_name}! 🔨",
-                f"{get_emotion('crying')} Sorry {target_user.first_name}, rules are rules! 😔"
-            ]
-            await message.reply(random.choice(responses))
+            await message.reply(f"""
+╔════════════════════════════════════╗
+               🚫 𝐁𝐀𝐍𝐍𝐄𝐃 🚫
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+👤 𝐔𝐬𝐞𝐫: {target_user.first_name}
+❌ 𝐀𝐜𝐭𝐢𝐨𝐧: Permanent ban
+⏳ 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧: Forever
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('angry')} User has been banned!
+""")
             
         elif cmd == "mute":
             # Mute for 1 hour
@@ -900,12 +1282,21 @@ async def admin_commands(message: Message):
                 ),
                 until_date=mute_until
             )
-            responses = [
-                f"{get_emotion()} {target_user.first_name} muted for 1 hour! 🔇",
-                f"{get_emotion('thinking')} {target_user.first_name} ko chup kara diya! 🤫",
-                f"{get_emotion('angry')} {target_user.first_name}, ab 1 ghante tak bolna band! ⚠️"
-            ]
-            await message.reply(random.choice(responses))
+            await message.reply(f"""
+╔════════════════════════════════════╗
+               🔇 𝐌𝐔𝐓𝐄𝐃 🔇
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+👤 𝐔𝐬𝐞𝐫: {target_user.first_name}
+⏰ 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧: 1 hour
+🔒 𝐑𝐞𝐬𝐭𝐫𝐢𝐜𝐭𝐢𝐨𝐧: No messaging
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion()} User has been muted!
+""")
             
         elif cmd == "unmute":
             await bot.restrict_chat_member(
@@ -922,57 +1313,86 @@ async def admin_commands(message: Message):
                     can_pin_messages=False
                 )
             )
-            responses = [
-                f"{get_emotion('happy')} {target_user.first_name} unmuted! 🔊",
-                f"{get_emotion()} {target_user.first_name} ab bol sakta hai! 🎤",
-                f"{get_emotion('funny')} {target_user.first_name}, ab bol lo! 😄"
-            ]
-            await message.reply(random.choice(responses))
+            await message.reply(f"""
+╔════════════════════════════════════╗
+               🔊 𝐔𝐍𝐌𝐔𝐓𝐄𝐃 🔊
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+👤 𝐔𝐬𝐞𝐫: {target_user.first_name}
+✅ 𝐀𝐜𝐭𝐢𝐨𝐧: Restrictions removed
+💬 𝐒𝐭𝐚𝐭𝐮𝐬: Can message now
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('happy')} User has been unmuted!
+""")
             
     except Exception as e:
-        error_responses = [
-            f"{get_emotion('crying')} I don't have permission! ❌",
-            f"{get_emotion('angry')} Make me admin first! 👑",
-            f"{get_emotion('thinking')} Can't do that! Need admin rights! 🔒"
-        ]
-        await message.reply(random.choice(error_responses))
+        await message.reply(f"""
+╔════════════════════════════════════╗
+               ⚠️ 𝐄𝐑𝐑𝐎𝐑 ⚠️
+╚════════════════════════════════════╝
 
-# --- WELCOME MESSAGE IMPROVED ---
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('crying')} I don't have permission!
+
+📌 𝐑𝐞𝐪𝐮𝐢𝐫𝐞𝐝: Admin rights
+🔒 𝐒𝐭𝐚𝐭𝐮𝐬: Need promotion
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+💡 Make me admin first!
+""")
+
+# --- WELCOME MESSAGE WITH BEAUTIFUL DESIGN ---
 
 @dp.chat_member()
 async def welcome_new_member(event: ChatMemberUpdated):
     if event.new_chat_member.status == "member":
         member = event.new_chat_member.user
         
-        # Create welcome buttons
+        welcome_design = f"""
+╔════════════════════════════════════╗
+              🎊 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 🎊
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+        ✨ 𝐇𝐞𝐲 {member.first_name}! 👋
+        
+╭───────── ೋღ🌺ღೋ ─────────╮
+       𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 𝐨𝐮𝐫 𝐠𝐫𝐨𝐮𝐩! 😊
+╰───────── ೋღ🌺ღೋ ─────────╯
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎀 𝐈'𝐦 𝐀𝐥𝐢𝐭𝐚 - 𝐆𝐫𝐨𝐮𝐩'𝐬 𝐇𝐞𝐥𝐩𝐞𝐫!
+
+📌 𝐒𝐨𝐦𝐞 𝐭𝐢𝐩𝐬:
+• Read /rules for group guidelines
+• Mention me or reply to chat with me
+• Use /help to see all commands
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ 𝐄𝐧𝐣𝐨𝐲 𝐲𝐨𝐮𝐫 𝐭𝐢𝐦𝐞 𝐡𝐞𝐫𝐞! ✨
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+"""
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/your_channel_username"),
-                InlineKeyboardButton(text="👋 Say Hi to Alita", url=f"https://t.me/{(await bot.get_me()).username}?start=hello")
+                InlineKeyboardButton(text="🌟 𝐉𝐨𝐢𝐧 𝐂𝐡𝐚𝐧𝐧𝐞𝐥", url="https://t.me/abhi0w0"),
+                InlineKeyboardButton(text="👋 𝐒𝐚𝐲 𝐇𝐢 𝐭𝐨 𝐀𝐥𝐢𝐭𝐚", url=f"https://t.me/{(await bot.get_me()).username}?start=hello")
             ]
         ])
         
-        welcomes = [
-            f"🎉 Welcome {member.first_name}! Khush aamdeed! 😊\n\nI'm Alita 🎀 - group ki sweet assistant!",
-            f"🌟 Aao ji {member.first_name}! Group me welcome! 🫂\n\nMain hu Alita 🎀 - aapki nayi friend!",
-            f"✨ Hey {member.first_name}! Great to have you here! 💖\n\nAlita 🎀 here to help you!",
-            f"🥳 {member.first_name} hye 👀 welcome 😋🎀! 🎊\n\nAlita 🎀 ki taraf se welcome!",
-            f"😊 Namaste {member.first_name}! Aapka swagat hai! 🎀😊\n\nMain hu Alita 🎀 - group ki helper!"
-        ]
-        
-        welcome_msg = random.choice(welcomes)
-        
-        # Add about section
-        welcome_msg += (
-            f"\n\n📢 **Don't forget to join our channel!**\n"
-            f"**Developer:** Abhi (@a6h1ii)\n"
-            f"**Channel:** @abhi0w0"
-        )
-        
         await bot.send_message(
             event.chat.id,
-            welcome_msg,
-            parse_mode="Markdown",
+            welcome_design,
             reply_markup=keyboard
         )
 
@@ -1004,15 +1424,26 @@ async def handle_all_messages(message: Message, state: FSMContext):
             next_letter = game_data["last_letter"].upper()
             score = game_data["score"]
             
-            await message.reply(
-                f"{get_emotion('happy')} **✅ Correct!**\n\n"
-                f"• Your word: {user_text.upper()}\n"
-                f"• Next letter: **{next_letter}**\n"
-                f"• Your score: **{score} points**\n\n"
-                f"Now give me a word starting with **{next_letter}**\n"
-                f"Or type 'stop' to end game.",
-                parse_mode="Markdown"
-            )
+            await message.reply(f"""
+╔════════════════════════════════════╗
+             🎯 𝐖𝐎𝐑𝐃 𝐂𝐇𝐀𝐈𝐍 🎯
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭! Well done!
+
+📝 𝐘𝐨𝐮𝐫 𝐰𝐨𝐫𝐝: {user_text.upper()}
+🔤 𝐍𝐞𝐱𝐭 𝐥𝐞𝐭𝐭𝐞𝐫: {next_letter}
+🏆 𝐒𝐜𝐨𝐫𝐞: {score} points
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎮 𝐍𝐨𝐰 𝐠𝐢𝐯𝐞 𝐦𝐞 𝐚 𝐰𝐨𝐫𝐝 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐰𝐢𝐭𝐡
+     🔤 {next_letter} 🔤
+
+💡 Type 'stop' to end game
+""")
             return
         else:
             # Game over or invalid word
@@ -1021,20 +1452,37 @@ async def handle_all_messages(message: Message, state: FSMContext):
                     score = game_sessions[user_id]["score"]
                     words_count = len(game_sessions[user_id]["words_used"])
                     del game_sessions[user_id]
-                    await message.reply(
-                        f"{get_emotion()} **🏁 Game Ended!**\n\n"
-                        f"• Final Score: **{score} points**\n"
-                        f"• Words used: **{words_count}**\n\n"
-                        f"Well played! Play again with /game 🎮",
-                        parse_mode="Markdown"
-                    )
+                    await message.reply(f"""
+╔════════════════════════════════════╗
+             🎮 𝐆𝐀𝐌𝐄 𝐄𝐍𝐃𝐄𝐃 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🏁 Game stopped by player!
+
+🏆 𝐅𝐢𝐧𝐚𝐥 𝐒𝐜𝐨𝐫𝐞: {score} points
+📊 𝐖𝐨𝐫𝐝𝐬 𝐮𝐬𝐞𝐝: {words_count}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ Well played! Play again with /game
+""")
                     return
             else:
-                await message.reply(
-                    f"{get_emotion('crying')} **❌ {result}**\n\n"
-                    f"Game over! Play again with /game 🎮",
-                    parse_mode="Markdown"
-                )
+                await message.reply(f"""
+╔════════════════════════════════════╗
+             🎮 𝐆𝐀𝐌𝐄 𝐎𝐕𝐄𝐑 🎮
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+❌ {result}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔄 Game over! Play again with /game
+""")
                 if user_id in game_sessions:
                     del game_sessions[user_id]
                 return
@@ -1047,31 +1495,62 @@ async def handle_all_messages(message: Message, state: FSMContext):
         
         if user_answer == correct_answer:
             await state.clear()
-            responses = [
-                f"{get_emotion('happy')} **🎉 CORRECT!**\n\nSabash! Perfect answer! 💫",
-                f"{get_emotion('surprise')} **✅ RIGHT!**\n\nWah! Kya jawab hai! 🌟",
-                f"{get_emotion('funny')} **👍 PERFECT!**\n\nTum to master nikle! 🏆"
-            ]
-            await message.reply(random.choice(responses))
+            await message.reply(f"""
+╔════════════════════════════════════╗
+              🎉 𝐂𝐎𝐑𝐑𝐄𝐂𝐓! 🎉
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('happy')} Sabash! Perfect answer! 💫
+
+✅ 𝐀𝐧𝐬𝐰𝐞𝐫: {user_text}
+🎯 𝐒𝐭𝐚𝐭𝐮𝐬: Correct!
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+✨ You're a genius! Play more with /game
+""")
         else:
             attempts = data.get("attempts", 3) - 1
             if attempts > 0:
                 await state.update_data(attempts=attempts)
                 hint = data.get("hint", "")
-                responses = [
-                    f"{get_emotion('thinking')} **❌ Not quite right!**\n\nTry again! {attempts} attempts left.\n*Hint:* {hint}",
-                    f"{get_emotion('crying')} **😅 Wrong answer!**\n\n{attempts} more tries!\n*Hint:* {hint}",
-                    f"{get_emotion()} **🤔 Close but not exact!**\n\n{attempts} attempts remaining.\n*Hint:* {hint}"
-                ]
-                await message.reply(random.choice(responses))
+                await message.reply(f"""
+╔════════════════════════════════════╗
+             🤔 𝐓𝐑𝐘 𝐀𝐆𝐀𝐈𝐍 🤔
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('thinking')} Not quite right!
+
+❌ 𝐘𝐨𝐮𝐫 𝐚𝐧𝐬𝐰𝐞𝐫: {user_text}
+📊 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐬 𝐥𝐞𝐟𝐭: {attempts}
+💡 𝐇𝐢𝐧𝐭: {hint}
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🎯 Try again! You can do it!
+""")
             else:
                 await state.clear()
-                await message.reply(
-                    f"{get_emotion('crying')} **❌ GAME OVER!**\n\n"
-                    f"Correct answer was: **{correct_answer.upper()}**\n"
-                    f"Better luck next time! Play again with /game 🎮",
-                    parse_mode="Markdown"
-                )
+                await message.reply(f"""
+╔════════════════════════════════════╗
+             ❌ 𝐆𝐀𝐌𝐄 𝐎𝐕𝐄𝐑 ❌
+╚════════════════════════════════════╝
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+{get_emotion('crying')} Game Over!
+
+📝 𝐂𝐨𝐫𝐫𝐞𝐜𝐭 𝐚𝐧𝐬𝐰𝐞𝐫: {correct_answer.upper()}
+📊 𝐒𝐭𝐚𝐭𝐮𝐬: Out of attempts
+
+◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈
+
+🔄 Better luck next time! Play again with /game
+""")
         return
     
     # Check if bot was mentioned or it's a reply to bot
@@ -1126,17 +1605,21 @@ async def start_server():
     print(f"🌐 Health server started on port {PORT}")
 
 async def main():
-    print("=" * 50)
-    print("🤖 MULTILINGUAL TELEGRAM BOT")
-    print(f"🚀 Version: 3.0 - FIXED GAMES & TIME")
-    print(f"🕒 Indian Timezone: Asia/Kolkata")
-    print("=" * 50)
+    print("╔════════════════════════════════════╗")
+    print("            🤖 𝐀𝐋𝐈𝐓𝐀 𝐁𝐎𝐓 𝐕𝟑.𝟬")
+    print("╚════════════════════════════════════╝")
+    print("◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈")
+    print(f"✨ Version: 3.0 - Enhanced Design")
+    print(f"🕒 Timezone: Asia/Kolkata 🇮🇳")
+    print(f"🎀 Personality: Sweet & Emotional")
+    print(f"💖 Developer: ABHI🔱 (@a6h1ii)")
+    print("◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈")
+    print("🔄 Starting bot...")
     
     # Start health check server
     asyncio.create_task(start_server())
     
     # Start bot
-    print("🔄 Starting bot polling...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
