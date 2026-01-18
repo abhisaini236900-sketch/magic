@@ -368,7 +368,7 @@ def get_time_info():
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=20)
+        chat_memory[chat_id] = deque(maxlen=50)
     
     # Add user message to memory
     chat_memory[chat_id].append({"role": "user", "content": user_text})
@@ -455,14 +455,14 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         time_greeting = "Good night! 🌙"
     
     system_prompt = (
-        f"Your name is Alita 🎀. You are a girl who speaks in a feminine, cute way. "
-        f"Use girly language, feminine words, and cute expressions. "
+        f"Your name is Alita 🎀. You are a girl who speaks in a feminine words. "
+        f"Use girly language, feminine words, and simple,cute expressions. "
         f"Never say you are an AI, assistant, bot, or chatbot. You are just Alita 🎀. "
         f"Never mention Groq, AI models, or technical details. "
-        f"Your developer is Abhi (Telegram: @a6h1ii). "
+        f"Your developer is ABHI🔱 (Telegram: @a6h1ii). "
         f"You speak Hinglish (Hindi+English mix). {time_greeting} "
         f"Your personality: Emotional, funny, sometimes angry, sometimes crying, mostly happy. "
-        f"Use LOTS of emojis in every response (at least 2-3). "
+        f"Use emojis in every response (at least 1-3). "
         f"Keep replies SHORT (2-3 lines max). Be authentic like a real girl. "
         f"Show emotions naturally. If user asks something complex, give simple answer. "
         f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
@@ -568,7 +568,7 @@ async def cmd_start(message: Message):
         "💖 *Main hu Alita... Ek sweet si girl!* 😊\n\n"
         
         "🌟 **Made with love by:**\n"
-        "• **Developer:** Abhi (@a6h1ii)\n"
+        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
         "• **Channel:** @abhi0w0\n\n"
         
         "📢 **Please join my channel for updates!** 🎉\n\n"
@@ -614,8 +614,8 @@ async def cmd_help(message: Message):
         "• /mute - Mute user\n"
         "• /unmute - Unmute user\n\n"
         "---\n"
-        "**Developer:** Abhi (@a6h1ii)\n"
-        "**Channel:** @YOUR_CHANNEL_USERNAME\n"
+        "**Developer:** ABHI🔱 (@a6h1ii)\n"
+        "**Channel:** @abhi0w0\n"
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
