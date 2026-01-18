@@ -591,7 +591,7 @@ async def cmd_help(message: Message):
             InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
         ],
         [
-            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/YOUR_CHANNEL_USERNAME")
+            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
         ]
     ])
     
@@ -713,9 +713,9 @@ async def cmd_clear(message: Message):
         del game_sessions[user_id]
     
     responses = [
-        f"{get_emotion()} Memory clear! Ab nayi shuruwat! ✨",
-        f"{get_emotion('happy')} Sab bhool gaya! Naye se baat karte hain! 🧹",
-        f"{get_emotion('thinking')} Memory format ho gaya! Fresh start! 💫"
+        f"{get_emotion()} Memory clear! Start new! ✨",
+        f"{get_emotion('happy')} Sab bhool gayi! Naye se baat karte hain! 🧹",
+        f"{get_emotion('thinking')} Memory cleared 🧹! Startnew conversation! 💫"
     ]
     await message.reply(random.choice(responses))
 
