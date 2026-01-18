@@ -575,8 +575,51 @@ async def cmd_start(message: Message):
         
         "Type /help for all commands! 💕"
     )
-    
     await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+
+#--HELO COMMAND ---
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎮 Games", callback_data="help_games"),
+            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin")
+        ],
+        [
+            InlineKeyboardButton(text="😊 Fun", callback_data="help_fun"),
+            InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
+        ],
+        [
+            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/YOUR_CHANNEL_USERNAME")
+        ]
+    ])
+    
+    help_text = (
+        f"{get_emotion('happy')} **Hii! I'm Alita 🎀** 👧\n\n"
+        "📜 **Main Commands:**\n"
+        "• /start - Welcome message\n"
+        "• /help - All commands\n"
+        "• /rules - Group rules\n"
+        "• /joke - Funny jokes\n"
+        "• /game - Play games\n"
+        "• /clear - Clear memory\n\n"
+        "🕒 **Time & Weather:**\n"
+        "• /time - Indian time\n"
+        "• /date - Today's date\n"
+        "• /weather - Weather info\n\n"
+        "🛡️ **Admin Commands:**\n"
+        "• /kick - Remove user\n"
+        "• /ban - Ban user\n"
+        "• /mute - Mute user\n"
+        "• /unmute - Unmute user\n\n"
+        "---\n"
+        "**Developer:** Abhi (@a6h1ii)\n"
+        "**Channel:** @YOUR_CHANNEL_USERNAME\n"
+        "---"
+    )
+    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+
 
 @dp.callback_query(F.data.startswith("help_"))
 async def help_callback(callback: types.CallbackQuery):
