@@ -63,38 +63,6 @@ EMOTIONAL_RESPONSES = {
     "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"]
 }
 
-# Hindi/English mixed responses for different scenarios
-QUICK_RESPONSES = {
-    "greeting": [
-        "Aree wah! Kaise ho? 😊", 
-        "Namaste ji! Aaj kaise hain? 🌟", 
-        "Oye! Kya haal hai? 😎",
-        "Hello hello! Sab theek? 🫂",
-        "Heyyy! Missed you yaar! 💖"
-    ],
-    "goodbye": [
-        "Bye bye! Jaldi baat karna! 👋", 
-        "Chalo, mai ja raha hu! Baad me baat karte hain! 😊", 
-        "Alvida! Take care! 💫",
-        "Jaane do na! Phir milenge! 😄",
-        "Okay bye! I'll miss you! 😢"
-    ],
-    "thanks": [
-        "Arey koi baat nahi! 😊", 
-        "Welcome ji! Happy to help! 🌟", 
-        "No problem yaar! Anytime! 💖",
-        "Mujhe kya, main to bot hu! 😂",
-        "It's my duty! 😇"
-    ],
-    "sorry": [
-        "Aree sorry yaar! 😢", 
-        "Maine galti kar di! Maaf karna! 😔", 
-        "Oops! My bad! 😅",
-        "Bhool gaya tha! Sorry bhai! 🥺",
-        "I messed up! Forgive me? 💔"
-    ]
-}
-
 # Get Indian time
 def get_indian_time():
     utc_now = datetime.now(pytz.utc)
