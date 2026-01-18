@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import BufferedInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -785,7 +786,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         return random.choice(error_responses)
 
 # --- NEW COMMANDS HANDLERS ---
-
 @dp.message(Command("image"))
 async def cmd_image(message: Message):
     """Generate image from text"""
@@ -803,9 +803,13 @@ async def cmd_image(message: Message):
     
     if image_file:
         try:
+            # Sahi tarika naye aiogram ke liye
             with open(image_file, 'rb') as photo:
-                await message.reply_photo(
-                    photo,
+                file_content = photo.read()
+                input_file = BufferedInputFile(file_content, filename="generated_image.png")
+                
+                await message.answer_photo(
+                    photo=input_file,
                     caption=f"🎨 **Generated Image**\n\nPrompt: {prompt}\n\n*Created by Alita 🎀*"
                 )
             os.remove(image_file)
@@ -813,6 +817,7 @@ async def cmd_image(message: Message):
             await message.reply(f"{get_emotion('crying')} Failed to send image! {str(e)}")
     else:
         await message.reply(f"{get_emotion('crying')} Couldn't generate image! Try different prompt.")
+
 
 @dp.message(Command("quote"))
 async def cmd_quote(message: Message):
