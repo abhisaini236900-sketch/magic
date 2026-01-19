@@ -100,44 +100,6 @@ VOICE_GREETINGS = [
     "AwACAgIAAxkBAAEL7vlmX5fqL70bQrxmKEdPhNQvTrVZvwACVzIAAjyE8EqthF8obcch5jQE"
 ]
 
-# Quick responses for common phrases
-QUICK_RESPONSES = {
-    "greeting": [
-        "Hii cutie! Kaisi ho? 🤗",
-        "Hello darling! Aaj kaise ho? 😊",
-        "Hey sweetie! Kya haal hai? 💖",
-        "Namaste ji! Aao na baat karte hain! 🎀",
-        "Oye hoye! Kaise ho aap? ✨"
-    ],
-    "goodbye": [
-        "Bye bye! Miss you already! 😢",
-        "Alvida! Jaldi baat karna! 💕",
-        "Take care cutie! 💖",
-        "Bye darling! Phir milenge! ✨",
-        "Tata! Good night sweet dreams! 🌙"
-    ],
-    "thanks": [
-        "You're welcome my love! 💝",
-        "Koi baat nahi cutie! 😘",
-        "Always for you sweetie! 💖",
-        "Mention not darling! 😊",
-        "Aww you're so sweet! 🥰"
-    ],
-    "sorry": [
-        "It's okay baby! ❤️",
-        "Chhodo yaar! Koi baat nahi! 😊",
-        "Maaf karo na! 😢",
-        "Don't worry darling! 💖",
-        "Sab theek ho jayega! ✨"
-    ]
-}
-
-# Get Indian time
-def get_indian_time():
-    utc_now = datetime.now(pytz.utc)
-    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
-    return indian_time
-
 # Weather data (static for demo - you can integrate real API later)
 WEATHER_DATA = {
     "mumbai": {"temp": "32°C", "condition": "Sunny ☀️", "humidity": "65%"},
