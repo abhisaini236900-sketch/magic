@@ -26,6 +26,7 @@ INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
 storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
+dp.include_router(dp.router)
 
 # Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
