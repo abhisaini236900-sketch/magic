@@ -1316,21 +1316,22 @@ async def start_server():
 
 async def main():
     print("=" * 50)
-    print("🎀 ALITA - ENHANCED TELEGRAM BOT")
-    print(f"🚀 Version: 4.0 - AUTO-MODERATION & SELF-DEFENSE")
-    print(f"🛡️ Features: Spam detection, Link blocker, Bad word filter")
-    print(f"💖 Personality: Sweet, Sassy, Protective")
-    print(f"🎊 Welcome System: Advanced multi-style welcomes")
-    print(f"🕒 Timezone: Asia/Kolkata 🇮🇳")
+    print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
     
     # Start health check server
     asyncio.create_task(start_server())
     
-    # Start bot
+    # --- YE LINES ADD KAREIN ---
+    # Purane webhook ko delete karne ke liye
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook deleted and updates cleared!")
+    # ---------------------------
+
+    # Start bot polling
     print("🔄 Starting bot polling...")
-    print("🎀 Alita is ready to welcome everyone! 🎊")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
