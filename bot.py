@@ -1282,6 +1282,203 @@ async def detect_admin_promotion(event: ChatMemberUpdated):
             f"Congratulations! Now you have superpowers! 💪",
             
             f"🎖️ **LEADERSHIP UPDATE** 🏆\n\n"
+# Add the time/weather commands
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
+    time_info = get_time_info()
+    await message.reply(time_info, parse_mode="Markdown")
+
+@dp.message(Command("weather"))
+async def cmd_weather(message: Message):
+    city = None
+    if len(message.text.split()) > 1:
+        city = ' '.join(message.text.split()[1:])
+    
+    weather_info = await get_weather_info(city)
+    await message.reply(weather_info, parse_mode="Markdown")
+
+# ====================================================================
+# 🎊 ENHANCED WELCOME SYSTEM FUNCTIONS 🎊
+# ====================================================================
+
+# --- ENHANCED WELCOME MESSAGE FUNCTION ---
+
+@dp.chat_member()
+async def welcome_new_member(event: ChatMemberUpdated):
+    # Check if someone joined
+    if event.new_chat_member.status == "member":
+        member = event.new_chat_member.user
+        chat_id = event.chat.id
+        
+        # Track member count
+        if chat_id not in group_member_counts:
+            group_member_counts[chat_id] = 0
+        group_member_counts[chat_id] += 1
+        
+        # Prepare member info
+        name = member.first_name
+        username = f"@{member.username}" if member.username else name
+        user_id = member.id
+        
+        # Select random welcome style
+        style = random.choice(WELCOME_STYLES)
+        template = random.choice(WELCOME_TEMPLATES[style])
+        gif_url = random.choice(WELCOME_GIFS)
+        
+        # Format the message
+        welcome_text = template.format(
+            name=f"[{name}](tg://user?id={user_id})",
+            username=username,
+            count=group_member_counts[chat_id]
+        )
+        
+        # Add extra personalized touch based on time
+        indian_time = get_indian_time()
+        hour = indian_time.hour
+        
+        if 5 <= hour < 12:
+            time_greeting = "🌅 Perfect morning to join us!"
+        elif 12 <= hour < 17:
+            time_greeting = "☀️ What a wonderful afternoon!"
+        elif 17 <= hour < 21:
+            time_greeting = "🌇 Lovely evening to have you!"
+        else:
+            time_greeting = "🌙 Welcome to our night owls!"
+        
+        welcome_text += f"\n\n{time_greeting}"
+        
+        # Create interactive buttons
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🌟 Say Hello", callback_data=f"welcome_hello_{user_id}"),
+                InlineKeyboardButton(text="🎮 Play Game", callback_data="game_word")
+            ],
+            [
+                InlineKeyboardButton(text="📜 Rules", callback_data="show_rules"),
+                InlineKeyboardButton(text="💬 Introduce", callback_data="introduce_me")
+            ],
+            [
+                InlineKeyboardButton(text="🎀 Meet Alita", url=f"https://t.me/{(await bot.get_me()).username}?start=hello"),
+                InlineKeyboardButton(text="📢 Join Channel", url="https://t.me/abhi0w0")
+            ]
+        ])
+        
+        try:
+            # Send welcome with GIF
+            await bot.send_animation(
+                chat_id=chat_id,
+                animation=gif_url,
+                caption=welcome_text,
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+            
+            # Send a follow-up message with tips
+            tips = [
+                f"💡 **Quick Tip for {name}:**\nUse /help to see all commands!",
+                f"🌟 **Pro Tip:**\nMention me with @{(await bot.get_me()).username} to chat!",
+                f"🎀 **Welcome Gift:**\n{name}, you get virtual cookies! 🍪",
+                f"🤗 **Ice Breaker:**\nSay 'Hi everyone!' to make friends quickly!"
+            ]
+            
+            await asyncio.sleep(2)
+            await bot.send_message(
+                chat_id=chat_id,
+                text=random.choice(tips),
+                parse_mode="Markdown"
+            )
+            
+        except Exception as e:
+            # Fallback if GIF fails
+            await bot.send_message(
+                chat_id=chat_id,
+                text=welcome_text,
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+    
+    # Check if someone left
+    elif event.old_chat_member.status == "member" and event.new_chat_member.status == "left":
+        member = event.old_chat_member.user
+        name = member.first_name
+        
+        goodbye_messages = [
+            f"😢 **We'll miss you, {name}!**\nTake care and come back soon! 💔",
+            f"👋 **Goodbye {name}!**\nThanks for being part of our community! 🌟",
+            f"💫 **Farewell {name}!**\nThe group won't be the same without you! 😔",
+            f"🌌 **{name} has left the chat.**\nWe hope to see you again someday! ✨",
+            f"🚪 **Door closes behind {name}.**\nGoodbye friend, you'll be missed! 🥺"
+        ]
+        
+        await bot.send_message(
+            event.chat.id,
+            random.choice(goodbye_messages),
+            parse_mode="Markdown"
+        )
+
+# --- WELCOME CALLBACK HANDLERS ---
+
+@dp.callback_query(F.data.startswith("welcome_"))
+async def welcome_callback(callback: types.CallbackQuery):
+    data_parts = callback.data.split("_")
+    action = data_parts[1]
+    
+    if action == "hello":
+        user_id = int(data_parts[2])
+        responses = [
+            f"👋 Hey there! {callback.from_user.first_name} says hello!",
+            f"🤗 A warm hello from {callback.from_user.first_name}!",
+            f"💖 {callback.from_user.first_name} welcomes you with a smile!",
+            f"🎀 Look! {callback.from_user.first_name} is saying hi! 👋"
+        ]
+        await callback.answer(random.choice(responses))
+        
+    elif action == "greet":
+        await callback.answer("🎉 You sent a greeting! ✨")
+        await callback.message.reply(
+            f"{get_emotion('happy')} {callback.from_user.first_name} just greeted everyone! 👋"
+        )
+
+@dp.callback_query(F.data == "show_rules")
+async def show_rules_callback(callback: types.CallbackQuery):
+    await callback.answer("📜 Showing rules...")
+    await cmd_rules(callback.message)
+
+@dp.callback_query(F.data == "introduce_me")
+async def introduce_callback(callback: types.CallbackQuery):
+    introduction_templates = [
+        f"👋 **Hey everyone!**\nI'm {callback.from_user.first_name}! Nice to meet you all! 😊",
+        f"🎀 **Hello friends!**\nI'm {callback.from_user.first_name}, excited to be here! ✨",
+        f"🌟 **Introduction Time!**\nName: {callback.from_user.first_name}\nStatus: Ready to chat! 💬",
+        f"💖 **New member alert!**\n{callback.from_user.first_name} here! Let's be friends! 🤝"
+    ]
+    
+    await callback.answer("🎤 You introduced yourself!")
+    await callback.message.reply(
+        random.choice(introduction_templates),
+        parse_mode="Markdown"
+    )
+
+# --- SPECIAL WELCOME FOR GROUP CREATOR/ADMINS ---
+
+@dp.chat_member()
+async def detect_admin_promotion(event: ChatMemberUpdated):
+    # Check if someone was promoted to admin
+    if (event.old_chat_member.status != "administrator" and 
+        event.new_chat_member.status == "administrator"):
+        
+        admin = event.new_chat_member.user
+        
+        admin_welcome = [
+            f"👑 **NEW ADMIN CROWNED!** 👑\n\n"
+            f"Please welcome our new admin: {admin.first_name}! 🎉\n"
+            f"May you rule with wisdom and kindness! 🤴✨",
+            
+            f"🌟 **PROMOTION ALERT!** ⭐\n\n"
+            f"{admin.first_name} has been promoted to admin! 🎊\n"
+            f"Congratulations! Now you have superpowers! 💪",
+            
+            f"🎖️ **LEADERSHIP UPDATE** 🏆\n\n"
             f"A big round of applause for {admin.first_name}! 👏\n"
             f"New admin on duty! Ready to serve! 🛡️"
         ]
@@ -1292,11 +1489,9 @@ async def detect_admin_promotion(event: ChatMemberUpdated):
             parse_mode="Markdown"
         )
 
-
-# --- DEPLOYMENT HANDLER ---
-
-async def handle_ping(request):
-    return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
+# ====================================================================
+# 🎊 WELCOME SYSTEM COMPLETE 🎊
+# ====================================================================
 
 # --- DEPLOYMENT HANDLER ---
 
@@ -1330,5 +1525,6 @@ async def main():
     print("🔄 Starting bot polling...")
     print("🎀 Alita is ready to welcome everyone! 🎊")
     await dp.start_polling(bot)
+
 if __name__ == "__main__":
     asyncio.run(main())
