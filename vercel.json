@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "api/webhook.py": {
-      "runtime": "@vercel/python"
-    }
-  },
   "routes": [
     {
       "src": "/webhook",
