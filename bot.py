@@ -1379,39 +1379,3 @@ async def handle_all_messages(message: Message, state: FSMContext):
         
         # Send response
         await message.reply(response)
-
-# --- DEPLOYMENT HANDLER ---
-
-async def handle_ping(request):
-    return web.Response(text="🤖 Bot is Alive and Running!")
-
-async def start_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    app.router.add_get("/health", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"🌐 Health server started on port {PORT}")
-
-async def main():
-    print("╔══════════════════════════╗")
-    print("       🤖 𝐀𝐋𝐈𝐓𝐀 𝐁𝐎𝐓 𝐕𝟑.𝟬")
-    print("╚══════════════════════════╝")
-    print("◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈")
-    print(f"✨ Version: 3.0 - Enhanced Design")
-    print(f"🕒 Timezone: Asia/Kolkata 🇮🇳")
-    print(f"🎀 Personality: Sweet & Emotional")
-    print(f"💖 Developer: ABHI🔱 (@a6h1ii)")
-    print("◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈◈")
-    print("🔄 Starting bot...")
-    
-    # Start health check server
-    asyncio.create_task(start_server())
-    
-    # Start bot
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
