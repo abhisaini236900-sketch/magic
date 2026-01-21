@@ -1362,6 +1362,21 @@ async def cmd_weather(message: Message):
     
     weather_info = await get_weather_info(city)
     await message.reply(weather_info, parse_mode="Markdown")
+
+@dp.message(Command("greetall"))
+async def cmd_greetall(message: Message):
+    """Manually trigger greetings for testing"""
+    # Get admin ID from environment variable
+    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+    
+    # Check if user is admin
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("❌ Only admin can use this command!")
+        return
+    
+    await message.reply("⏳ Sending greetings to all groups...")
+    await send_time_based_greetings()
+    await message.reply("✅ Greetings sent to all active groups!")
     
 
 # --- ENHANCED WELCOME MESSAGE FUNCTION ---
@@ -1557,17 +1572,6 @@ async def cmd_weather(message: Message):
     
     weather_info = await get_weather_info(city)
     await message.reply(weather_info, parse_mode="Markdown")
-
-@dp.message(Command("greetall"))
-async def cmd_greetall(message: Message):
-    """Manually trigger greetings for testing"""
-    if message.from_user.id != YOUR_USER_ID:  # Replace with your user ID
-        await message.reply("❌ Only admin can use this command!")
-        return
-    
-    await message.reply("⏳ Sending greetings to all groups...")
-    await send_time_based_greetings()
-    await message.reply("✅ Greetings sent to all active groups!")
 
 
 # --- DEPLOYMENT HANDLER ---
