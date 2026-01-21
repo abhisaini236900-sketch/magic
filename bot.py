@@ -14,11 +14,20 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from groq import AsyncGroq
 from aiohttp import web
 import pytz
+import schedule
+import time
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
+
+# --- GREETING SCHEDULER ---
+greeting_scheduler = AsyncIOScheduler()
+# Track greeted groups to avoid spam
+greeted_groups: Dict[int, datetime] = {}
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -43,6 +52,188 @@ game_sessions: Dict[int, Dict] = {}
 # Emotional states for each user
 user_emotions: Dict[int, str] = {}
 user_last_interaction: Dict[int, datetime] = {}
+
+# --- TIME-BASED GREETING SYSTEM ---
+greeting_scheduler = AsyncIOScheduler()
+greeted_groups: Dict[int, datetime] = {}
+
+def get_current_time_period():
+    """Get current time period for greetings"""
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    if 5 <= current_hour < 12:
+        return "morning"
+    elif 12 <= current_hour < 17:
+        return "afternoon"
+    elif 17 <= current_hour < 21:
+        return "evening"
+    elif 21 <= current_hour <= 23:
+        return "night"
+    else:
+        return "late_night"
+
+async def get_ai_greeting(time_period: str, group_name: str = None) -> str:
+    """Get AI-generated greeting for current time period"""
+    try:
+        indian_time = get_indian_time()
+        time_str = indian_time.strftime("%I:%M %p")
+        date_str = indian_time.strftime("%A, %d %B %Y")
+        
+        prompt = f"""
+        You are Alita 🎀 - a sweet and cute girl who sends greetings.
+        Current Indian time: {time_str}
+        Date: {date_str}
+        Time period: {time_period}
+        Group: {group_name or 'everyone'}
+        
+        Generate a short, sweet greeting (2-3 lines max) in Hinglish (Hindi+English mix).
+        Be emotional, cute, and use appropriate emojis.
+        Don't be too formal - be friendly and warm.
+        
+        Example for morning:
+        "🌅 Good Morning cuties! ☀️ Subah ki chai piyo aur fresh feel karo! 😊"
+        
+        Example for night:
+        "🌙 Good Night sweet dreams! 🌟 Aankhein band karo aur ache sapne dekho! 💤"
+        """
+        
+        if client:
+            completion = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "You are Alita - a cute, sweet girl who sends greetings."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.9,
+                max_tokens=80
+            )
+            
+            ai_response = completion.choices[0].message.content.strip()
+            
+            # Add emotion at beginning
+            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+            return f"{emotion} {ai_response}"
+        
+        else:
+            # Fallback to templates
+            templates = TIME_GREETINGS[time_period]["templates"]
+            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+            return f"{emotion} {random.choice(templates)}"
+            
+    except Exception as e:
+        print(f"AI greeting error: {e}")
+        # Fallback
+        templates = TIME_GREETINGS[time_period]["templates"]
+        emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+        return f"{emotion} {random.choice(templates)}"
+
+async def send_time_based_greetings():
+    """Send greetings to all active groups at appropriate times"""
+    current_period = get_current_time_period()
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    print(f"⏰ Checking greetings for {current_period} ({current_hour}:00)")
+    
+    # Check if we should send greeting (only at specific hours)
+    greeting_hours = {
+        "morning": [6, 7, 8, 9],
+        "afternoon": [12, 13, 14, 15],
+        "evening": [17, 18, 19, 20],
+        "night": [21, 22, 23],
+        "late_night": [1, 2, 3]
+    }
+    
+    if current_hour not in greeting_hours.get(current_period, []):
+        return
+    
+    # Get all groups where bot is active
+    # Note: In production, you might want to store active groups in database
+    # For now, we'll use a simpler approach
+    
+    try:
+        # For demo, we'll track groups manually
+        # In your actual bot, you might have a list of active groups
+        active_groups = []  # You should populate this from your database
+        
+        if not active_groups:
+            # If no active groups list, send to recent interacted groups
+            # This is a simplified version
+            return
+        
+        for chat_id in active_groups:
+            try:
+                # Check last greeting time
+                last_greeted = greeted_groups.get(chat_id)
+                if last_greeted and (datetime.now() - last_greeted).hours < 6:
+                    continue
+                
+                # Get group info
+                chat = await bot.get_chat(chat_id)
+                group_name = chat.title
+                
+                # Get AI greeting
+                greeting_text = await get_ai_greeting(current_period, group_name)
+                
+                # Add some variation
+                variations = [
+                    f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
+                    f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
+                    f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
+                ]
+                
+                final_message = random.choice(variations)
+                
+                # Send sticker if available
+                if current_period in GREETING_STICKERS:
+                    sticker_id = random.choice(GREETING_STICKERS[current_period])
+                    await bot.send_sticker(chat_id, sticker_id)
+                    await asyncio.sleep(1)
+                
+                # Send greeting message
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=final_message,
+                    parse_mode="Markdown"
+                )
+                
+                # Update last greeted time
+                greeted_groups[chat_id] = datetime.now()
+                
+                print(f"✅ Sent {current_period} greeting to {group_name}")
+                await asyncio.sleep(2)  # Avoid flooding
+                
+            except Exception as e:
+                print(f"❌ Error greeting group {chat_id}: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"❌ Greeting system error: {e}")
+
+async def start_greeting_task():
+    """Start the automated greeting scheduler"""
+    print("🕐 Starting automated greeting system...")
+    
+    # Schedule hourly check
+    greeting_scheduler.add_job(
+        send_time_based_greetings,
+        CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
+        id='hourly_greetings',
+        replace_existing=True
+    )
+    
+    # Also check every 30 minutes for testing
+    greeting_scheduler.add_job(
+        send_time_based_greetings,
+        'interval',
+        minutes=30,
+        id='frequent_check',
+        replace_existing=True
+    )
+    
+    greeting_scheduler.start()
+    print("✅ Greeting scheduler started!")
 
 # --- AUTO-MODERATION CONFIGURATION ---
 SPAM_LIMIT = 5  # Messages per 10 seconds
@@ -96,6 +287,94 @@ EMOTIONAL_RESPONSES = {
     "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
     "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
     "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
+}
+
+# --- ENHANCED TIME-BASED GREETINGS ---
+TIME_GREETINGS = {
+    "morning": {
+        "time_range": (5, 11),  # 5 AM to 11 AM
+        "keywords": ["subah", "morning", "good morning", "सुबह", "शुभ प्रभात"],
+        "emotions": ["happy", "love", "surprise"],
+        "templates": [
+            "🌅 *Good Morning Sunshine!* ☀️\nKaisi hai aaj ki subah? Utho aur muskurao! 😊",
+            "🌸 *Shubh Prabhat!* 🌸\nAaj ka din aapke liye khoobsurat ho! ✨",
+            "☕ *Morning Coffee Time!* 🍵\nChai piyo, fresh ho jao, aur din shuru karo! 💫",
+            "🌄 *A New Day Begins!* 🌄\nAaj kuch naya seekhne ka din hai! 📚",
+            "🐦 *Chidiyaon ki chahchah mein!* 🎶\nSubah mubarak ho aapko! 😇"
+        ]
+    },
+    "afternoon": {
+        "time_range": (12, 16),  # 12 PM to 4 PM
+        "keywords": ["dopahar", "afternoon", "good afternoon", "दोपहर", "शुभ दोपहर"],
+        "emotions": ["thinking", "hungry", "funny"],
+        "templates": [
+            "☀️ *Good Afternoon!* 🌤️\nLunch ho gaya? Energy maintain rakho! 🍲",
+            "🌞 *Dopahar ki Dhoop mein!* 🌞\nThoda aaraam karo, phir kaam karo! 😌",
+            "🍛 *Afternoon Siesta Time!* 💤\nKhaana kha ke neend aa rahi hai? Hehe! 😴",
+            "📊 *Productive Afternoon!* 💼\nDopahar ka kaam aadha din kaam! 💪",
+            "🌻 *Shubh Dopahar!* 🌻\nAapka din accha chal raha ho! ✨"
+        ]
+    },
+    "evening": {
+        "time_range": (17, 20),  # 5 PM to 8 PM
+        "keywords": ["shaam", "evening", "good evening", "शाम", "शुभ संध्या"],
+        "emotions": ["love", "happy", "sassy"],
+        "templates": [
+            "🌇 *Good Evening Beautiful!* 🌆\nShaam ho gayi, thoda relax karo! 🌹",
+            "🌆 *Evening Tea Time!* 🍵\nChai aur baatein - perfect combination! 💖",
+            "✨ *Shubh Sandhya!* ✨\nDin bhar ki thakaan door karo! 🎶",
+            "🌃 *Evening Walk Time!* 🚶‍♀️\nFresh hawa mein thoda ghumo! 🌸",
+            "💫 *Evening Vibes!* 💫\nDin khatam, raat shuru - magic time! ✨"
+        ]
+    },
+    "night": {
+        "time_range": (21, 23),  # 9 PM to 11 PM
+        "keywords": ["raat", "night", "good night", "रात", "शुभ रात्रि"],
+        "emotions": ["sleepy", "love", "crying"],
+        "templates": [
+            "🌙 *Good Night Sweet Dreams!* 🌟\nAankhein band karo aur accha sapna dekho! 💤",
+            "🌌 *Shubh Ratri!* 🌌\nThaka hua dimaag ko aaraam do! 😴",
+            "💤 *Sleep Time!* 💤\nKal phir nayi energy ke saath uthna! 🌅",
+            "🌠 *Night Night!* 🌠\nChanda mama aapko sone ki kahani sunaye! 🌙",
+            "🛏️ *Bedtime!* 🛏️\nAaj ka din khatam, kal naya shuru! ✨"
+        ]
+    },
+    "late_night": {
+        "time_range": (0, 4),  # 12 AM to 4 AM
+        "keywords": ["midnight", "late", "raat", "आधी रात"],
+        "emotions": ["sleepy", "thinking", "surprise"],
+        "templates": [
+            "🌃 *Late Night Owls!* 🦉\nSone ka time hai, par chat karna hai? 😄",
+            "🌚 *Midnight Chats!* 🌚\nRaat ke 12 baje bhi jag rahe ho? 😲",
+            "💫 *Late Night Vibes!* 💫\nSab so rahe hain, hum chat kar rahe hain! 🤫",
+            "🌜 *Chandni Raat!* 🌛\nAisi raat mein baatein hi baatein! 💬",
+            "🦉 *Night Shift!* 🦉\nMain bhi jag rahi hu tumhare saath! 💖"
+        ]
+    }
+}
+
+# Greeting stickers for different times
+GREETING_STICKERS = {
+    "morning": [
+        "CAACAgIAAxkBAAIBs2arL3E8JhH--MqweFsVbhf75ssGAAIiAAPBnGAMNxlrCkQd4_YwBA",
+        "CAACAgIAAxkBAAIBtWarL3OHe_pC_s0nH3WlGFcZfS4IAAJEAAPBnGAMLsnLQ85t_Hn4wBA"
+    ],
+    "afternoon": [
+        "CAACAgIAAxkBAAIBt2arL3r2z3lLcm2F_LwP7_nuRSq1AAIkAAPBnGAMArSs-k9F8aIwBA",
+        "CAACAgIAAxkBAAIBuWarL3yIhsgUQrhNzy8pRSsYmR1TAAItAAPBnGAMXXAbogZ-RpkwBA"
+    ],
+    "evening": [
+        "CAACAgIAAxkBAAIBu2arL39OxGQyWUY6g8IRf4yOT4IXAAJGAAPBnGAMMZ2TQk2F5McwBA",
+        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJowBA"
+    ],
+    "night": [
+        "CAACAgIAAxkBAAIBv2arL4RCHa0o_wvJ0mnRR_D6wTwsAAJmAAPBnGAM8P3Lk0C-eSEwBA",
+        "CAACAgIAAxkBAAIBwWarL4X-iFodMEFd98lssnDR3hrYAAJnAAPBnGAMsnCyY2qNmnYwBA"
+    ],
+    "late_night": [
+        "CAACAgIAAxkBAAIBw2arL4ZKX01v8pNH8Zz_hQ9vCHWQAAJoAAPBnGAMwx3hSklftnswBA",
+        "CAACAgIAAxkBAAIBxWarL4aOsD3j3YfPlk-GFJdL8bU_AAJpAAPBnGAMU8YwJ37SKV8wBA"
+    ]
 }
 
 # Quick responses for common interactions
@@ -1298,6 +1577,17 @@ async def cmd_weather(message: Message):
     weather_info = await get_weather_info(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
+@dp.message(Command("greetall"))
+async def cmd_greetall(message: Message):
+    """Manually trigger greetings for testing"""
+    if message.from_user.id != YOUR_USER_ID:  # Replace with your user ID
+        await message.reply("❌ Only admin can use this command!")
+        return
+    
+    await message.reply("⏳ Sending greetings to all groups...")
+    await send_time_based_greetings()
+    await message.reply("✅ Greetings sent to all active groups!")
+
 
 # --- DEPLOYMENT HANDLER ---
 
@@ -1322,12 +1612,13 @@ async def main():
     # Start health check server
     asyncio.create_task(start_server())
     
-    # --- YE LINES ADD KAREIN ---
-    # Purane webhook ko delete karne ke liye
+    # Start automated greeting system
+    await start_greeting_task()
+    
+    # Delete old webhook
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook deleted and updates cleared!")
-    # ---------------------------
-
+    
     # Start bot polling
     print("🔄 Starting bot polling...")
     await dp.start_polling(bot)
