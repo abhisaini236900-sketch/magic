@@ -346,6 +346,12 @@ TIME_GREETINGS = {
     }
 }
 
+def get_indian_time():
+    """Get current Indian time"""
+    utc_now = datetime.now(pytz.utc)
+    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
+    return indian_time
+
 # Greeting stickers for different times
 GREETING_STICKERS = {
     "morning": [
