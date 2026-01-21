@@ -14,8 +14,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from groq import AsyncGroq
 from aiohttp import web
 import pytz
-import schedule
-import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -23,11 +21,6 @@ from apscheduler.triggers.cron import CronTrigger
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
-
-# --- GREETING SCHEDULER ---
-greeting_scheduler = AsyncIOScheduler()
-# Track greeted groups to avoid spam
-greeted_groups: Dict[int, datetime] = {}
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -1363,25 +1356,7 @@ async def cmd_weather(message: Message):
     
     weather_info = await get_weather_info(city)
     await message.reply(weather_info, parse_mode="Markdown")
-
-# Add the time/weather commands
-@dp.message(Command("time"))
-async def cmd_time(message: Message):
-    time_info = get_time_info()
-    await message.reply(time_info, parse_mode="Markdown")
-
-@dp.message(Command("weather"))
-async def cmd_weather(message: Message):
-    city = None
-    if len(message.text.split()) > 1:
-        city = ' '.join(message.text.split()[1:])
     
-    weather_info = await get_weather_info(city)
-    await message.reply(weather_info, parse_mode="Markdown")
-
-# ====================================================================
-# 🎊 ENHANCED WELCOME SYSTEM FUNCTIONS 🎊
-# ====================================================================
 
 # --- ENHANCED WELCOME MESSAGE FUNCTION ---
 
