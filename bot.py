@@ -142,81 +142,139 @@ async def send_time_based_greetings():
         return
     
     # Get all groups where bot is active
-    # Note: In production, you might want to store active groups in database
-    # For now, we'll use a simpler approach
+    # In production, store active groups in database
+    # For now, we'll track manually
     
-    try:
-    # Get all active groups from greeted_groups (groups where bot has greeted before)
-    active_groups = list(greeted_groups.keys())
+    active_groups = []
     
-    # Also include groups from chat_memory (recently active chats)
-    active_groups.extend(list(chat_memory.keys()))
+    # Method 1: From greeted_groups (where bot has greeted before)
+    active_groups.extend(list(greeted_groups.keys()))
     
-    # Remove duplicates
-    active_groups = list(set(active_groups))
+    # Method 2: From chat_memory (recently active chats)
+    for chat_id in list(chat_memory.keys()):
+        try:
+            chat = await bot.get_chat(chat_id)
+            if chat.type in ["group", "supergroup"]:
+                active_groups.append(chat_id)
+        except:
+            continue
     
-    # Also track private chats
+    # Method 3: Add private chats separately
     private_chats = []
     for chat_id in list(chat_memory.keys()):
         try:
             chat = await bot.get_chat(chat_id)
             if chat.type == "private":
-                private_chats.append(chat_id)
+                # Check last interaction time
+                if chat_id in user_last_interaction:
+                    last_active = user_last_interaction[chat_id]
+                    days_since_active = (datetime.now() - last_active).days
+                    if days_since_active <= 7:
+                        private_chats.append(chat_id)
         except:
             continue
     
-    # Add private chats to active groups
-    active_groups.extend(private_chats)
+    # Remove duplicates
+    active_groups = list(set(active_groups))
     
-    if not active_groups:
-        print("⏳ No active groups found for greetings")
+    if not active_groups and not private_chats:
+        print("⏳ No active groups/chats found for greetings")
         return
-        
-        for chat_id in active_groups:
-            try:
-                # Check last greeting time
-                last_greeted = greeted_groups.get(chat_id)
-                if last_greeted and (datetime.now() - last_greeted).hours < 6:
+    
+    print(f"📢 Active groups: {len(active_groups)}, Private chats: {len(private_chats)}")
+    
+    # Process groups first
+    for chat_id in active_groups:
+        try:
+            # Check last greeting time (don't spam same group)
+            last_greeted = greeted_groups.get(chat_id)
+            if last_greeted:
+                hours_since_greeting = (datetime.now() - last_greeted).seconds // 3600
+                if hours_since_greeting < 6:  # 6 hours gap
                     continue
-                
-                # Get group info
-                chat = await bot.get_chat(chat_id)
-                group_name = chat.title
-                
-                # Get AI greeting
-                greeting_text = await get_ai_greeting(current_period, group_name)
-                
-                # Add some variation
-                variations = [
-                    f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
-                    f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
-                    f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
-                ]
-                
-                final_message = random.choice(variations)
-                
-                # Send sticker if available
-                if current_period in GREETING_STICKERS:
-                    sticker_id = random.choice(GREETING_STICKERS[current_period])
-                    await bot.send_sticker(chat_id, sticker_id)
-                    await asyncio.sleep(1)
-                
-                # Send greeting message
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=final_message,
-                    parse_mode="Markdown"
-                )
-                
-                # Update last greeted time
-                greeted_groups[chat_id] = datetime.now()
-                
-                print(f"✅ Sent {current_period} greeting to {group_name}")
-                await asyncio.sleep(2)  # Avoid flooding
-                
-            except Exception as e:
-                print(f"❌ Error greeting group {chat_id}: {e}")
-                continue
+            
+            # Get group info
+            chat = await bot.get_chat(chat_id)
+            if chat.type == "private":
+                continue  # Skip private chats here
+            
+            group_name = chat.title or "Group"
+            
+            # Get AI greeting
+            greeting_text = await get_ai_greeting(current_period, group_name)
+            
+            # Add some variation
+            variations = [
+                f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
+                f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
+                f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
+            ]
+            
+            final_message = random.choice(variations)
+            
+            # Send sticker if available
+            if current_period in GREETING_STICKERS:
+                sticker_id = random.choice(GREETING_STICKERS[current_period])
+                await bot.send_sticker(chat_id, sticker_id)
+                await asyncio.sleep(1)
+            
+            # Send greeting message
+            await bot.send_message(
+                chat_id=chat_id,
+                text=final_message,
+                parse_mode="Markdown"
+            )
+            
+            # Update last greeted time
+            greeted_groups[chat_id] = datetime.now()
+            
+            print(f"✅ Sent {current_period} greeting to group: {group_name}")
+            await asyncio.sleep(2)  # Avoid flooding
+            
+        except Exception as e:
+            print(f"❌ Error greeting group {chat_id}: {e}")
+            continue
+    
+    # Process private chats (with different frequency)
+    for user_id in private_chats:
+        try:
+            # Check last greeting time (less frequent for private)
+            last_greeted = greeted_groups.get(user_id)
+            if last_greeted:
+                hours_since_greeting = (datetime.now() - last_greeted).seconds // 3600
+                if hours_since_greeting < 12:  # 12 hours gap for private
+                    continue
+            
+            # Get user info
+            user = await bot.get_chat(user_id)
+            user_name = user.first_name or "Friend"
+            
+            # Personalized greeting for private chat
+            private_greetings = [
+                f"✨ Hello {user_name}! Just wanted to wish you a lovely {current_period}! 💖",
+                f"🎀 Hey {user_name}! Hope you're having a beautiful {current_period}! 🌸",
+                f"💫 Good {current_period}, {user_name}! Thinking of you! 😊",
+                f"🌟 {current_period.capitalize()} greetings, {user_name}! Stay awesome! 💕"
+            ]
+            
+            final_message = random.choice(private_greetings)
+            
+            # Send greeting
+            await bot.send_message(
+                chat_id=user_id,
+                text=final_message,
+                parse_mode="Markdown"
+            )
+            
+            # Update last greeted time
+            greeted_groups[user_id] = datetime.now()
+            
+            print(f"💌 Sent {current_period} greeting to private: {user_name}")
+            await asyncio.sleep(1)  # Avoid rate limiting
+            
+        except Exception as e:
+            print(f"❌ Error greeting user {user_id}: {e}")
+            continue
                 
     except Exception as e:
         print(f"❌ Greeting system error: {e}")
@@ -225,7 +283,11 @@ async def start_greeting_task():
     """Start the automated greeting scheduler"""
     print("🕐 Starting automated greeting system...")
     
-    # Schedule group greetings (hourly check)
+    # Clear any existing jobs
+    if greeting_scheduler.running:
+        greeting_scheduler.shutdown()
+    
+    # Schedule greetings for every hour (check and send if appropriate)
     greeting_scheduler.add_job(
         send_time_based_greetings,
         CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
@@ -233,25 +295,49 @@ async def start_greeting_task():
         replace_existing=True
     )
     
-    # Schedule private chat greetings (every 2 hours)
-    greeting_scheduler.add_job(
-        send_private_chat_greetings,
-        CronTrigger(minute=30, hour='*/2'),  # Every 2 hours at minute 30
-        id='private_greetings',
-        replace_existing=True
-    )
-    
-    # Also check every 30 minutes for testing
-    greeting_scheduler.add_job(
-        send_time_based_greetings,
-        'interval',
-        minutes=30,
-        id='frequent_check',
-        replace_existing=True
-    )
+    # Optional: More frequent check for testing
+    if os.getenv("DEBUG_MODE"):
+        greeting_scheduler.add_job(
+            send_time_based_greetings,
+            'interval',
+            minutes=5,
+            id='debug_check',
+            replace_existing=True
+        )
     
     greeting_scheduler.start()
     print("✅ Greeting scheduler started!")
+
+# Add this global variable
+active_group_tracker = set()
+
+# Modify message handler to track groups
+@dp.message()
+async def handle_all_messages(message: Message, state: FSMContext):
+    if not message.text or not message.from_user:
+        return
+    
+    # Track group activity
+    if message.chat.type in ["group", "supergroup"]:
+        active_group_tracker.add(message.chat.id)
+    
+    # ... rest of your existing code ...
+
+def get_current_time_period():
+    """Get current time period for greetings"""
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    if 5 <= current_hour < 12:
+        return "morning"
+    elif 12 <= current_hour < 17:
+        return "afternoon"
+    elif 17 <= current_hour < 21:
+        return "evening"
+    elif 21 <= current_hour <= 23:
+        return "night"
+    else:
+        return "late_night"
 
 async def send_private_chat_greetings():
     """Send greetings to active private chats"""
