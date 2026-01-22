@@ -146,14 +146,31 @@ async def send_time_based_greetings():
     # For now, we'll use a simpler approach
     
     try:
-        # For demo, we'll track groups manually
-        # In your actual bot, you might have a list of active groups
-        active_groups = []  # You should populate this from your database
-        
-        if not active_groups:
-            # If no active groups list, send to recent interacted groups
-            # This is a simplified version
-            return
+    # Get all active groups from greeted_groups (groups where bot has greeted before)
+    active_groups = list(greeted_groups.keys())
+    
+    # Also include groups from chat_memory (recently active chats)
+    active_groups.extend(list(chat_memory.keys()))
+    
+    # Remove duplicates
+    active_groups = list(set(active_groups))
+    
+    # Also track private chats
+    private_chats = []
+    for chat_id in list(chat_memory.keys()):
+        try:
+            chat = await bot.get_chat(chat_id)
+            if chat.type == "private":
+                private_chats.append(chat_id)
+        except:
+            continue
+    
+    # Add private chats to active groups
+    active_groups.extend(private_chats)
+    
+    if not active_groups:
+        print("⏳ No active groups found for greetings")
+        return
         
         for chat_id in active_groups:
             try:
@@ -208,11 +225,19 @@ async def start_greeting_task():
     """Start the automated greeting scheduler"""
     print("🕐 Starting automated greeting system...")
     
-    # Schedule hourly check
+    # Schedule group greetings (hourly check)
     greeting_scheduler.add_job(
         send_time_based_greetings,
         CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
         id='hourly_greetings',
+        replace_existing=True
+    )
+    
+    # Schedule private chat greetings (every 2 hours)
+    greeting_scheduler.add_job(
+        send_private_chat_greetings,
+        CronTrigger(minute=30, hour='*/2'),  # Every 2 hours at minute 30
+        id='private_greetings',
         replace_existing=True
     )
     
@@ -227,6 +252,81 @@ async def start_greeting_task():
     
     greeting_scheduler.start()
     print("✅ Greeting scheduler started!")
+
+async def send_private_chat_greetings():
+    """Send greetings to active private chats"""
+    current_period = get_current_time_period()
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    print(f"💌 Checking private greetings for {current_period} ({current_hour}:00)")
+    
+    # Check if we should send greeting
+    greeting_hours = {
+        "morning": [7, 8, 9],
+        "afternoon": [13, 14],
+        "evening": [18, 19],
+        "night": [22, 23],
+        "late_night": [1, 2]
+    }
+    
+    if current_hour not in greeting_hours.get(current_period, []):
+        return
+    
+    # Get all private chats from memory
+    private_chats = []
+    for chat_id in list(chat_memory.keys()):
+        try:
+            chat = await bot.get_chat(chat_id)
+            if chat.type == "private":
+                # Check last interaction time (only greet if active in last 7 days)
+                if chat_id in user_last_interaction:
+                    last_active = user_last_interaction[chat_id]
+                    days_since_active = (datetime.now() - last_active).days
+                    if days_since_active <= 7:
+                        private_chats.append(chat_id)
+        except:
+            continue
+    
+    for user_id in private_chats:
+        try:
+            # Check last greeting time (don't spam)
+            last_greeted = greeted_groups.get(user_id)
+            if last_greeted and (datetime.now() - last_greeted).hours < 12:
+                continue
+            
+            # Get user info
+            user = await bot.get_chat(user_id)
+            user_name = user.first_name
+            
+            # Get AI greeting
+            greeting_text = await get_ai_greeting(current_period, user_name)
+            
+            # Personalized message for private chat
+            private_messages = [
+                f"{greeting_text}\n\n✨ *Just wanted to check on you!* 💖",
+                f"{greeting_text}\n\n💫 *Thinking of you! Hope you're having a great {current_period}!* 🥰",
+                f"{greeting_text}\n\n🌸 *Sending you lots of love and positive vibes!* 💕"
+            ]
+            
+            final_message = random.choice(private_messages)
+            
+            # Send greeting
+            await bot.send_message(
+                chat_id=user_id,
+                text=final_message,
+                parse_mode="Markdown"
+            )
+            
+            # Update last greeted time
+            greeted_groups[user_id] = datetime.now()
+            
+            print(f"💌 Sent {current_period} greeting to {user_name} (Private)")
+            await asyncio.sleep(1)  # Avoid rate limiting
+            
+        except Exception as e:
+            print(f"❌ Error greeting user {user_id}: {e}")
+            continue
 
 # --- AUTO-MODERATION CONFIGURATION ---
 SPAM_LIMIT = 5  # Messages per 10 seconds
