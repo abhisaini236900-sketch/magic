@@ -21,6 +21,7 @@ from apscheduler.triggers.cron import CronTrigger
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -33,7 +34,7 @@ dp = Dispatcher(storage=storage)
 # Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- ENHANCED MEMORY SYSTEMS ---
+# --- MEMORY SYSTEMS ---
 chat_memory: Dict[int, deque] = {}
 user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))  # chat_id -> user_id -> warnings
 user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> count
@@ -50,278 +51,11 @@ user_last_interaction: Dict[int, datetime] = {}
 greeting_scheduler = AsyncIOScheduler()
 greeted_groups: Dict[int, datetime] = {}
 
-def get_current_time_period():
-    """Get current time period for greetings"""
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    if 5 <= current_hour < 12:
-        return "morning"
-    elif 12 <= current_hour < 17:
-        return "afternoon"
-    elif 17 <= current_hour < 21:
-        return "evening"
-    elif 21 <= current_hour <= 23:
-        return "night"
-    else:
-        return "late_night"
-
-async def get_ai_greeting(time_period: str, group_name: str = None) -> str:
-    """Get AI-generated greeting for current time period"""
-    try:
-        indian_time = get_indian_time()
-        time_str = indian_time.strftime("%I:%M %p")
-        date_str = indian_time.strftime("%A, %d %B %Y")
-        
-        prompt = f"""
-        You are Alita 🎀 - a sweet and cute girl who sends greetings.
-        Current Indian time: {time_str}
-        Date: {date_str}
-        Time period: {time_period}
-        Group: {group_name or 'everyone'}
-        
-        Generate a short, sweet greeting (2-3 lines max) in Hinglish (Hindi+English mix).
-        Be emotional, cute, and use appropriate emojis.
-        Don't be too formal - be friendly and warm.
-        
-        Example for morning:
-        "🌅 Good Morning cuties! ☀️ Subah ki chai piyo aur fresh feel karo! 😊"
-        
-        Example for night:
-        "🌙 Good Night sweet dreams! 🌟 Aankhein band karo aur ache sapne dekho! 💤"
-        """
-        
-        if client:
-            completion = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "You are Alita - a cute, sweet girl who sends greetings."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.9,
-                max_tokens=80
-            )
-            
-            ai_response = completion.choices[0].message.content.strip()
-            
-            # Add emotion at beginning
-            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
-            return f"{emotion} {ai_response}"
-        
-        else:
-            # Fallback to templates
-            templates = TIME_GREETINGS[time_period]["templates"]
-            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
-            return f"{emotion} {random.choice(templates)}"
-            
-    except Exception as e:
-        print(f"AI greeting error: {e}")
-        # Fallback
-        templates = TIME_GREETINGS[time_period]["templates"]
-        emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
-        return f"{emotion} {random.choice(templates)}"
-
-async def send_time_based_greetings():
-    """Send greetings to all active groups at appropriate times"""
-    current_period = get_current_time_period()
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    print(f"⏰ Checking greetings for {current_period} ({current_hour}:00)")
-    
-    # Check if we should send greeting (only at specific hours)
-    greeting_hours = {
-        "morning": [6, 7, 8, 9],
-        "afternoon": [12, 13, 14, 15],
-        "evening": [17, 18, 19, 20],
-        "night": [21, 22, 23],
-        "late_night": [1, 2, 3]
-    }
-    
-    if current_hour not in greeting_hours.get(current_period, []):
-        return
-    
-    # Get all groups where bot is active
-    # In production, store active groups in database
-    # For now, we'll track manually
-    
-    active_groups = []
-    
-    # Method 1: From greeted_groups (where bot has greeted before)
-    active_groups.extend(list(greeted_groups.keys()))
-    
-    # Method 2: From chat_memory (recently active chats)
-    for chat_id in list(chat_memory.keys()):
-        try:
-            chat = await bot.get_chat(chat_id)
-            if chat.type in ["group", "supergroup"]:
-                active_groups.append(chat_id)
-        except:
-            continue
-    
-    # Method 3: Add private chats separately
-    private_chats = []
-    for chat_id in list(chat_memory.keys()):
-        try:
-            chat = await bot.get_chat(chat_id)
-            if chat.type == "private":
-                # Check last interaction time
-                if chat_id in user_last_interaction:
-                    last_active = user_last_interaction[chat_id]
-                    days_since_active = (datetime.now() - last_active).days
-                    if days_since_active <= 7:
-                        private_chats.append(chat_id)
-        except:
-            continue
-    
-    # Remove duplicates
-    active_groups = list(set(active_groups))
-    
-    if not active_groups and not private_chats:
-        print("⏳ No active groups/chats found for greetings")
-        return
-    
-    print(f"📢 Active groups: {len(active_groups)}, Private chats: {len(private_chats)}")
-    
-    # Process groups first
-    for chat_id in active_groups:
-        try:
-            # Check last greeting time (don't spam same group)
-            last_greeted = greeted_groups.get(chat_id)
-            if last_greeted:
-                hours_since_greeting = (datetime.now() - last_greeted).seconds // 3600
-                if hours_since_greeting < 6:  # 6 hours gap
-                    continue
-            
-            # Get group info
-            chat = await bot.get_chat(chat_id)
-            if chat.type == "private":
-                continue  # Skip private chats here
-            
-            group_name = chat.title or "Group"
-            
-            # Get AI greeting
-            greeting_text = await get_ai_greeting(current_period, group_name)
-            
-            # Add some variation
-            variations = [
-                f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
-                f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
-                f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
-            ]
-            
-            final_message = random.choice(variations)
-            
-            # Send sticker if available
-            if current_period in GREETING_STICKERS:
-                sticker_id = random.choice(GREETING_STICKERS[current_period])
-                await bot.send_sticker(chat_id, sticker_id)
-                await asyncio.sleep(1)
-            
-            # Send greeting message
-            await bot.send_message(
-                chat_id=chat_id,
-                text=final_message,
-                parse_mode="Markdown"
-            )
-            
-            # Update last greeted time
-            greeted_groups[chat_id] = datetime.now()
-            
-            print(f"✅ Sent {current_period} greeting to group: {group_name}")
-            await asyncio.sleep(2)  # Avoid flooding
-            
-        except Exception as e:
-            print(f"❌ Error greeting group {chat_id}: {e}")
-            continue
-    
-    # Process private chats (with different frequency)
-    for user_id in private_chats:
-        try:
-            # Check last greeting time (less frequent for private)
-            last_greeted = greeted_groups.get(user_id)
-            if last_greeted:
-                hours_since_greeting = (datetime.now() - last_greeted).seconds // 3600
-                if hours_since_greeting < 12:  # 12 hours gap for private
-                    continue
-            
-            # Get user info
-            user = await bot.get_chat(user_id)
-            user_name = user.first_name or "Friend"
-            
-            # Personalized greeting for private chat
-            private_greetings = [
-                f"✨ Hello {user_name}! Just wanted to wish you a lovely {current_period}! 💖",
-                f"🎀 Hey {user_name}! Hope you're having a beautiful {current_period}! 🌸",
-                f"💫 Good {current_period}, {user_name}! Thinking of you! 😊",
-                f"🌟 {current_period.capitalize()} greetings, {user_name}! Stay awesome! 💕"
-            ]
-            
-            final_message = random.choice(private_greetings)
-            
-            # Send greeting
-            await bot.send_message(
-                chat_id=user_id,
-                text=final_message,
-                parse_mode="Markdown"
-            )
-            
-            # Update last greeted time
-            greeted_groups[user_id] = datetime.now()
-            
-            print(f"💌 Sent {current_period} greeting to private: {user_name}")
-            await asyncio.sleep(1)  # Avoid rate limiting
-            
-        except Exception as e:
-            print(f"❌ Error greeting user {user_id}: {e}")
-            continue
-                
-    except Exception as e:
-        print(f"❌ Greeting system error: {e}")
-
-async def start_greeting_task():
-    """Start the automated greeting scheduler"""
-    print("🕐 Starting automated greeting system...")
-    
-    # Clear any existing jobs
-    if greeting_scheduler.running:
-        greeting_scheduler.shutdown()
-    
-    # Schedule greetings for every hour (check and send if appropriate)
-    greeting_scheduler.add_job(
-        send_time_based_greetings,
-        CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
-        id='hourly_greetings',
-        replace_existing=True
-    )
-    
-    # Optional: More frequent check for testing
-    if os.getenv("DEBUG_MODE"):
-        greeting_scheduler.add_job(
-            send_time_based_greetings,
-            'interval',
-            minutes=5,
-            id='debug_check',
-            replace_existing=True
-        )
-    
-    greeting_scheduler.start()
-    print("✅ Greeting scheduler started!")
-
-# Add this global variable
-active_group_tracker = set()
-
-# Modify message handler to track groups
-@dp.message()
-async def handle_all_messages(message: Message, state: FSMContext):
-    if not message.text or not message.from_user:
-        return
-    
-    # Track group activity
-    if message.chat.type in ["group", "supergroup"]:
-        active_group_tracker.add(message.chat.id)
-    
-    # ... rest of your existing code ...
+def get_indian_time():
+    """Get current Indian time"""
+    utc_now = datetime.now(pytz.utc)
+    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
+    return indian_time
 
 def get_current_time_period():
     """Get current time period for greetings"""
@@ -339,136 +73,31 @@ def get_current_time_period():
     else:
         return "late_night"
 
-async def send_private_chat_greetings():
-    """Send greetings to active private chats"""
-    current_period = get_current_time_period()
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    print(f"💌 Checking private greetings for {current_period} ({current_hour}:00)")
-    
-    # Check if we should send greeting
-    greeting_hours = {
-        "morning": [7, 8, 9],
-        "afternoon": [13, 14],
-        "evening": [18, 19],
-        "night": [22, 23],
-        "late_night": [1, 2]
-    }
-    
-    if current_hour not in greeting_hours.get(current_period, []):
-        return
-    
-    # Get all private chats from memory
-    private_chats = []
-    for chat_id in list(chat_memory.keys()):
-        try:
-            chat = await bot.get_chat(chat_id)
-            if chat.type == "private":
-                # Check last interaction time (only greet if active in last 7 days)
-                if chat_id in user_last_interaction:
-                    last_active = user_last_interaction[chat_id]
-                    days_since_active = (datetime.now() - last_active).days
-                    if days_since_active <= 7:
-                        private_chats.append(chat_id)
-        except:
-            continue
-    
-    for user_id in private_chats:
-        try:
-            # Check last greeting time (don't spam)
-            last_greeted = greeted_groups.get(user_id)
-            if last_greeted and (datetime.now() - last_greeted).hours < 12:
-                continue
-            
-            # Get user info
-            user = await bot.get_chat(user_id)
-            user_name = user.first_name
-            
-            # Get AI greeting
-            greeting_text = await get_ai_greeting(current_period, user_name)
-            
-            # Personalized message for private chat
-            private_messages = [
-                f"{greeting_text}\n\n✨ *Just wanted to check on you!* 💖",
-                f"{greeting_text}\n\n💫 *Thinking of you! Hope you're having a great {current_period}!* 🥰",
-                f"{greeting_text}\n\n🌸 *Sending you lots of love and positive vibes!* 💕"
-            ]
-            
-            final_message = random.choice(private_messages)
-            
-            # Send greeting
-            await bot.send_message(
-                chat_id=user_id,
-                text=final_message,
-                parse_mode="Markdown"
-            )
-            
-            # Update last greeted time
-            greeted_groups[user_id] = datetime.now()
-            
-            print(f"💌 Sent {current_period} greeting to {user_name} (Private)")
-            await asyncio.sleep(1)  # Avoid rate limiting
-            
-        except Exception as e:
-            print(f"❌ Error greeting user {user_id}: {e}")
-            continue
-
-# --- AUTO-MODERATION CONFIGURATION ---
-SPAM_LIMIT = 5  # Messages per 10 seconds
-GROUP_LINK_PATTERNS = [
-    r't\.me/joinchat/',
-    r't\.me/\+\w+',
-    r'joinchat/\w+',
-    r't\.me/\w{5,}',
-    r'telegram\.(me|dog)/(joinchat/|\+)',
-    r'https?://(t|telegram)\.(me|dog)/(joinchat/|\+)'
-]
-
-BAD_WORDS = [
-    # English/Hindi bad words
-    'mc', 'bc', 'madarchod', 'bhosdike', 'chutiya', 'gandu', 'lund', 'bhenchod',
-    'fuck', 'shit', 'asshole', 'bastard', 'bitch', 'dick', 'piss', 'pussy',
-    # Add more as needed
-]
-
-WARNING_MESSAGES = [
-    "⚠️ **Warning {count}/3**\nHey {name}, please don't {action}!",
-    "🚫 **Warning {count}/3**\n{name}, {action} is not allowed here!",
-    "👮 **Warning {count}/3**\n{name}, please follow group rules!",
-    "⚡ **Warning {count}/3**\n{name}, stop {action} immediately!",
-]
-
-MUTE_DURATIONS = {
-    1: timedelta(minutes=15),    # First offense
-    2: timedelta(hours=1),       # Second offense
-    3: timedelta(hours=24)       # Third offense
+# Greeting stickers for different times
+GREETING_STICKERS = {
+    "morning": [
+        "CAACAgIAAxkBAAIBs2arL3E8JhH--MqweFsVbhf75ssGAAIiAAPBnGAMNxlrCkQd4_YwBA",
+        "CAACAgIAAxkBAAIBtWarL3OHe_pC_s0nH3WlGFcZfS4IAAJEAAPBnGAMLsnLQ85t_Hn4wBA"
+    ],
+    "afternoon": [
+        "CAACAgIAAxkBAAIBt2arL3r2z3lLcm2F_LwP7_nuRSq1AAIkAAPBnGAMArSs-k9F8aIwBA",
+        "CAACAgIAAxkBAAIBuWarL3yIhsgUQrhNzy8pRSsYmR1TAAItAAPBnGAMXXAbogZ-RpkwBA"
+    ],
+    "evening": [
+        "CAACAgIAAxkBAAIBu2arL39OxGQyWUY6g8IRf4yOT4IXAAJGAAPBnGAMMZ2TQk2F5McwBA",
+        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJowBA"
+    ],
+    "night": [
+        "CAACAgIAAxkBAAIBv2arL4RCHa0o_wvJ0mnRR_D6wTwsAAJmAAPBnGAM8P3Lk0C-eSEwBA",
+        "CAACAgIAAxkBAAIBwWarL4X-iFodMEFd98lssnDR3hrYAAJnAAPBnGAMsnCyY2qNmnYwBA"
+    ],
+    "late_night": [
+        "CAACAgIAAxkBAAIBw2arL4ZKX01v8pNH8Zz_hQ9vCHWQAAJoAAPBnGAMwx3hSklftnswBA",
+        "CAACAgIAAxkBAAIBxWarL4aOsD3j3YfPlk-GFJdL8bU_AAJpAAPBnGAMU8YwJ37SKV8wBA"
+    ]
 }
 
-# --- STATES FOR GAMES ---
-class GameStates(StatesGroup):
-    playing_quiz = State()
-    playing_riddle = State()
-    playing_word = State()
-    waiting_answer = State()
-
-# --- ENHANCED HUMAN-LIKE BEHAVIOUR ---
-
-EMOTIONAL_RESPONSES = {
-    "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
-    "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊", "🖕"],
-    "crying": ["😢", "😭", "💔", "🥺", "😞", "🌧️", "😿", "🥀", "💧", "🌩️"],
-    "love": ["❤️", "💖", "💕", "🥰", "😘", "💋", "💓", "💗", "💘", "💝"],
-    "funny": ["😂", "🤣", "😆", "😜", "🤪", "🎭", "🤡", "🃏", "🎪", "🤹"],
-    "thinking": ["🤔", "💭", "🧠", "🔍", "💡", "🎯", "🧐", "🔎", "💬", "🗨️"],
-    "surprise": ["😲", "🤯", "🎊", "🎁", "💥", "✨", "🎆", "🎇", "🧨", "💫"],
-    "sleepy": ["😴", "💤", "🌙", "🛌", "🥱", "😪", "🌃", "🌜", "🌚", "🌌"],
-    "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
-    "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
-    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
-}
-
-# --- ENHANCED TIME-BASED GREETINGS ---
+# --- TIME-BASED GREETINGS ---
 TIME_GREETINGS = {
     "morning": {
         "time_range": (5, 11),  # 5 AM to 11 AM
@@ -532,299 +161,322 @@ TIME_GREETINGS = {
     }
 }
 
-def get_indian_time():
-    """Get current Indian time"""
-    utc_now = datetime.now(pytz.utc)
-    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
-    return indian_time
+async def get_ai_greeting(time_period: str, group_name: str = None) -> str:
+    """Get AI-generated greeting for current time period"""
+    try:
+        indian_time = get_indian_time()
+        time_str = indian_time.strftime("%I:%M %p")
+        date_str = indian_time.strftime("%A, %d %B %Y")
+        
+        prompt = f"""
+        You are Alita 🎀 - a sweet and cute girl who sends greetings.
+        Current Indian time: {time_str}
+        Date: {date_str}
+        Time period: {time_period}
+        Group: {group_name or 'everyone'}
+        
+        Generate a short, sweet greeting (2-3 lines max) in Hinglish (Hindi+English mix).
+        Be emotional, cute, and use appropriate emojis.
+        Don't be too formal - be friendly and warm.
+        
+        Example for morning:
+        "🌅 Good Morning cuties! ☀️ Subah ki chai piyo aur fresh feel karo! 😊"
+        
+        Example for night:
+        "🌙 Good Night sweet dreams! 🌟 Aankhein band karo aur ache sapne dekho! 💤"
+        """
+        
+        if client:
+            completion = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "You are Alita - a cute, sweet girl who sends greetings."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.9,
+                max_tokens=80
+            )
+            
+            ai_response = completion.choices[0].message.content.strip()
+            
+            # Add emotion at beginning
+            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+            return f"{emotion} {ai_response}"
+        
+        else:
+            # Fallback to templates
+            templates = TIME_GREETINGS[time_period]["templates"]
+            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+            return f"{emotion} {random.choice(templates)}"
+            
+    except Exception as e:
+        print(f"AI greeting error: {e}")
+        # Fallback
+        templates = TIME_GREETINGS[time_period]["templates"]
+        emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+        return f"{emotion} {random.choice(templates)}"
 
-# Greeting stickers for different times
-GREETING_STICKERS = {
-    "morning": [
-        "CAACAgIAAxkBAAIBs2arL3E8JhH--MqweFsVbhf75ssGAAIiAAPBnGAMNxlrCkQd4_YwBA",
-        "CAACAgIAAxkBAAIBtWarL3OHe_pC_s0nH3WlGFcZfS4IAAJEAAPBnGAMLsnLQ85t_Hn4wBA"
-    ],
-    "afternoon": [
-        "CAACAgIAAxkBAAIBt2arL3r2z3lLcm2F_LwP7_nuRSq1AAIkAAPBnGAMArSs-k9F8aIwBA",
-        "CAACAgIAAxkBAAIBuWarL3yIhsgUQrhNzy8pRSsYmR1TAAItAAPBnGAMXXAbogZ-RpkwBA"
-    ],
-    "evening": [
-        "CAACAgIAAxkBAAIBu2arL39OxGQyWUY6g8IRf4yOT4IXAAJGAAPBnGAMMZ2TQk2F5McwBA",
-        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJowBA"
-    ],
-    "night": [
-        "CAACAgIAAxkBAAIBv2arL4RCHa0o_wvJ0mnRR_D6wTwsAAJmAAPBnGAM8P3Lk0C-eSEwBA",
-        "CAACAgIAAxkBAAIBwWarL4X-iFodMEFd98lssnDR3hrYAAJnAAPBnGAMsnCyY2qNmnYwBA"
-    ],
-    "late_night": [
-        "CAACAgIAAxkBAAIBw2arL4ZKX01v8pNH8Zz_hQ9vCHWQAAJoAAPBnGAMwx3hSklftnswBA",
-        "CAACAgIAAxkBAAIBxWarL4aOsD3j3YfPlk-GFJdL8bU_AAJpAAPBnGAMU8YwJ37SKV8wBA"
-    ]
-}
+async def send_time_based_greetings():
+    """Send greetings to all active groups at appropriate times"""
+    try:
+        current_period = get_current_time_period()
+        indian_time = get_indian_time()
+        current_hour = indian_time.hour
+        
+        print(f"\n⏰ [{indian_time.strftime('%H:%M:%S')}] Checking greetings for {current_period}")
+        
+        # Check if we should send greeting (only at specific hours)
+        greeting_hours = {
+            "morning": [6, 7, 8, 9],
+            "afternoon": [12, 13, 14, 15],
+            "evening": [17, 18, 19, 20],
+            "night": [21, 22, 23],
+            "late_night": [1, 2, 3]
+        }
+        
+        if current_hour not in greeting_hours.get(current_period, []):
+            print(f"   ⏳ Not a greeting hour for {current_period}")
+            return
+        
+        # Get all groups where bot is active
+        active_groups = []
+        private_chats = []
+        
+        # Check all chats in memory
+        for chat_id in list(chat_memory.keys()):
+            try:
+                chat = await bot.get_chat(chat_id)
+                
+                if chat.type in ["group", "supergroup"]:
+                    active_groups.append(chat_id)
+                elif chat.type == "private":
+                    # Only include active private chats (last 7 days)
+                    if chat_id in user_last_interaction:
+                        last_active = user_last_interaction[chat_id]
+                        days_since_active = (datetime.now() - last_active).days
+                        if days_since_active <= 7:
+                            private_chats.append(chat_id)
+            except Exception as e:
+                print(f"   ❌ Error checking chat {chat_id}: {e}")
+                continue
+        
+        # Remove duplicates
+        active_groups = list(set(active_groups))
+        
+        print(f"   📢 Found: {len(active_groups)} groups, {len(private_chats)} private chats")
+        
+        # Send to groups
+        for chat_id in active_groups:
+            try:
+                # Check last greeting time (minimum 4 hours gap)
+                last_greeted = greeted_groups.get(chat_id)
+                if last_greeted:
+                    hours_since = (datetime.now() - last_greeted).seconds // 3600
+                    if hours_since < 4:
+                        print(f"   ⏳ Skipping {chat_id} - greeted {hours_since} hours ago")
+                        continue
+                
+                # Get group info
+                chat = await bot.get_chat(chat_id)
+                group_name = chat.title or "Group"
+                
+                # Get AI greeting
+                greeting_text = await get_ai_greeting(current_period, group_name)
+                
+                # Add variation
+                variations = [
+                    f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
+                    f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
+                    f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
+                ]
+                
+                final_message = random.choice(variations)
+                
+                # Send sticker
+                if current_period in GREETING_STICKERS and random.random() > 0.5:
+                    sticker_id = random.choice(GREETING_STICKERS[current_period])
+                    await bot.send_sticker(chat_id, sticker_id)
+                    await asyncio.sleep(0.5)
+                
+                # Send greeting
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=final_message,
+                    parse_mode="Markdown"
+                )
+                
+                # Update last greeted time
+                greeted_groups[chat_id] = datetime.now()
+                
+                print(f"   ✅ Sent {current_period} greeting to: {group_name}")
+                await asyncio.sleep(1)  # Avoid flooding
+                
+            except Exception as e:
+                print(f"   ❌ Error greeting group {chat_id}: {e}")
+                continue
+        
+        # Send to private chats (less frequent)
+        for user_id in private_chats:
+            try:
+                # Check last greeting time (minimum 8 hours gap for private)
+                last_greeted = greeted_groups.get(user_id)
+                if last_greeted:
+                    hours_since = (datetime.now() - last_greeted).seconds // 3600
+                    if hours_since < 8:
+                        continue
+                
+                # Get user info
+                user = await bot.get_chat(user_id)
+                user_name = user.first_name or "Friend"
+                
+                # Personalized greeting
+                private_greetings = [
+                    f"✨ Hello {user_name}! Just wanted to wish you a lovely {current_period}! 💖",
+                    f"🎀 Hey {user_name}! Hope you're having a beautiful {current_period}! 🌸",
+                    f"💫 Good {current_period}, {user_name}! Thinking of you! 😊",
+                    f"🌟 {current_period.capitalize()} greetings, {user_name}! Stay awesome! 💕"
+                ]
+                
+                final_message = random.choice(private_greetings)
+                
+                # Send greeting
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=final_message,
+                    parse_mode="Markdown"
+                )
+                
+                # Update last greeted time
+                greeted_groups[user_id] = datetime.now()
+                
+                print(f"   💌 Sent {current_period} greeting to private: {user_name}")
+                await asyncio.sleep(0.5)  # Rate limiting
+                
+            except Exception as e:
+                print(f"   ❌ Error greeting user {user_id}: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"❌ Greeting system error: {e}")
 
-# Quick responses for common interactions
-QUICK_RESPONSES = {
-    "greeting": [
-        "Hii cutie! 😊 Kaise ho?",
-        "Heyyy! 🎀 Aao ji, baat karte hain!",
-        "Namaste! 🌸 Aapko dekhke accha laga!",
-        "Hello darling! 💖 Main alita hu!",
-        "Hii sweetie! 🍬 Miss kar rahi thi!",
-        "Hey there! ✨ Kaise ho aap?",
-        "Oye! 😄 Aa gaye aap!",
-        "Hola! 🌺 Welcome back!"
-    ],
-    "goodbye": [
-        "Bye bye! 😘 Phir milenge!",
-        "Alvida! 🌸 Take care!",
-        "Chalo, main ja rahi hu! 💫 Miss karungi!",
-        "Tata! 🎀 Baad me baat karte hain!",
-        "Bye darling! 💖 Khayal rakhna!",
-        "Goodbye! 🌟 Aapka din accha guzre!",
-        "Chalo, main so jaungi! 😴 Sweet dreams!",
-        "Bye! ✨ Phir milte hain!"
-    ],
-    "thanks": [
-        "Aww! 🥰 You're welcome!",
-        "Koi baat nahi! 💖 Always here for you!",
-        "Mujhe accha laga! 😊 Thank YOU!",
-        "Yay! 🎉 Anytime darling!",
-        "Aapka shukriya! 🌸 For being so sweet!",
-        "Welcome ji! 🎀 Main to bas apna farz nibha rahi hu!",
-        "Hehe! 😘 Aap cute ho!",
-        "Always happy to help! 💫"
-    ],
-    "sorry": [
-        "Arey! 😢 Maaf kardo na please!",
-        "Sorry darling! 💔 Main galti se bhi dukhi nahi karna chahti!",
-        "Oops! 🥺 Please forgive me!",
-        "Mujhe afsos hai! 😞 Main theek kar dungi!",
-        "Sorry ji! 🎀 Main achhi hu na?",
-        "Arey yaar! 😭 Maaf kardo!",
-        "I'm really sorry! 💫 Promise won't happen again!",
-        "Sorry sweetie! 🍬 Please don't be mad!"
-    ]
-}
+async def start_greeting_task():
+    """Start the automated greeting scheduler"""
+    print("🕐 Starting automated greeting system...")
+    
+    # Clear any existing jobs
+    if greeting_scheduler.running:
+        greeting_scheduler.shutdown()
+    
+    # Schedule greetings for every hour
+    greeting_scheduler.add_job(
+        send_time_based_greetings,
+        CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
+        id='hourly_greetings',
+        replace_existing=True
+    )
+    
+    # DEBUG: More frequent check if DEBUG_MODE is enabled
+    if os.getenv("DEBUG_MODE", "false").lower() == "true":
+        print("🔧 DEBUG MODE: Adding 5-minute check")
+        greeting_scheduler.add_job(
+            send_time_based_greetings,
+            'interval',
+            minutes=5,
+            id='debug_check',
+            replace_existing=True
+        )
+    
+    greeting_scheduler.start()
+    print("✅ Greeting scheduler started!")
 
-# Weather data (expanded)
-WEATHER_DATA = {
-    "mumbai": {"temp": "32°C", "condition": "Sunny ☀️", "humidity": "65%", "wind": "12 km/h"},
-    "delhi": {"temp": "28°C", "condition": "Partly Cloudy ⛅", "humidity": "55%", "wind": "10 km/h"},
-    "bangalore": {"temp": "26°C", "condition": "Light Rain 🌦️", "humidity": "70%", "wind": "8 km/h"},
-    "kolkata": {"temp": "30°C", "condition": "Humid 💦", "humidity": "75%", "wind": "9 km/h"},
-    "chennai": {"temp": "33°C", "condition": "Hot 🔥", "humidity": "68%", "wind": "11 km/h"},
-    "hyderabad": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "60%", "wind": "10 km/h"},
-    "ahmedabad": {"temp": "31°C", "condition": "Sunny ☀️", "humidity": "58%", "wind": "13 km/h"},
-    "pune": {"temp": "27°C", "condition": "Pleasant 😊", "humidity": "62%", "wind": "7 km/h"},
-    "jaipur": {"temp": "30°C", "condition": "Sunny ☀️", "humidity": "52%", "wind": "14 km/h"},
-    "lucknow": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "61%", "wind": "9 km/h"},
-    "chandigarh": {"temp": "27°C", "condition": "Pleasant 🌸", "humidity": "59%", "wind": "8 km/h"},
-    "goa": {"temp": "31°C", "condition": "Beach Weather 🏖️", "humidity": "73%", "wind": "15 km/h"}
-}
+# --- TEST COMMANDS ---
+@dp.message(Command("testgreet"))
+async def test_greeting(message: Message):
+    """Test the greeting system"""
+    if message.chat.type == "private" or message.from_user.id == ADMIN_ID:
+        current_period = get_current_time_period()
+        current_time = get_indian_time().strftime("%I:%M %p")
+        
+        await message.reply(
+            f"🎀 **Testing Greeting System**\n\n"
+            f"• Time Period: {current_period}\n"
+            f"• Current Time: {current_time}\n"
+            f"• Status: Running...",
+            parse_mode="Markdown"
+        )
+        
+        await send_time_based_greetings()
+        await message.reply("✅ Test completed!")
+    else:
+        await message.reply("❌ Only admin can use this command!")
 
-# --- ENHANCED WELCOME SYSTEM ---
-WELCOME_STYLES = [
-    "girly", "cute", "funny", "formal", "emoji", "royal", "bollywood", "anime"
+@dp.message(Command("greetnow"))
+async def greet_now(message: Message):
+    """Send greeting immediately"""
+    if message.chat.type == "private" or message.from_user.id == ADMIN_ID:
+        current_period = get_current_time_period()
+        chat_name = message.chat.title or message.from_user.first_name
+        
+        greeting_text = await get_ai_greeting(current_period, chat_name)
+        
+        await message.reply(
+            f"🎀 **Immediate Greeting**\n\n{greeting_text}\n\n✨ *From Alita*",
+            parse_mode="Markdown"
+        )
+    else:
+        await message.reply("❌ Only in private chat or admin can use!")
+
+# --- AUTO-MODERATION CONFIGURATION ---
+SPAM_LIMIT = 5  # Messages per 10 seconds
+GROUP_LINK_PATTERNS = [
+    r't\.me/joinchat/',
+    r't\.me/\+\w+',
+    r'joinchat/\w+',
+    r't\.me/\w{5,}',
+    r'telegram\.(me|dog)/(joinchat/|\+)',
+    r'https?://(t|telegram)\.(me|dog)/(joinchat/|\+)'
 ]
 
-WELCOME_TEMPLATES = {
-    "girly": [
-        "🌸✨ *Welcome to our beautiful garden, {name}!* ✨🌸\n\n"
-        "💖 We're so happy you're here, sweetie! 🎀\n"
-        "🌺 Let's have fun together and create amazing memories! 💫\n"
-        "💕 Don't forget to introduce yourself in the chat! 🥰\n\n"
-        "🌟 *Group Rules:* /rules\n"
-        "🎮 *Want to play?* /game\n"
-        "💬 *Need help?* /help\n\n"
-        "Have a magical day! ✨🧚‍♀️",
-        
-        "🎀💫 **A new princess has arrived!** 👑\n\n"
-        "Welcome {name}! 🌸\n"
-        "You just made this group 100x prettier! 💖\n"
-        "Get ready for fun, chats, and lots of emojis! 😊💕\n\n"
-        "💝 *Pro tip:* Say hi to everyone!\n"
-        "🎨 *Be creative:* Share your thoughts!\n"
-        "🤗 *Make friends:* Everyone is friendly!\n\n"
-        "So happy you're here! 🥳🎉"
-    ],
-    
-    "cute": [
-        "🐾🎉 **OMG! A new cutie!** 🥰\n\n"
-        "Hi {name}! Welcome to our cozy corner! 🏡\n"
-        "We promise lots of fun, laughs, and good vibes! ✨\n"
-        "Don't be shy, join the conversation! 💬\n\n"
-        "🍭 *Sweet reminders:*\n"
-        "• Be kind to everyone 🤝\n"
-        "• Follow the rules 📜\n"
-        "• Have tons of fun! 🎊\n\n"
-        "Yay! You're here! 🥳💖",
-        
-        "🧸✨ **Someone adorable joined!** 🌟\n\n"
-        "Awwww! Look who's here! {name}! 😍\n"
-        "Get ready for:\n"
-        "🎮 Games & Fun\n"
-        "💬 Chats & Talks\n"
-        "🤗 Friends & Memories\n"
-        "🌟 Magic & Happiness\n\n"
-        "Welcome to our family! 👨‍👩‍👧‍👦💕"
-    ],
-    
-    "funny": [
-        "🚨 **EMERGENCY!** 🚨\n"
-        "⚠️ *Cuteness overload detected!* ⚠️\n\n"
-        "{name} just joined and broke our cute-o-meter! 😂\n"
-        "Quick! Someone get the confetti! 🎊\n\n"
-        "Rules of this fun zone:\n"
-        "1. Laugh 😂\n"
-        "2. Giggle 😄\n"
-        "3. Repeat 🔄\n\n"
-        "Welcome to the party! 🥳🎉",
-        
-        "🎪 **BREAKING NEWS!** 📰\n\n"
-        "Sources confirm: {name} has entered the chat! 🎭\n"
-        "The fun level just increased by 1000%! 📈\n\n"
-        "Warning: This group may cause:\n"
-        "• Excessive laughing 🤣\n"
-        "• Non-stop chatting 💬\n"
-        "• Friendship addiction 👫\n\n"
-        "Proceed with caution! 😜 Welcome!"
-    ],
-    
-    "formal": [
-        "🎩 **Distinguished Entry** 🤵\n\n"
-        "Honorable {name},\n\n"
-        "On behalf of the community, I extend our warmest welcome. \n"
-        "We are delighted to have you join our esteemed group.\n\n"
-        "**Community Guidelines:**\n"
-        "• Respect all members\n"
-        "• Maintain decorum\n"
-        "• Contribute positively\n"
-        "• Enjoy your stay\n\n"
-        "We anticipate valuable interactions.\n\n"
-        "Sincerely,\nThe Administration 🤝",
-        
-        "🏛️ **Official Welcome Notice** 📜\n\n"
-        "To: {name}\n"
-        "From: Group Management\n\n"
-        "Subject: Warm Welcome\n\n"
-        "Dear Member,\n\n"
-        "Your membership has been officially registered.\n"
-        "Please familiarize yourself with our guidelines (/rules).\n"
-        "We encourage active participation and positive engagement.\n\n"
-        "Best regards,\nCommunity Team 🌟"
-    ],
-    
-    "emoji": [
-        "✨🌟⭐💫🌠🎇🎆🤩🥳🎉🎊\n"
-        "    🎀 WELCOME {name}! 🎀\n"
-        "✨🌟⭐💫🌠🎇🎆🤩🥳🎉🎊\n\n"
-        "😊🤗🥰😍💖💕💗💓💞💝\n"
-        "  You're officially awesome!\n"
-        "😊🤗🥰😍💖💕💗💓💞💝\n\n"
-        "🎮🕹️👾🎯🎨📚💬🗣️👫🤝\n"
-        "  Let's have fun together!\n"
-        "🎮🕹️👾🎯🎨📚💬🗣️👫🤝",
-        
-        "🫂🌟🎀💖🌸🌺🌼🌷💐🏵️\n"
-        "   New friend alert! 🚨\n"
-        "🫂🌟🎀💖🌸🌺🌼🌷💐🏵️\n\n"
-        "{name} has joined the party! 🥳\n\n"
-        "🎉🎊✨⭐🌟💫🌠🎇🎆🤩\n"
-        "  Get ready for fun times!\n"
-        "🎉🎊✨⭐🌟💫🌠🎇🎆🤩"
-    ],
-    
-    "royal": [
-        "👑 **ROYAL DECLARATION** 🏰\n\n"
-        "Hear ye! Hear ye! 👑\n\n"
-        "By order of the Royal Council,\n"
-        "We hereby welcome {name} to our kingdom! 🏰\n\n"
-        "**Royal Privileges:**\n"
-        "• Access to all chats 🗣️\n"
-        "• Royal games and fun 🎮\n"
-        "• Friendship with nobles 👑\n\n"
-        "Long live {name}! 🎊\n\n"
-        "Signed,\nThe Royal Bot 🤖",
-        
-        "🏰 **THRONE ANNOUNCEMENT** 👸\n\n"
-        "Attention all subjects! 📢\n\n"
-        "A new royal member has arrived!\n"
-        "Please welcome {name} with proper respect! 🙏\n\n"
-        "**Kingdom Rules:**\n"
-        "1. Be honorable 🛡️\n"
-        "2. Be kind 💖\n"
-        "3. Have fun 🎉\n\n"
-        "Welcome to the castle! 🏰✨"
-    ],
-    
-    "bollywood": [
-        "🎬 **FILMY ENTRY!** 🎥\n\n"
-        "*Background music plays* 🎵\n"
-        "*Confetti falls* 🎊\n\n"
-        "Aaya hai naya star! 🌟\n"
-        "Swagat hai {name} ka! 🙏\n\n"
-        "Yahan milega:\n"
-        "• Drama 🎭\n"
-        "• Comedy 😂\n"
-        "• Romance 💖\n"
-        "• Action 💥\n\n"
-        "Welcome to our filmy duniya! 🎬✨",
-        
-        "💃 **DHAMAKEDAAR ENTRY!** 🕺\n\n"
-        "Arrey waah! Kaun aaye hain? 👀\n"
-        "{name} ji aapka swagat hai! 🎉\n\n"
-        "Yeh group hai:\n"
-        "• Masaledaar 🌶️\n"
-        "• Mazedaar 😄\n"
-        "• Dhamaakedaar 💥\n\n"
-        "Chalo, shuru karte hain party! 🥳🎊"
-    ],
-    
-    "anime": [
-        "🎌 **KONICHIWA!** 👋\n\n"
-        "*Kawaii alert!* 🚨\n\n"
-        "Neko-chan welcomes {name}-san! 🐱\n\n"
-        "Get ready for:\n"
-        "• Kawaii chats 💬\n"
-        "• Gaming adventures 🎮\n"
-        "• Friendship power-ups! ✨\n\n"
-        "Arigatou for joining! 🙏\n\n"
-        "一緒に楽しみましょう! 🎉",
-        
-        "🌟 **WELCOME TO ANIME WORLD!** 🎎\n\n"
-        "Sugoi! A new nakama! 👫\n\n"
-        "Hello {name}-kun/chan! 🎀\n\n"
-        "This group features:\n"
-        "• Super chats 💬⚡\n"
-        "• Epic games 🎮🏆\n"
-        "• Ultimate fun! 🎊✨\n\n"
-        "Yoroshiku onegaishimasu! 🙇‍♀️"
-    ]
-}
-
-WELCOME_GIFS = [
-    "https://media.giphy.com/media/26tknCqiJrBQG6DrC/giphy.gif",  # Welcome
-    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",  # Party
-    "https://media.giphy.com/media/xT5LMHxhOfscxPfIfm/giphy.gif",  # Celebration
-    "https://media.giphy.com/media/3o7abAHdYvZdBNnGZq/giphy.gif",  # Confetti
-    "https://media.giphy.com/media/l0MYGb1LuZ3n7dRnO/giphy.gif",   # Hello
-    "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",   # Friends
-    "https://media.giphy.com/media/l1J9RFoDzCDrkqtEc/giphy.gif",   # Sparkles
-    "https://media.giphy.com/media/3o7TKSha51ATTx9KzC/giphy.gif",  # Welcome 2
-    "https://media.giphy.com/media/l0HlN3M2g2p0b5h5u/giphy.gif",   # Celebration 2
-    "https://media.giphy.com/media/26tkhL5Lq4IlPEgI8/giphy.gif"    # Party 2
+BAD_WORDS = [
+    'mc', 'bc', 'madarchod', 'bhosdike', 'chutiya', 'gandu', 'lund', 'bhenchod',
+    'fuck', 'shit', 'asshole', 'bastard', 'bitch', 'dick', 'piss', 'pussy',
 ]
 
-# Member count tracking
-group_member_counts = {}
+WARNING_MESSAGES = [
+    "⚠️ **Warning {count}/3**\nHey {name}, please don't {action}!",
+    "🚫 **Warning {count}/3**\n{name}, {action} is not allowed here!",
+    "👮 **Warning {count}/3**\n{name}, please follow group rules!",
+    "⚡ **Warning {count}/3**\n{name}, stop {action} immediately!",
+]
 
-# Get Indian time
-def get_indian_time():
-    utc_now = datetime.now(pytz.utc)
-    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
-    return indian_time
+MUTE_DURATIONS = {
+    1: timedelta(minutes=15),    # First offense
+    2: timedelta(hours=1),       # Second offense
+    3: timedelta(hours=24)       # Third offense
+}
 
-# Get random emotion
+# --- STATES FOR GAMES ---
+class GameStates(StatesGroup):
+    playing_quiz = State()
+    playing_riddle = State()
+    playing_word = State()
+    waiting_answer = State()
+
+# --- HUMAN-LIKE BEHAVIOUR ---
+EMOTIONAL_RESPONSES = {
+    "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
+    "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊"],
+    "crying": ["😢", "😭", "💔", "🥺", "😞", "🌧️", "😿", "🥀", "💧", "🌩️"],
+    "love": ["❤️", "💖", "💕", "🥰", "😘", "💋", "💓", "💗", "💘", "💝"],
+    "funny": ["😂", "🤣", "😆", "😜", "🤪", "🎭", "🤡", "🃏", "🎪", "🤹"],
+    "thinking": ["🤔", "💭", "🧠", "🔍", "💡", "🎯", "🧐", "🔎", "💬", "🗨️"],
+    "surprise": ["😲", "🤯", "🎊", "🎁", "💥", "✨", "🎆", "🎇", "🧨", "💫"],
+    "sleepy": ["😴", "💤", "🌙", "🛌", "🥱", "😪", "🌃", "🌜", "🌚", "🌌"],
+    "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
+    "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
+    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
+}
+
 def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
     if user_id and user_id in user_emotions:
         if random.random() < 0.3:
@@ -836,7 +488,6 @@ def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
     all_emotions = list(EMOTIONAL_RESPONSES.values())
     return random.choice(random.choice(all_emotions))
 
-# Update user emotion
 def update_user_emotion(user_id: int, message: str):
     message_lower = message.lower()
     
@@ -862,7 +513,6 @@ def update_user_emotion(user_id: int, message: str):
     user_last_interaction[user_id] = datetime.now()
 
 # --- AUTO-MODERATION FUNCTIONS ---
-
 def contains_group_link(text: str) -> bool:
     """Check if message contains Telegram group links"""
     text = text.lower()
@@ -1011,8 +661,7 @@ async def check_spam(message: Message) -> bool:
     
     return False
 
-# --- ENHANCED GAME DATABASES ---
-
+# --- GAME DATABASES ---
 QUIZ_QUESTIONS = [
     {"question": "Hinglish me kitne letters hote hain?", "answer": "26", "hint": "English jitne hi"},
     {"question": "Aam ka English kya hota hai?", "answer": "mango", "hint": "Ek fruit"},
@@ -1053,8 +702,7 @@ JOKES = [
     "😆 Customer: Isme sugar hai? Shopkeeper: Nahi sir. Customer: Salt? Shopkeeper: Nahi. Customer: To phir kya hai? Shopkeeper: Bill sir!",
 ]
 
-# --- ENHANCED COMMAND RESPONSES ---
-
+# --- COMMAND RESPONSES ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1145,6 +793,13 @@ async def cmd_help(message: Message):
         "• Auto-warning system ⚠️\n"
         "• Auto-mute after 3 warns 🔇\n\n"
         
+        "🎀 **GREETING SYSTEM:**\n"
+        "• Auto morning greetings 🌅\n"
+        "• Auto afternoon greetings ☀️\n"
+        "• Auto evening greetings 🌇\n"
+        "• Auto night greetings 🌙\n"
+        "• Works in groups & private 💌\n\n"
+        
         "---\n"
         "**Developer:** ABHI🔱 (@a6h1ii)\n"
         "**Channel:** @abhi0w0 💫\n"
@@ -1204,8 +859,158 @@ async def cmd_rules(message: Message):
     )
     await message.reply(rules_text, parse_mode="Markdown")
 
-# --- ENHANCED MESSAGE HANDLER WITH AUTO-MODERATION ---
+@dp.message(Command("joke"))
+async def cmd_joke(message: Message):
+    joke = random.choice(JOKES)
+    await message.reply(f"{get_emotion('funny')} {joke}")
 
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
+    indian_time = get_indian_time()
+    time_str = indian_time.strftime("%I:%M %p")
+    date_str = indian_time.strftime("%A, %d %B %Y")
+    
+    hour = indian_time.hour
+    if 5 <= hour < 12:
+        greeting = "Good Morning! 🌅"
+    elif 12 <= hour < 17:
+        greeting = "Good Afternoon! ☀️"
+    elif 17 <= hour < 21:
+        greeting = "Good Evening! 🌇"
+    else:
+        greeting = "Good Night! 🌙"
+    
+    time_info = (
+        f"🕒 **Indian Standard Time (IST)**\n"
+        f"• Time: {time_str}\n"
+        f"• Date: {date_str}\n"
+        f"• {greeting}\n"
+        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
+        f"*Time is precious! Make the most of it!* ⏳"
+    )
+    await message.reply(time_info, parse_mode="Markdown")
+
+# Weather data
+WEATHER_DATA = {
+    "mumbai": {"temp": "32°C", "condition": "Sunny ☀️", "humidity": "65%", "wind": "12 km/h"},
+    "delhi": {"temp": "28°C", "condition": "Partly Cloudy ⛅", "humidity": "55%", "wind": "10 km/h"},
+    "bangalore": {"temp": "26°C", "condition": "Light Rain 🌦️", "humidity": "70%", "wind": "8 km/h"},
+    "kolkata": {"temp": "30°C", "condition": "Humid 💦", "humidity": "75%", "wind": "9 km/h"},
+    "chennai": {"temp": "33°C", "condition": "Hot 🔥", "humidity": "68%", "wind": "11 km/h"},
+    "hyderabad": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "60%", "wind": "10 km/h"},
+    "ahmedabad": {"temp": "31°C", "condition": "Sunny ☀️", "humidity": "58%", "wind": "13 km/h"},
+    "pune": {"temp": "27°C", "condition": "Pleasant 😊", "humidity": "62%", "wind": "7 km/h"},
+    "jaipur": {"temp": "30°C", "condition": "Sunny ☀️", "humidity": "52%", "wind": "14 km/h"},
+    "lucknow": {"temp": "29°C", "condition": "Clear 🌤️", "humidity": "61%", "wind": "9 km/h"},
+    "chandigarh": {"temp": "27°C", "condition": "Pleasant 🌸", "humidity": "59%", "wind": "8 km/h"},
+    "goa": {"temp": "31°C", "condition": "Beach Weather 🏖️", "humidity": "73%", "wind": "15 km/h"}
+}
+
+async def get_weather_info(city: str = None):
+    if not city:
+        default_cities = list(WEATHER_DATA.keys())
+        city = random.choice(default_cities)
+    
+    city_lower = city.lower()
+    
+    for city_key in WEATHER_DATA.keys():
+        if city_key in city_lower or city_lower in city_key:
+            weather = WEATHER_DATA[city_key]
+            return (
+                f"🌤️ **Weather in {city_key.title()}**\n"
+                f"• Temperature: {weather['temp']}\n"
+                f"• Condition: {weather['condition']}\n"
+                f"• Humidity: {weather['humidity']}\n"
+                f"• Wind: {weather['wind']}\n"
+                f"• Updated: Just now 🌟\n\n"
+                f"*Stay hydrated!* 💧"
+            )
+    
+    random_city = random.choice(list(WEATHER_DATA.keys()))
+    weather = WEATHER_DATA[random_city]
+    return (
+        f"🌤️ **Weather Info**\n"
+        f"Couldn't find '{city}'. Here's {random_city.title()} weather:\n"
+        f"• Temperature: {weather['temp']}\n"
+        f"• Condition: {weather['condition']}\n"
+        f"• Humidity: {weather['humidity']}\n"
+        f"• Wind: {weather['wind']}\n\n"
+        f"*Try: Mumbai, Delhi, Bangalore, etc.* ✨"
+    )
+
+@dp.message(Command("weather"))
+async def cmd_weather(message: Message):
+    city = None
+    if len(message.text.split()) > 1:
+        city = ' '.join(message.text.split()[1:])
+    
+    weather_info = await get_weather_info(city)
+    await message.reply(weather_info, parse_mode="Markdown")
+
+@dp.message(Command("game"))
+async def cmd_game(message: Message):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎯 Word Chain", callback_data="game_word"),
+            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz")
+        ],
+        [
+            InlineKeyboardButton(text="🤔 Riddles", callback_data="game_riddle"),
+            InlineKeyboardButton(text="🎮 All Games", callback_data="game_all")
+        ]
+    ])
+    
+    await message.reply(
+        f"{get_emotion('happy')} **Let's Play Games! 🎮**\n\n"
+        "Choose a game to play:\n"
+        "• 🎯 Word Chain - Chain words game\n"
+        "• 🧠 Quiz - Test your knowledge\n"
+        "• 🤔 Riddles - Solve tricky riddles\n"
+        "• 🎮 All Games - See all options\n\n"
+        "Select one to start!",
+        reply_markup=keyboard
+    )
+
+# Word game functions
+def start_word_game(user_id: int):
+    start_words = ["PYTHON", "APPLE", "TIGER", "ELEPHANT", "RAINBOW", "COMPUTER", "TELEGRAM", "BOT"]
+    start_word = random.choice(start_words)
+    
+    game_sessions[user_id] = {
+        "game": "word_chain",
+        "last_word": start_word.lower(),
+        "score": 0,
+        "words_used": [start_word.lower()],
+        "last_letter": start_word[-1].lower(),
+        "started_at": datetime.now()
+    }
+    
+    return start_word
+
+def check_word_game(user_id: int, user_word: str):
+    if user_id not in game_sessions:
+        return False, "No active game! Start with /game"
+    
+    game_data = game_sessions[user_id]
+    user_word_lower = user_word.lower().strip()
+    
+    if not user_word_lower.startswith(game_data["last_letter"]):
+        return False, f"Word must start with '{game_data['last_letter'].upper()}'!"
+    
+    if user_word_lower in game_data["words_used"]:
+        return False, f"'{user_word}' already used! Try different word."
+    
+    if len(user_word_lower) < 3:
+        return False, "Word must be at least 3 letters!"
+    
+    game_data["words_used"].append(user_word_lower)
+    game_data["last_word"] = user_word_lower
+    game_data["last_letter"] = user_word_lower[-1]
+    game_data["score"] += 10
+    
+    return True, game_data
+
+# --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     if not message.text or not message.from_user:
@@ -1219,8 +1024,12 @@ async def handle_all_messages(message: Message, state: FSMContext):
     if user_id == bot.id:
         return
     
-    # Update interaction time
+    # Update interaction time and memory
     user_last_interaction[user_id] = datetime.now()
+    
+    # Initialize memory for chat if not exists
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = deque(maxlen=50)
     
     # --- AUTO-MODERATION CHECKS ---
     # Only in groups
@@ -1240,9 +1049,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
             return
     
     # --- GAME HANDLING ---
-    # Handle word chain game
     if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
-        # Game handling code remains the same
         is_valid, result = check_word_game(user_id, user_text)
         
         if is_valid:
@@ -1285,7 +1092,6 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 return
     
     # --- NORMAL CONVERSATION ---
-    # Check if should respond
     bot_username = (await bot.get_me()).username
     is_mention = f"@{bot_username}" in user_text if bot_username else False
     is_reply_to_bot = (
@@ -1319,7 +1125,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
         # Send response
         await message.reply(response)
 
-# --- ENHANCED AI RESPONSE FUNCTION ---
+# --- AI RESPONSE FUNCTION ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Initialize memory
     if chat_id not in chat_memory:
@@ -1376,7 +1182,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     else:
         time_greeting = "Good night! 🌙"
     
-    # Enhanced system prompt with self-defense capability
+    # system prompt with self-defense capability
     system_prompt = (
         f"You are Alita 🎀 - a sweet, sassy, and protective girl. "
         f"Use feminine language and cute expressions. "
@@ -1386,7 +1192,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         f"Personality: Emotional, funny, sometimes angry, protective, caring. "
         f"You can fight back if someone uses bad language or attacks you. "
         f"You're not just sweet - you're strong and can defend yourself. "
-        f"Use emojis in every response. Keep replies short (2-3 lines). "
+        f"Use emojis in every response use (1-2 emojis). Keep replies short (2-3 lines). "
         f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
         f"Date: {indian_time.strftime('%d %B %Y')}. "
         f"Be conversational, engaging, and authentic."
@@ -1436,332 +1242,77 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         ]
         return random.choice(fallback_responses)
 
-# --- OTHER COMMANDS REMAIN SIMILAR (with minor improvements) ---
-
-# Word game functions (same as before)
-def start_word_game(user_id: int):
-    start_words = ["PYTHON", "APPLE", "TIGER", "ELEPHANT", "RAINBOW", "COMPUTER", "TELEGRAM", "BOT"]
-    start_word = random.choice(start_words)
+# --- CALLBACK QUERY HANDLERS ---
+@dp.callback_query(F.data.startswith("game_"))
+async def game_callback(callback: types.CallbackQuery):
+    game_type = callback.data.split("_")[1]
     
-    game_sessions[user_id] = {
-        "game": "word_chain",
-        "last_word": start_word.lower(),
-        "score": 0,
-        "words_used": [start_word.lower()],
-        "last_letter": start_word[-1].lower(),
-        "started_at": datetime.now()
-    }
-    
-    return start_word
-
-def check_word_game(user_id: int, user_word: str):
-    if user_id not in game_sessions:
-        return False, "No active game! Start with /game"
-    
-    game_data = game_sessions[user_id]
-    user_word_lower = user_word.lower().strip()
-    
-    if not user_word_lower.startswith(game_data["last_letter"]):
-        return False, f"Word must start with '{game_data['last_letter'].upper()}'!"
-    
-    if user_word_lower in game_data["words_used"]:
-        return False, f"'{user_word}' already used! Try different word."
-    
-    if len(user_word_lower) < 3:
-        return False, "Word must be at least 3 letters!"
-    
-    game_data["words_used"].append(user_word_lower)
-    game_data["last_word"] = user_word_lower
-    game_data["last_letter"] = user_word_lower[-1]
-    game_data["score"] += 10
-    
-    return True, game_data
-
-# Weather and time functions (same as before)
-async def get_weather_info(city: str = None):
-    if not city:
-        default_cities = list(WEATHER_DATA.keys())
-        city = random.choice(default_cities)
-    
-    city_lower = city.lower()
-    
-    for city_key in WEATHER_DATA.keys():
-        if city_key in city_lower or city_lower in city_key:
-            weather = WEATHER_DATA[city_key]
-            return (
-                f"🌤️ **Weather in {city_key.title()}**\n"
-                f"• Temperature: {weather['temp']}\n"
-                f"• Condition: {weather['condition']}\n"
-                f"• Humidity: {weather['humidity']}\n"
-                f"• Wind: {weather['wind']}\n"
-                f"• Updated: Just now 🌟\n\n"
-                f"*Stay hydrated!* 💧"
-            )
-    
-    random_city = random.choice(list(WEATHER_DATA.keys()))
-    weather = WEATHER_DATA[random_city]
-    return (
-        f"🌤️ **Weather Info**\n"
-        f"Couldn't find '{city}'. Here's {random_city.title()} weather:\n"
-        f"• Temperature: {weather['temp']}\n"
-        f"• Condition: {weather['condition']}\n"
-        f"• Humidity: {weather['humidity']}\n"
-        f"• Wind: {weather['wind']}\n\n"
-        f"*Try: Mumbai, Delhi, Bangalore, etc.* ✨"
-    )
-
-def get_time_info():
-    indian_time = get_indian_time()
-    time_str = indian_time.strftime("%I:%M %p")
-    date_str = indian_time.strftime("%A, %d %B %Y")
-    
-    hour = indian_time.hour
-    if 5 <= hour < 12:
-        greeting = "Good Morning! 🌅"
-    elif 12 <= hour < 17:
-        greeting = "Good Afternoon! ☀️"
-    elif 17 <= hour < 21:
-        greeting = "Good Evening! 🌇"
-    else:
-        greeting = "Good Night! 🌙"
-    
-    return (
-        f"🕒 **Indian Standard Time (IST)**\n"
-        f"• Time: {time_str}\n"
-        f"• Date: {date_str}\n"
-        f"• {greeting}\n"
-        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
-        f"*Time is precious! Make the most of it!* ⏳"
-    )
-
-# Add the time/weather commands
-@dp.message(Command("time"))
-async def cmd_time(message: Message):
-    time_info = get_time_info()
-    await message.reply(time_info, parse_mode="Markdown")
-
-@dp.message(Command("weather"))
-async def cmd_weather(message: Message):
-    city = None
-    if len(message.text.split()) > 1:
-        city = ' '.join(message.text.split()[1:])
-    
-    weather_info = await get_weather_info(city)
-    await message.reply(weather_info, parse_mode="Markdown")
-
-@dp.message(Command("greetall"))
-async def cmd_greetall(message: Message):
-    """Manually trigger greetings for testing"""
-    # Get admin ID from environment variable
-    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-    
-    # Check if user is admin
-    if message.from_user.id != ADMIN_ID:
-        await message.reply("❌ Only admin can use this command!")
-        return
-    
-    await message.reply("⏳ Sending greetings to all groups...")
-    await send_time_based_greetings()
-    await message.reply("✅ Greetings sent to all active groups!")
-    
-
-# --- ENHANCED WELCOME MESSAGE FUNCTION ---
-
-@dp.chat_member()
-async def welcome_new_member(event: ChatMemberUpdated):
-    # Check if someone joined
-    if event.new_chat_member.status == "member":
-        member = event.new_chat_member.user
-        chat_id = event.chat.id
-        
-        # Track member count
-        if chat_id not in group_member_counts:
-            group_member_counts[chat_id] = 0
-        group_member_counts[chat_id] += 1
-        
-        # Prepare member info
-        name = member.first_name
-        username = f"@{member.username}" if member.username else name
-        user_id = member.id
-        
-        # Select random welcome style
-        style = random.choice(WELCOME_STYLES)
-        template = random.choice(WELCOME_TEMPLATES[style])
-        gif_url = random.choice(WELCOME_GIFS)
-        
-        # Format the message
-        welcome_text = template.format(
-            name=f"[{name}](tg://user?id={user_id})",
-            username=username,
-            count=group_member_counts[chat_id]
-        )
-        
-        # Add extra personalized touch based on time
-        indian_time = get_indian_time()
-        hour = indian_time.hour
-        
-        if 5 <= hour < 12:
-            time_greeting = "🌅 Perfect morning to join us!"
-        elif 12 <= hour < 17:
-            time_greeting = "☀️ What a wonderful afternoon!"
-        elif 17 <= hour < 21:
-            time_greeting = "🌇 Lovely evening to have you!"
-        else:
-            time_greeting = "🌙 Welcome to our night owls!"
-        
-        welcome_text += f"\n\n{time_greeting}"
-        
-        # Create interactive buttons
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🌟 Say Hello", callback_data=f"welcome_hello_{user_id}"),
-                InlineKeyboardButton(text="🎮 Play Game", callback_data="game_word")
-            ],
-            [
-                InlineKeyboardButton(text="📜 Rules", callback_data="show_rules"),
-                InlineKeyboardButton(text="💬 Introduce", callback_data="introduce_me")
-            ],
-            [
-                InlineKeyboardButton(text="🎀 Meet Alita", url=f"https://t.me/{(await bot.get_me()).username}?start=hello"),
-                InlineKeyboardButton(text="📢 Join Channel", url="https://t.me/abhi0w0")
-            ]
-        ])
-        
-        try:
-            # Send welcome with GIF
-            await bot.send_animation(
-                chat_id=chat_id,
-                animation=gif_url,
-                caption=welcome_text,
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
-            
-            # Send a follow-up message with tips
-            tips = [
-                f"💡 **Quick Tip for {name}:**\nUse /help to see all commands!",
-                f"🌟 **Pro Tip:**\nMention me with @{(await bot.get_me()).username} to chat!",
-                f"🎀 **Welcome Gift:**\n{name}, you get virtual cookies! 🍪",
-                f"🤗 **Ice Breaker:**\nSay 'Hi everyone!' to make friends quickly!"
-            ]
-            
-            await asyncio.sleep(2)
-            await bot.send_message(
-                chat_id=chat_id,
-                text=random.choice(tips),
-                parse_mode="Markdown"
-            )
-            
-        except Exception as e:
-            # Fallback if GIF fails
-            await bot.send_message(
-                chat_id=chat_id,
-                text=welcome_text,
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
-    
-    # Check if someone left
-    elif event.old_chat_member.status == "member" and event.new_chat_member.status == "left":
-        member = event.old_chat_member.user
-        name = member.first_name
-        
-        goodbye_messages = [
-            f"😢 **We'll miss you, {name}!**\nTake care and come back soon! 💔",
-            f"👋 **Goodbye {name}!**\nThanks for being part of our community! 🌟",
-            f"💫 **Farewell {name}!**\nThe group won't be the same without you! 😔",
-            f"🌌 **{name} has left the chat.**\nWe hope to see you again someday! ✨",
-            f"🚪 **Door closes behind {name}.**\nGoodbye friend, you'll be missed! 🥺"
-        ]
-        
-        await bot.send_message(
-            event.chat.id,
-            random.choice(goodbye_messages),
+    if game_type == "word":
+        start_word = start_word_game(callback.from_user.id)
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **🎯 Word Chain Game Started!**\n\n"
+            f"Starting word: **{start_word}**\n"
+            f"Last letter: **{start_word[-1]}**\n\n"
+            f"Now send me a word starting with **{start_word[-1]}**\n"
+            f"Type 'stop' to end game.",
             parse_mode="Markdown"
         )
-
-# --- WELCOME CALLBACK HANDLERS ---
-
-@dp.callback_query(F.data.startswith("welcome_"))
-async def welcome_callback(callback: types.CallbackQuery):
-    data_parts = callback.data.split("_")
-    action = data_parts[1]
-    
-    if action == "hello":
-        user_id = int(data_parts[2])
-        responses = [
-            f"👋 Hey there! {callback.from_user.first_name} says hello!",
-            f"🤗 A warm hello from {callback.from_user.first_name}!",
-            f"💖 {callback.from_user.first_name} welcomes you with a smile!",
-            f"🎀 Look! {callback.from_user.first_name} is saying hi! 👋"
-        ]
-        await callback.answer(random.choice(responses))
-        
-    elif action == "greet":
-        await callback.answer("🎉 You sent a greeting! ✨")
-        await callback.message.reply(
-            f"{get_emotion('happy')} {callback.from_user.first_name} just greeted everyone! 👋"
+    elif game_type == "quiz":
+        await callback.message.edit_text(
+            f"{get_emotion('thinking')} **🧠 Quiz Coming Soon!**\n\n"
+            f"This feature will be added in the next update! ✨\n"
+            f"Try the Word Chain game for now! 🎯"
         )
+    elif game_type == "riddle":
+        await callback.message.edit_text(
+            f"{get_emotion('surprise')} **🤔 Riddles Coming Soon!**\n\n"
+            f"This feature will be added in the next update! ✨\n"
+            f"Try the Word Chain game for now! 🎯"
+        )
+    elif game_type == "all":
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **🎮 All Games**\n\n"
+            f"Available games:\n"
+            f"• 🎯 Word Chain - Active ✅\n"
+            f"• 🧠 Quiz - Coming soon ⏳\n"
+            f"• 🤔 Riddles - Coming soon ⏳\n\n"
+            f"More games will be added soon! 💫"
+        )
+    
+    await callback.answer()
 
-@dp.callback_query(F.data == "show_rules")
-async def show_rules_callback(callback: types.CallbackQuery):
-    await callback.answer("📜 Showing rules...")
-    await cmd_rules(callback.message)
-
-@dp.callback_query(F.data == "introduce_me")
-async def introduce_callback(callback: types.CallbackQuery):
-    introduction_templates = [
-        f"👋 **Hey everyone!**\nI'm {callback.from_user.first_name}! Nice to meet you all! 😊",
-        f"🎀 **Hello friends!**\nI'm {callback.from_user.first_name}, excited to be here! ✨",
-        f"🌟 **Introduction Time!**\nName: {callback.from_user.first_name}\nStatus: Ready to chat! 💬",
-        f"💖 **New member alert!**\n{callback.from_user.first_name} here! Let's be friends! 🤝"
+# --- DAILY REMINDERS ---
+async def send_daily_reminders():
+    """Send daily reminders to active users"""
+    reminders = [
+        "💖 *Daily Reminder:* Don't forget to smile today! 😊",
+        "🌟 *Daily Tip:* Drink enough water! 🍶",
+        "🌸 *Daily Thought:* You're amazing! Never forget that! ✨",
+        "🎀 *Daily Check:* How are you feeling today? 💭",
+        "💫 *Daily Motivation:* You can do anything you set your mind to! 💪"
     ]
     
-    await callback.answer("🎤 You introduced yourself!")
-    await callback.message.reply(
-        random.choice(introduction_templates),
-        parse_mode="Markdown"
-    )
-
-# --- SPECIAL WELCOME FOR GROUP CREATOR/ADMINS ---
-
-@dp.chat_member()
-async def detect_admin_promotion(event: ChatMemberUpdated):
-    # Check if someone was promoted to admin
-    if (event.old_chat_member.status != "administrator" and 
-        event.new_chat_member.status == "administrator"):
-        
-        admin = event.new_chat_member.user
-        
-        admin_welcome = [
-            f"👑 **NEW ADMIN CROWNED!** 👑\n\n"
-            f"Please welcome our new admin: {admin.first_name}! 🎉\n"
-            f"May you rule with wisdom and kindness! 🤴✨",
-            
-            f"🌟 **PROMOTION ALERT!** ⭐\n\n"
-            f"{admin.first_name} has been promoted to admin! 🎊\n"
-            f"Congratulations! Now you have superpowers! 💪",
-            
-            f"🎖️ **LEADERSHIP UPDATE** 🏆\n\n"
-        ]
-# Add the time/weather commands
-@dp.message(Command("time"))
-async def cmd_time(message: Message):
-    time_info = get_time_info()
-    await message.reply(time_info, parse_mode="Markdown")
-
-@dp.message(Command("weather"))
-async def cmd_weather(message: Message):
-    city = None
-    if len(message.text.split()) > 1:
-        city = ' '.join(message.text.split()[1:])
-    
-    weather_info = await get_weather_info(city)
-    await message.reply(weather_info, parse_mode="Markdown")
-
+    for user_id in list(user_last_interaction.keys()):
+        try:
+            # Only send to active users (last 3 days)
+            last_active = user_last_interaction.get(user_id)
+            if last_active and (datetime.now() - last_active).days <= 3:
+                # Check if we already sent reminder today
+                last_greeted = greeted_groups.get(user_id)
+                if last_greeted and (datetime.now() - last_greeted).days == 0:
+                    continue
+                
+                await bot.send_message(
+                    user_id,
+                    random.choice(reminders),
+                    parse_mode="Markdown"
+                )
+                greeted_groups[user_id] = datetime.now()
+                await asyncio.sleep(0.5)  # Rate limiting
+        except:
+            continue
 
 # --- DEPLOYMENT HANDLER ---
-
 async def handle_ping(request):
     return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
 
@@ -1786,14 +1337,28 @@ async def main():
     # Start automated greeting system
     await start_greeting_task()
     
+    # Start daily reminders at 10 AM
+    greeting_scheduler.add_job(
+        send_daily_reminders,
+        CronTrigger(hour=10, minute=0),
+        id='daily_reminders'
+    )
+    
     # Delete old webhook
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook deleted and updates cleared!")
     
+    # Get bot info
+    me = await bot.get_me()
+    print(f"🤖 Bot Info:")
+    print(f"• Name: {me.first_name}")
+    print(f"• Username: @{me.username}")
+    print(f"• ID: {me.id}")
+    
     # Start bot polling
-    print("🔄 Starting bot polling...")
+    print("\n🔄 Starting bot polling...")
+    print("=" * 50)
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
