@@ -4,7 +4,7 @@ yt-dlp==2024.8.6
 edge-tts==6.1.12
 duckduckgo_search==6.2.13
 motor==3.6.0
-pymongo==4.8.0
+pymongo==4.9.1
 dnspython==2.6.1
 aiohttp==3.9.5
 aiofiles==23.2.1
