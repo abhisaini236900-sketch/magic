@@ -2,12 +2,14 @@ import os
 import asyncio
 import random
 import re
+import aiofiles
+import aiohttp
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -16,10 +18,19 @@ from aiohttp import web
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import yt_dlp
+from duckduckgo_search import DDGS
+import edge_tts
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import uuid
+import tempfile
+import shutil
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")  # MongoDB URI
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
@@ -34,18 +45,21 @@ dp = Dispatcher(storage=storage)
 # Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- MEMORY SYSTEMS ---
+# Initialize MongoDB
+mongo_client = AsyncIOMotorClient(MONGO_URI)
+db = mongo_client.alita_bot
+user_collection = db.users
+warnings_collection = db.warnings
+downloads_collection = db.downloads
+
+# --- IN-MEMORY CACHE (for faster access) ---
 chat_memory: Dict[int, deque] = {}
-user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))  # chat_id -> user_id -> warnings
-user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> count
-last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))  # chat_id -> user_id -> messages
+user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
+last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))
+game_sessions: Dict[int, Dict] = {}
 
 # Game states storage
 game_sessions: Dict[int, Dict] = {}
-
-# Emotional states for each user
-user_emotions: Dict[int, str] = {}
-user_last_interaction: Dict[int, datetime] = {}
 
 # --- TIME-BASED GREETING SYSTEM ---
 greeting_scheduler = AsyncIOScheduler()
@@ -85,7 +99,7 @@ GREETING_STICKERS = {
     ],
     "evening": [
         "CAACAgIAAxkBAAIBu2arL39OxGQyWUY6g8IRf4yOT4IXAAJGAAPBnGAMMZ2TQk2F5McwBA",
-        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJowBA"
+        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJozBA"
     ],
     "night": [
         "CAACAgIAAxkBAAIBv2arL4RCHa0o_wvJ0mnRR_D6wTwsAAJmAAPBnGAM8P3Lk0C-eSEwBA",
@@ -100,7 +114,7 @@ GREETING_STICKERS = {
 # --- TIME-BASED GREETINGS ---
 TIME_GREETINGS = {
     "morning": {
-        "time_range": (5, 11),  # 5 AM to 11 AM
+        "time_range": (5, 11),
         "keywords": ["subah", "morning", "good morning", "सुबह", "शुभ प्रभात"],
         "emotions": ["happy", "love", "surprise"],
         "templates": [
@@ -112,7 +126,7 @@ TIME_GREETINGS = {
         ]
     },
     "afternoon": {
-        "time_range": (12, 16),  # 12 PM to 4 PM
+        "time_range": (12, 16),
         "keywords": ["dopahar", "afternoon", "good afternoon", "दोपहर", "शुभ दोपहर"],
         "emotions": ["thinking", "hungry", "funny"],
         "templates": [
@@ -124,7 +138,7 @@ TIME_GREETINGS = {
         ]
     },
     "evening": {
-        "time_range": (17, 20),  # 5 PM to 8 PM
+        "time_range": (17, 20),
         "keywords": ["shaam", "evening", "good evening", "शाम", "शुभ संध्या"],
         "emotions": ["love", "happy", "sassy"],
         "templates": [
@@ -136,7 +150,7 @@ TIME_GREETINGS = {
         ]
     },
     "night": {
-        "time_range": (21, 23),  # 9 PM to 11 PM
+        "time_range": (21, 23),
         "keywords": ["raat", "night", "good night", "रात", "शुभ रात्रि"],
         "emotions": ["sleepy", "love", "crying"],
         "templates": [
@@ -148,7 +162,7 @@ TIME_GREETINGS = {
         ]
     },
     "late_night": {
-        "time_range": (0, 4),  # 12 AM to 4 AM
+        "time_range": (0, 4),
         "keywords": ["midnight", "late", "raat", "आधी रात"],
         "emotions": ["sleepy", "thinking", "surprise"],
         "templates": [
@@ -160,6 +174,272 @@ TIME_GREETINGS = {
         ]
     }
 }
+
+# --- MONGODB FUNCTIONS ---
+async def get_user_data(user_id: int, chat_id: int = None) -> Dict:
+    """Get user data from MongoDB"""
+    try:
+        user_data = await user_collection.find_one({"user_id": user_id})
+        if not user_data:
+            user_data = {
+                "user_id": user_id,
+                "emotion": "happy",
+                "last_interaction": datetime.now(),
+                "total_messages": 0,
+                "warnings": 0,
+                "created_at": datetime.now()
+            }
+            await user_collection.insert_one(user_data)
+        
+        # Update last interaction
+        await user_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"last_interaction": datetime.now()},
+             "$inc": {"total_messages": 1}}
+        )
+        
+        return user_data
+    except Exception as e:
+        print(f"MongoDB get_user_data error: {e}")
+        return {"user_id": user_id, "emotion": "happy"}
+
+async def update_user_emotion_db(user_id: int, emotion: str):
+    """Update user emotion in MongoDB"""
+    try:
+        await user_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"emotion": emotion}},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"MongoDB update_emotion error: {e}")
+
+async def get_user_warnings(user_id: int, chat_id: int) -> Dict:
+    """Get user warnings from MongoDB"""
+    try:
+        warning_data = await warnings_collection.find_one({
+            "user_id": user_id,
+            "chat_id": chat_id
+        })
+        
+        if not warning_data:
+            warning_data = {
+                "user_id": user_id,
+                "chat_id": chat_id,
+                "count": 0,
+                "reasons": [],
+                "last_warning": None,
+                "created_at": datetime.now()
+            }
+            await warnings_collection.insert_one(warning_data)
+        
+        return warning_data
+    except Exception as e:
+        print(f"MongoDB get_warnings error: {e}")
+        return {"count": 0, "reasons": []}
+
+async def add_warning(user_id: int, chat_id: int, reason: str) -> Dict:
+    """Add warning to user in MongoDB"""
+    try:
+        warning_data = await get_user_warnings(user_id, chat_id)
+        
+        new_count = warning_data["count"] + 1
+        reasons = warning_data["reasons"] + [reason]
+        
+        await warnings_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": {
+                "count": new_count,
+                "reasons": reasons,
+                "last_warning": datetime.now()
+            }},
+            upsert=True
+        )
+        
+        return {"count": new_count, "reasons": reasons}
+    except Exception as e:
+        print(f"MongoDB add_warning error: {e}")
+        return {"count": 1, "reasons": [reason]}
+
+async def reset_warnings(user_id: int, chat_id: int):
+    """Reset user warnings in MongoDB"""
+    try:
+        await warnings_collection.update_one(
+            {"user_id": user_id, "chat_id": chat_id},
+            {"$set": {
+                "count": 0,
+                "reasons": [],
+                "last_warning": None
+            }}
+        )
+    except Exception as e:
+        print(f"MongoDB reset_warnings error: {e}")
+
+# --- SOCIAL MEDIA DOWNLOADER ---
+class SocialDownloader:
+    def __init__(self):
+        self.ydl_opts = {
+            'format': 'best[height<=720]',
+            'outtmpl': '%(title)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'noplaylist': True,
+        }
+    
+    async def is_social_media_link(self, text: str) -> bool:
+        """Check if text contains social media links"""
+        patterns = [
+            r'(https?://(?:www\.)?instagram\.com/(?:p|reel|tv)/[^\s]+)',
+            r'(https?://(?:www\.)?youtube\.com/watch\?v=[^\s]+)',
+            r'(https?://youtu\.be/[^\s]+)',
+            r'(https?://(?:www\.)?pinterest\.com/pin/[^\s]+)',
+            r'(https?://(?:www\.)?pinterest\.com/[^\s]+/[^\s]+)',
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+        return False
+    
+    async def extract_link(self, text: str) -> Optional[str]:
+        """Extract social media link from text"""
+        patterns = [
+            r'https?://(?:www\.)?instagram\.com/(?:p|reel|tv)/[^\s]+',
+            r'https?://(?:www\.)?youtube\.com/watch\?v=[^\s]+',
+            r'https?://youtu\.be/[^\s]+',
+            r'https?://(?:www\.)?pinterest\.com/pin/[^\s]+',
+            r'https?://(?:www\.)?pinterest\.com/[^\s]+/[^\s]+',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(0)
+        return None
+    
+    async def download_media(self, url: str) -> Optional[str]:
+        """Download media from social media URL"""
+        temp_dir = tempfile.mkdtemp(prefix="alita_download_")
+        
+        try:
+            ydl_opts = self.ydl_opts.copy()
+            ydl_opts['outtmpl'] = os.path.join(temp_dir, '%(title)s.%(ext)s')
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                
+                if not info:
+                    return None
+                
+                # Find the downloaded file
+                files = os.listdir(temp_dir)
+                if not files:
+                    return None
+                
+                downloaded_file = os.path.join(temp_dir, files[0])
+                
+                # Get file info for database
+                file_size = os.path.getsize(downloaded_file) / (1024 * 1024)  # MB
+                
+                # Save download record
+                await downloads_collection.insert_one({
+                    "url": url,
+                    "file_path": downloaded_file,
+                    "file_size_mb": round(file_size, 2),
+                    "downloaded_at": datetime.now(),
+                    "platform": self.get_platform(url)
+                })
+                
+                return downloaded_file
+                
+        except Exception as e:
+            print(f"Download error: {e}")
+            # Clean up temp directory
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            return None
+    
+    def get_platform(self, url: str) -> str:
+        """Get platform name from URL"""
+        if 'instagram.com' in url:
+            return 'instagram'
+        elif 'youtube.com' in url or 'youtu.be' in url:
+            return 'youtube'
+        elif 'pinterest.com' in url:
+            return 'pinterest'
+        return 'unknown'
+
+# Initialize downloader
+downloader = SocialDownloader()
+
+# --- DUCKDUCKGO SEARCH ---
+async def duckduckgo_search(query: str, max_results: int = 3) -> List[Dict]:
+    """Search using DuckDuckGo"""
+    try:
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=max_results):
+                results.append({
+                    'title': r.get('title', 'No title'),
+                    'body': r.get('body', 'No description'),
+                    'link': r.get('href', '#'),
+                    'source': 'DuckDuckGo'
+                })
+        return results
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
+
+# --- EDGE-TTS VOICE GENERATION ---
+async def text_to_speech(text: str, voice: str = "en-IN-NeerjaExpressiveNeural") -> Optional[str]:
+    """Convert text to speech using Edge-TTS"""
+    temp_file = None
+    try:
+        # Create temporary file
+        temp_file = f"temp_voice_{uuid.uuid4().hex}.mp3"
+        
+        # Initialize TTS
+        tts = edge_tts.Communicate(text=text, voice=voice)
+        
+        # Save to file
+        await tts.save(temp_file)
+        
+        return temp_file
+        
+    except Exception as e:
+        print(f"TTS error: {e}")
+        if temp_file and os.path.exists(temp_file):
+            os.remove(temp_file)
+        return None
+
+# --- IMAGE GENERATION ---
+async def generate_image(prompt: str) -> Optional[str]:
+    """Generate image using Pollinations.ai"""
+    try:
+        # Clean prompt for URL
+        clean_prompt = re.sub(r'[^a-zA-Z0-9\s-]', '', prompt)
+        clean_prompt = clean_prompt.replace(' ', '-')[:100]
+        
+        # Pollinations.ai URL
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}"
+        
+        # Create temp file
+        temp_file = f"temp_image_{uuid.uuid4().hex}.jpg"
+        
+        # Download image
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    async with aiofiles.open(temp_file, 'wb') as f:
+                        await f.write(await response.read())
+                    return temp_file
+        
+        return None
+        
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        return None
 
 async def get_ai_greeting(time_period: str, group_name: str = None) -> str:
     """Get AI-generated greeting for current time period"""
@@ -251,11 +531,11 @@ async def send_time_based_greetings():
                     active_groups.append(chat_id)
                 elif chat.type == "private":
                     # Only include active private chats (last 7 days)
-                    if chat_id in user_last_interaction:
-                        last_active = user_last_interaction[chat_id]
-                        days_since_active = (datetime.now() - last_active).days
-                        if days_since_active <= 7:
-                            private_chats.append(chat_id)
+                    user_data = await get_user_data(chat_id)
+                    last_active = user_data.get("last_interaction", datetime.min)
+                    days_since_active = (datetime.now() - last_active).days
+                    if days_since_active <= 7:
+                        private_chats.append(chat_id)
             except Exception as e:
                 print(f"   ❌ Error checking chat {chat_id}: {e}")
                 continue
@@ -478,9 +758,14 @@ EMOTIONAL_RESPONSES = {
 }
 
 def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
-    if user_id and user_id in user_emotions:
-        if random.random() < 0.3:
-            emotion_type = user_emotions[user_id]
+    if user_id:
+        # Try to get from MongoDB first
+        try:
+            user_data = asyncio.run(get_user_data(user_id))
+            if user_data and 'emotion' in user_data:
+                emotion_type = user_data['emotion']
+        except:
+            pass
     
     if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
         return random.choice(EMOTIONAL_RESPONSES[emotion_type])
@@ -488,29 +773,28 @@ def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
     all_emotions = list(EMOTIONAL_RESPONSES.values())
     return random.choice(random.choice(all_emotions))
 
-def update_user_emotion(user_id: int, message: str):
+async def update_user_emotion(user_id: int, message: str):
     message_lower = message.lower()
     
     if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'sweet']):
-        user_emotions[user_id] = "love"
+        await update_user_emotion_db(user_id, "love")
     elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid']):
-        user_emotions[user_id] = "angry"
+        await update_user_emotion_db(user_id, "angry")
     elif any(word in message_lower for word in ['cry', 'ro', 'sad', 'dukh', 'upset', 'unhappy', 'depressed']):
-        user_emotions[user_id] = "crying"
+        await update_user_emotion_db(user_id, "crying")
     elif any(word in message_lower for word in ['funny', 'has', 'joke', 'comedy', 'masti', 'laugh', 'haha']):
-        user_emotions[user_id] = "funny"
+        await update_user_emotion_db(user_id, "funny")
     elif any(word in message_lower for word in ['hi', 'hello', 'hey', 'namaste', 'kaise', 'welcome']):
-        user_emotions[user_id] = "happy"
+        await update_user_emotion_db(user_id, "happy")
     elif any(word in message_lower for word in ['?', 'kyun', 'kaise', 'kya', 'how', 'why', 'what']):
-        user_emotions[user_id] = "thinking"
+        await update_user_emotion_db(user_id, "thinking")
     elif any(word in message_lower for word in ['fight', 'ladai', 'war', 'attack', 'defend']):
-        user_emotions[user_id] = "protective"
+        await update_user_emotion_db(user_id, "protective")
     elif any(word in message_lower for word in ['sleep', 'sone', 'neend', 'tired', 'thak']):
-        user_emotions[user_id] = "sleepy"
+        await update_user_emotion_db(user_id, "sleepy")
     else:
-        user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
-    
-    user_last_interaction[user_id] = datetime.now()
+        emotions = list(EMOTIONAL_RESPONSES.keys())
+        await update_user_emotion_db(user_id, random.choice(emotions))
 
 # --- AUTO-MODERATION FUNCTIONS ---
 def contains_group_link(text: str) -> bool:
@@ -531,25 +815,16 @@ def contains_bad_words(text: str) -> bool:
 
 async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -> tuple[bool, str]:
     """Give warning to user and return if action should be taken"""
-    warnings = user_warnings[chat_id][user_id]
-    
-    # Initialize warning data
-    if 'count' not in warnings:
-        warnings['count'] = 0
-        warnings['last_warning'] = datetime.now()
-        warnings['reasons'] = []
-    
-    warnings['count'] += 1
-    warnings['reasons'].append(reason)
-    warnings['last_warning'] = datetime.now()
-    
-    warning_count = warnings['count']
+    # Get warnings from MongoDB
+    warning_data = await add_warning(user_id, chat_id, reason)
+    warning_count = warning_data["count"]
     
     # Prepare warning message
     actions_map = {
         "spam": "spam messages",
         "link": "share group links",
-        "bad_words": "use bad language"
+        "bad_words": "use bad language",
+        "manual_warning": "violate rules"
     }
     action = actions_map.get(reason, "violate rules")
     
@@ -582,7 +857,7 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
             )
             
             # Clear warnings after mute
-            del user_warnings[chat_id][user_id]
+            await reset_warnings(user_id, chat_id)
             
             duration_str = ""
             if mute_duration.days > 0:
@@ -625,11 +900,11 @@ async def delete_and_warn(message: Message, reason: str):
     # If this is for bad words, add a sassy response
     if reason == "bad_words":
         sassy_responses = [
-            f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
-            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
-            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+            f"{get_emotion('angry')} Oye! Language! Main ladki hu, aise baat mat karo!",
+            f"{get_emotion('sassy')} Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')} Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')} Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
         await message.answer(random.choice(sassy_responses))
 
@@ -702,6 +977,266 @@ JOKES = [
     "😆 Customer: Isme sugar hai? Shopkeeper: Nahi sir. Customer: Salt? Shopkeeper: Nahi. Customer: To phir kya hai? Shopkeeper: Bill sir!",
 ]
 
+# --- NEW FEATURES: COMMAND HANDLERS ---
+
+# Search Command
+@dp.message(Command("search"))
+async def cmd_search(message: Message, command: CommandObject):
+    """Search the web using DuckDuckGo"""
+    query = command.args
+    
+    if not query:
+        await message.reply(
+            f"{get_emotion('thinking')} **Search Command**\n\n"
+            f"Usage: `/search your query`\n"
+            f"Example: `/search latest movies 2024`\n\n"
+            f"*Main aapke liye dhoond ke laungi!* 🔍",
+            parse_mode="Markdown"
+        )
+        return
+    
+    await message.reply(f"{get_emotion('thinking')} Searching for '{query}'... 🔍")
+    
+    try:
+        results = await duckduckgo_search(query, max_results=3)
+        
+        if not results:
+            await message.reply(
+                f"{get_emotion('crying')} Kuch nahi mila! Kya aapka query sahi hai? 🤔\n"
+                f"*Try different keywords maybe?*"
+            )
+            return
+        
+        response = f"{get_emotion('happy')} **Search Results for '{query}':**\n\n"
+        
+        for i, result in enumerate(results, 1):
+            title = result.get('title', 'No title')
+            body = result.get('body', 'No description')
+            link = result.get('link', '#')
+            
+            # Shorten long descriptions
+            if len(body) > 150:
+                body = body[:147] + "..."
+            
+            response += f"**{i}. {title}**\n"
+            response += f"{body}\n"
+            response += f"🔗 [Read More]({link})\n\n"
+        
+        response += "*Powered by DuckDuckGo* 🦆"
+        
+        await message.reply(response, parse_mode="Markdown", disable_web_page_preview=True)
+        
+    except Exception as e:
+        await message.reply(
+            f"{get_emotion('crying')} Oops! Search failed. Error: {str(e)[:100]}",
+            parse_mode="Markdown"
+        )
+
+# TTS Command
+@dp.message(Command("tts"))
+async def cmd_tts(message: Message):
+    """Convert text to speech"""
+    if not message.reply_to_message:
+        await message.reply(
+            f"{get_emotion('thinking')} **TTS Command**\n\n"
+            f"Reply to a message with `/tts` to convert it to voice!\n"
+            f"*Main use sweet voice mein bana dungi!* 🎤",
+            parse_mode="Markdown"
+        )
+        return
+    
+    text_to_convert = message.reply_to_message.text or message.reply_to_message.caption
+    
+    if not text_to_convert:
+        await message.reply(
+            f"{get_emotion('crying')} Kuch text to reply karo na! 📝\n"
+            f"*Text message par reply karo /tts command ke saath!*"
+        )
+        return
+    
+    # Limit text length
+    if len(text_to_convert) > 500:
+        text_to_convert = text_to_convert[:497] + "..."
+    
+    await message.reply(f"{get_emotion()} Creating voice note... 🎤")
+    
+    try:
+        # Choose voice based on language
+        if any(char in text_to_convert for char in ['ा', 'ी', 'ू', 'े', 'ो', 'अ', 'आ', 'इ']):
+            voice = "hi-IN-SwaraNeural"  # Hindi voice
+        else:
+            voice = "en-IN-NeerjaExpressiveNeural"  # English voice with Indian accent
+        
+        # Generate voice file
+        voice_file = await text_to_speech(text_to_convert, voice)
+        
+        if not voice_file or not os.path.exists(voice_file):
+            raise Exception("Voice file not created")
+        
+        # Send voice note
+        voice_input = FSInputFile(voice_file, filename="alita_voice.mp3")
+        await message.reply_voice(
+            voice=voice_input,
+            caption=f"{get_emotion('happy')} **Alita ki sweet voice!** 🎀\n\n"
+                   f"*Text:* {text_to_convert[:100]}...\n"
+                   f"*Voice:* {'Hindi' if 'hi-IN' in voice else 'English'}"
+        )
+        
+        # Clean up
+        os.remove(voice_file)
+        
+    except Exception as e:
+        await message.reply(
+            f"{get_emotion('crying')} Voice create nahi ho paya! 😢\n"
+            f"*Error:* {str(e)[:100]}"
+        )
+
+# Draw/Image Generation Command
+@dp.message(Command("draw"))
+async def cmd_draw(message: Message, command: CommandObject):
+    """Generate image from text"""
+    prompt = command.args
+    
+    if not prompt:
+        await message.reply(
+            f"{get_emotion('thinking')} **Draw Command**\n\n"
+            f"Usage: `/draw your imagination`\n"
+            f"Example: `/draw a beautiful sunset in mountains`\n\n"
+            f"*Main aapki imagination ko picture bana dungi!* 🎨",
+            parse_mode="Markdown"
+        )
+        return
+    
+    await message.reply(f"{get_emotion()} Creating your image... 🎨")
+    
+    try:
+        # Generate image
+        image_file = await generate_image(prompt)
+        
+        if not image_file or not os.path.exists(image_file):
+            raise Exception("Image file not created")
+        
+        # Send image
+        image_input = FSInputFile(image_file, filename="alita_art.jpg")
+        await message.reply_photo(
+            photo=image_input,
+            caption=f"{get_emotion('happy')} **Tada! Alita ki art!** 🎨\n\n"
+                   f"*Prompt:* {prompt}\n"
+                   f"*Powered by:* Pollinations.ai ✨"
+        )
+        
+        # Clean up
+        os.remove(image_file)
+        
+    except Exception as e:
+        await message.reply(
+            f"{get_emotion('crying')} Image create nahi ho payi! 😢\n"
+            f"*Error:* {str(e)[:100]}\n\n"
+            f"*Try a different prompt maybe?*"
+        )
+
+# Social Media Downloader Handler
+@dp.message(F.text)
+async def handle_social_media(message: Message):
+    """Handle social media links"""
+    text = message.text or message.caption
+    
+    if not text:
+        return
+    
+    # Check if it's a social media link
+    if await downloader.is_social_media_link(text):
+        try:
+            # Extract link
+            url = await downloader.extract_link(text)
+            if not url:
+                return
+            
+            # Send downloading message
+            status_msg = await message.reply(
+                f"{get_emotion()} Downloading from {downloader.get_platform(url)}... ⬇️\n"
+                f"*Please wait, processing video...*"
+            )
+            
+            # Download media
+            file_path = await downloader.download_media(url)
+            
+            if not file_path or not os.path.exists(file_path):
+                await status_msg.edit_text(
+                    f"{get_emotion('crying')} Download failed! 😢\n"
+                    f"*Link might be private or unsupported*"
+                )
+                return
+            
+            # Check file size (Telegram limit is 50MB for bots)
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
+            
+            if file_size > 50:
+                await status_msg.edit_text(
+                    f"{get_emotion('crying')} File too big! ({file_size:.1f}MB) 😢\n"
+                    f"*Telegram allows max 50MB for bots*"
+                )
+                os.remove(file_path)
+                return
+            
+            # Send the file
+            file_input = FSInputFile(file_path)
+            
+            if file_path.endswith(('.mp4', '.mov', '.avi', '.mkv')):
+                await message.reply_video(
+                    video=file_input,
+                    caption=f"{get_emotion('happy')} **Downloaded Successfully!** ✅\n"
+                           f"*From:* {downloader.get_platform(url).title()}\n"
+                           f"*Size:* {file_size:.1f}MB\n\n"
+                           f"*Enjoy!* 🎬",
+                    reply_to_message_id=message.message_id
+                )
+            else:
+                await message.reply_document(
+                    document=file_input,
+                    caption=f"{get_emotion('happy')} **Downloaded Successfully!** ✅\n"
+                           f"*From:* {downloader.get_platform(url).title()}\n"
+                           f"*Size:* {file_size:.1f}MB"
+                )
+            
+            # Clean up
+            os.remove(file_path)
+            await status_msg.delete()
+            
+        except Exception as e:
+            error_msg = await message.reply(
+                f"{get_emotion('crying')} Download failed! 😢\n"
+                f"*Error:* {str(e)[:100]}"
+            )
+            # Clean up temp files
+            temp_dir = message.from_user.id  # Using user ID as reference
+            if os.path.exists(f"temp_{temp_dir}"):
+                shutil.rmtree(f"temp_{temp_dir}")
+
+# --- QUICK RESPONSES ---
+QUICK_RESPONSES = {
+    'goodbye': [
+        "Bye bye! Phir milenge! 👋",
+        "Take care! Miss karungi! 💕",
+        "Alvida! Accha raho! 🌟",
+        "Chalo bye! Baad me baat karte hain! 💫",
+        "Jaate jaate smile karo! 😊"
+    ],
+    'thanks': [
+        "Aww, you're welcome! 💖",
+        "Koi baat nahi! Main hamesha tumhare liye hu! 😊",
+        "Mujhe achha laga help kar ke! 💕",
+        "Always here for you! 🫂"
+    ],
+    'sorry': [
+        "Koi baat nahi! Sab theek ho jayega! 🤗",
+        "Chhodo yaar! Main bhi to galti karti hu! 😊",
+        "No worries! Friendship main sab chalta hai! 💖",
+        "Maaf karo, par yaad rakhna main tumhari dost hu! 🌸",
+        "It's okay! Aage se dhyan rakhna! ✨"
+    ]
+}
+
 # --- COMMAND RESPONSES ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -716,6 +1251,10 @@ async def cmd_start(message: Message):
         ],
         [
             InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
+        ],
+        [
+            InlineKeyboardButton(text="🔍 Search Web", callback_data="search_web"),
+            InlineKeyboardButton(text="🎨 Draw AI", callback_data="draw_ai")
         ]
     ])
     
@@ -724,15 +1263,15 @@ async def cmd_start(message: Message):
         
         "✨ **Welcome to my magical world!** ✨\n\n"
         
-        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
-        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n"
+        "🎯 *Main batein bhi krti hu 🙈 or group ko manage bhi krti hu!* 🛡️\n\n"
         
-        "🌟 **About Me:**\n"
-        "• Sweet and Caring 🍬\n"
-        "• Protective of my friends 🛡️\n"
-        "• Can fight back when needed ⚔️\n"
-        "• Emotional and Funny 😊😂\n"
-        "• Auto-moderation enabled 👮\n\n"
+        "🌟 **AI Features:**\n"
+        "• 🔍 Web Search with /search\n"
+        "• 🎤 Text-to-Speech with /tts\n"
+        "• 🎨 AI Image Generation with /draw\n"
+        "• ⬇️ Social Media Downloader (Auto)\n"
+        "• 💾 MongoDB Storage for data\n\n"
         
         "📢 **Made with 💖 by:**\n"
         "• **Developer:** ABHI🔱 (@a6h1ii)\n"
@@ -755,8 +1294,8 @@ async def cmd_help(message: Message):
             InlineKeyboardButton(text="🌤️ Weather", callback_data="help_weather")
         ],
         [
-            InlineKeyboardButton(text="🛡️ Safety", callback_data="help_safety"),
-            InlineKeyboardButton(text="⚙️ Settings", callback_data="help_settings")
+            InlineKeyboardButton(text="🎨 AI Tools", callback_data="help_ai"),
+            InlineKeyboardButton(text="⬇️ Download", callback_data="help_download")
         ],
         [
             InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
@@ -772,6 +1311,12 @@ async def cmd_help(message: Message):
         "• /joke - Funny jokes 😂\n"
         "• /game - Play games 🎮\n"
         "• /clear - Clear memory 🧹\n\n"
+        
+        "🎨 **AI FEATURES:**\n"
+        "• /search [query] - Web search 🔍\n"
+        "• /draw [prompt] - Generate images 🎨\n"
+        "• /tts (reply) - Text to speech 🎤\n"
+        "• Auto-download IG/YT/Pinterest ⬇️\n\n"
         
         "🕒 **TIME & WEATHER:**\n"
         "• /time - Indian time 🕐\n"
@@ -794,10 +1339,7 @@ async def cmd_help(message: Message):
         "• Auto-mute after 3 warns 🔇\n\n"
         
         "🎀 **GREETING SYSTEM:**\n"
-        "• Auto morning greetings 🌅\n"
-        "• Auto afternoon greetings ☀️\n"
-        "• Auto evening greetings 🌇\n"
-        "• Auto night greetings 🌙\n"
+        "• Auto time-based greetings ⏰\n"
         "• Works in groups & private 💌\n\n"
         
         "---\n"
@@ -1024,8 +1566,8 @@ async def handle_all_messages(message: Message, state: FSMContext):
     if user_id == bot.id:
         return
     
-    # Update interaction time and memory
-    user_last_interaction[user_id] = datetime.now()
+    # Update interaction time in MongoDB
+    await get_user_data(user_id, chat_id)
     
     # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
@@ -1136,7 +1678,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     
     # Update user emotion
     if user_id:
-        update_user_emotion(user_id, user_text)
+        await update_user_emotion(user_id, user_text)
     
     # Quick responses for common phrases
     user_text_lower = user_text.lower()
@@ -1281,6 +1823,52 @@ async def game_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query(F.data.startswith("help_"))
+async def help_callback(callback: types.CallbackQuery):
+    help_type = callback.data.split("_")[1]
+    
+    if help_type == "ai":
+        text = (
+            f"{get_emotion('happy')} **🎨 AI Tools Help**\n\n"
+            f"🔍 **/search [query]**\n"
+            f"Search the web for information\n"
+            f"Example: `/search latest movies`\n\n"
+            f"🎨 **/draw [prompt]**\n"
+            f"Generate AI images from text\n"
+            f"Example: `/draw sunset beach`\n\n"
+            f"🎤 **/tts** (reply to message)\n"
+            f"Convert text to sweet voice note\n"
+            f"Just reply to any text message!\n\n"
+            f"*All features are FREE!* ✨"
+        )
+    elif help_type == "download":
+        text = (
+            f"{get_emotion('happy')} **⬇️ Downloader Help**\n\n"
+            f"**Supported Platforms:**\n"
+            f"• Instagram (Posts/Reels)\n"
+            f"• YouTube (Videos/Shorts)\n"
+            f"• Pinterest (Pins/Videos)\n\n"
+            f"**How to use:**\n"
+            f"Just send the link in chat!\n"
+            f"I'll automatically download it.\n\n"
+            f"**Features:**\n"
+            f"• Auto-detection of links\n"
+            f"• High quality downloads\n"
+            f"• File size checking\n"
+            f"• Clean up after sending\n\n"
+            f"*Max file size: 50MB* 📦"
+        )
+    else:
+        text = (
+            f"{get_emotion()} **Help Section**\n\n"
+            f"Select a category from the menu!\n"
+            f"Or use `/help` for complete list.\n\n"
+            f"*I'm here to help you!* 💖"
+        )
+    
+    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.answer()
+
 # --- DAILY REMINDERS ---
 async def send_daily_reminders():
     """Send daily reminders to active users"""
@@ -1292,25 +1880,46 @@ async def send_daily_reminders():
         "💫 *Daily Motivation:* You can do anything you set your mind to! 💪"
     ]
     
-    for user_id in list(user_last_interaction.keys()):
-        try:
-            # Only send to active users (last 3 days)
-            last_active = user_last_interaction.get(user_id)
-            if last_active and (datetime.now() - last_active).days <= 3:
-                # Check if we already sent reminder today
-                last_greeted = greeted_groups.get(user_id)
-                if last_greeted and (datetime.now() - last_greeted).days == 0:
+    # Get active users from MongoDB
+    try:
+        three_days_ago = datetime.now() - timedelta(days=3)
+        
+        async for user in user_collection.find({
+            "last_interaction": {"$gte": three_days_ago}
+        }).limit(100):
+            user_id = user.get("user_id")
+            if user_id:
+                try:
+                    # Check if we already sent reminder today
+                    last_greeted = greeted_groups.get(user_id)
+                    if last_greeted and (datetime.now() - last_greeted).days == 0:
+                        continue
+                    
+                    await bot.send_message(
+                        user_id,
+                        random.choice(reminders),
+                        parse_mode="Markdown"
+                    )
+                    greeted_groups[user_id] = datetime.now()
+                    await asyncio.sleep(0.5)  # Rate limiting
+                except:
                     continue
-                
-                await bot.send_message(
-                    user_id,
-                    random.choice(reminders),
-                    parse_mode="Markdown"
-                )
-                greeted_groups[user_id] = datetime.now()
-                await asyncio.sleep(0.5)  # Rate limiting
-        except:
-            continue
+    except Exception as e:
+        print(f"Daily reminder error: {e}")
+
+# --- CLEANUP FUNCTION ---
+async def cleanup_temp_files():
+    """Clean up temporary files"""
+    try:
+        # Remove old temp files (older than 1 hour)
+        for filename in os.listdir('.'):
+            if filename.startswith('temp_'):
+                file_time = datetime.fromtimestamp(os.path.getctime(filename))
+                if (datetime.now() - file_time).seconds > 3600:
+                    os.remove(filename)
+                    print(f"🧹 Cleaned up: {filename}")
+    except:
+        pass
 
 # --- DEPLOYMENT HANDLER ---
 async def handle_ping(request):
@@ -1331,6 +1940,14 @@ async def main():
     print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
     
+    # Test MongoDB connection
+    try:
+        await mongo_client.admin.command('ping')
+        print("✅ MongoDB Connected Successfully!")
+    except Exception as e:
+        print(f"⚠️ MongoDB Connection Failed: {e}")
+        print("⚠️ Some features may not work without MongoDB")
+    
     # Start health check server
     asyncio.create_task(start_server())
     
@@ -1344,6 +1961,14 @@ async def main():
         id='daily_reminders'
     )
     
+    # Start cleanup job every hour
+    greeting_scheduler.add_job(
+        cleanup_temp_files,
+        'interval',
+        hours=1,
+        id='cleanup_files'
+    )
+    
     # Delete old webhook
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook deleted and updates cleared!")
@@ -1354,6 +1979,13 @@ async def main():
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
+    
+    print(f"\n✨ **New Features Active:**")
+    print(f"• 🔍 Web Search with DuckDuckGo")
+    print(f"• 🎨 AI Image Generation")
+    print(f"• 🎤 Edge-TTS Voice")
+    print(f"• ⬇️ Social Media Downloader")
+    print(f"• 💾 MongoDB Storage")
     
     # Start bot polling
     print("\n🔄 Starting bot polling...")
