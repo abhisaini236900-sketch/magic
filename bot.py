@@ -1037,36 +1037,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
     user_id = message.from_user.id
     chat_id = message.chat.id
     user_text = message.text
-    
-    # Ignore if bot is checking
-    if user_id == bot.id:
-        return
-    
-    # Update interaction time and memory
-    user_last_interaction[user_id] = datetime.now()
-    
-    # Initialize memory for chat if not exists
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=50)
-    
-    # --- AUTO-MODERATION CHECKS ---
-    # Only in groups
-    if message.chat.type in ["group", "supergroup"]:
-        # Check for group links
-        if contains_group_link(user_text):
-            await delete_and_warn(message, "link")
-            return
-        
-        # Check for bad words
-        if contains_bad_words(user_text):
-            await delete_and_warn(message, "bad_words")
-            return
-        
-        # Check for spam
-        if await check_spam(message):
-            return
-
-        # --- TERABOX DOWNLOADER FEATURE ---
+    # --- TERABOX DOWNLOADER FEATURE ---
     if "terabox" in user_text.lower() or "nephobox" in user_text.lower():
         processing_msg = await message.reply("⚡ Wait! TeraBox link detect hua hai, process kar rahi hu...")
         
@@ -1095,6 +1066,34 @@ async def handle_all_messages(message: Message, state: FSMContext):
             else:
                 await processing_msg.edit("❌ Sorry! Link process nahi ho paya. Shayad link expired hai.")
                 return
+    
+    # Ignore if bot is checking
+    if user_id == bot.id:
+        return
+    
+    # Update interaction time and memory
+    user_last_interaction[user_id] = datetime.now()
+    
+    # Initialize memory for chat if not exists
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = deque(maxlen=50)
+    
+    # --- AUTO-MODERATION CHECKS ---
+    # Only in groups
+    if message.chat.type in ["group", "supergroup"]:
+        # Check for group links
+        if contains_group_link(user_text):
+            await delete_and_warn(message, "link")
+            return
+        
+        # Check for bad words
+        if contains_bad_words(user_text):
+            await delete_and_warn(message, "bad_words")
+            return
+        
+        # Check for spam
+        if await check_spam(message):
+            return
 
     
     # --- GAME HANDLING ---
