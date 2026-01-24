@@ -3,7 +3,7 @@ import asyncio
 import random
 import re
 import requests
-from urllib.parse import quote
+from bs4 import BeautifulSoup
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set
@@ -24,6 +24,8 @@ TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+TERABOX_API = "https://terabox-dl-api.vercel.app/api?url=" 
+
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -41,39 +43,6 @@ chat_memory: Dict[int, deque] = {}
 user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))  # chat_id -> user_id -> warnings
 user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> count
 last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))  # chat_id -> user_id -> messages
-
-# --- TERABOX BYPASS SYSTEM ---
-TERABOX_APIS = [
-    "https://terabox-downloader.onrender.com/api?url={}",  # Primary
-    "https://terabox-downloader-api.vercel.app/api?url={}", # Backup 1
-    "https://terabox-dl-api.vercel.app/api?url={}",        # Backup 2
-]
-
-# Terabox link patterns
-TERABOX_PATTERNS = [
-    "terabox.com/s/",
-    "teraboxapp.com/s/",
-    "www.terabox.com/s/"
-]
-
-# Terabox response messages
-TERABOX_MESSAGES = {
-    "processing": [
-        "🎀 **Processing your Terabox link...**\n\nPlease wait 5-10 seconds! ⏳",
-        "✨ **Link check kar rahi hoon...**\n\nDirect download dhund rahi hoon! 🔍",
-        "🔄 **Terabox link convert ho raha hai...**\n\nThoda sabar karo! 💕"
-    ],
-    "success": [
-        "✅ **Success! Link Converted** ✨\n\nAapka Terabox link direct download link mein convert ho gaya!",
-        "🎉 **Link Ready!** 🚀\n\nTerabox bypass successful! Download kar sakte hain!",
-        "💖 **Mission Accomplished!** 🏆\n\nTerabox ka ban tod diya! Direct link mil gaya!"
-    ],
-    "error": [
-        "❌ **Link Convert Nahi Hua**\n\nKya yeh sahi Terabox link hai? Check karo!",
-        "😢 **Sorry! Failed**\n\nLink expired hai ya file too large hai!",
-        "⚠️ **Error Aaya**\n\nAPI down hai ya link invalid hai!"
-    ]
-}
 
 # Game states storage
 game_sessions: Dict[int, Dict] = {}
@@ -424,6 +393,20 @@ async def start_greeting_task():
     greeting_scheduler.start()
     print("✅ Greeting scheduler started!")
 
+async def get_terabox_data(url: str):
+    try:
+        # Hum ek public bypass API use kar rahe hain taaki high speed link mile
+        response = requests.get(f"{TERABOX_API}{url}")
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "direct_link": data.get("download_link"),
+                "file_name": data.get("file_name", "Video File"),
+                "size": data.get("size", "Unknown")
+            }
+    except Exception as e:
+        print(f"Terabox Error: {e}")
+    return No
 # --- TEST COMMANDS ---
 @dp.message(Command("testgreet"))
 async def test_greeting(message: Message):
@@ -864,166 +847,6 @@ async def cmd_warn(message: Message, command: CommandObject):
     warning_msg = warning_msg.replace("violate rules", f"{reason}")
     await message.reply(warning_msg, parse_mode="Markdown")
 
-# --- TERABOX BYPASS COMMAND ---
-@dp.message(Command("terabox"))
-async def cmd_terabox(message: Message):
-    """Terabox link bypass command"""
-    args = message.text.split(maxsplit=1)
-    
-    if len(args) < 2:
-        help_text = (
-            f"{get_emotion('thinking')} **📦 Terabox Link Bypass**\n\n"
-            "**Usage:**\n"
-            "`/terabox [terabox-link]`\n\n"
-            "**Example:**\n"
-            "`/terabox https://terabox.com/s/xxxxxx`\n\n"
-            "**Features:**\n"
-            "• Direct download links\n"
-            "• Streamable links\n"
-            "• Multiple API backup\n\n"
-            "**Note:** Bade files (2GB+) may not work! ⚠️"
-        )
-        await message.reply(help_text, parse_mode="Markdown")
-        return
-    
-    link = args[1].strip()
-    
-    # Check if it's a terabox link
-    if not any(pattern in link for pattern in TERABOX_PATTERNS):
-        await message.reply(
-            f"{get_emotion('crying')} **Invalid Link!**\n\n"
-            "Ye Terabox link nahi lag raha!\n"
-            "Format: `https://terabox.com/s/xxxxxx`",
-            parse_mode="Markdown"
-        )
-        return
-    
-    # Send processing message
-    processing_msg = await message.reply(
-        random.choice(TERABOX_MESSAGES["processing"]),
-        parse_mode="Markdown"
-    )
-    
-    # Try all APIs
-    direct_link = None
-    file_info = {}
-    
-    for api_template in TERABOX_APIS:
-        try:
-            encoded_url = quote(link, safe='')
-            api_url = api_template.format(encoded_url)
-            
-            response = requests.get(api_url, timeout=15)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check different response formats
-                if data.get('success') and data.get('download_link'):
-                    direct_link = data['download_link']
-                    file_info = {
-                        'name': data.get('file_name', 'Unknown'),
-                        'size': data.get('size', 'Unknown'),
-                        'type': data.get('type', 'File')
-                    }
-                    break
-                elif data.get('direct_link'):
-                    direct_link = data['direct_link']
-                    file_info = {
-                        'name': data.get('filename', 'Unknown'),
-                        'size': data.get('size', 'Unknown'),
-                        'type': 'File'
-                    }
-                    break
-                elif data.get('url'):
-                    direct_link = data['url']
-                    file_info = {
-                        'name': 'Terabox File',
-                        'size': 'Unknown',
-                        'type': 'File'
-                    }
-                    break
-                    
-        except Exception as e:
-            print(f"Terabox API failed: {e}")
-            continue
-    
-    # Send result
-    await processing_msg.delete()
-    
-    if direct_link:
-        # Format size if available
-        size_text = file_info['size']
-        if size_text != 'Unknown' and isinstance(size_text, (int, float, str)):
-            if isinstance(size_text, str) and size_text.replace('.', '', 1).isdigit():
-                size_bytes = float(size_text)
-                if size_bytes > 1024*1024*1024:  # GB
-                    size_text = f"{size_bytes/(1024*1024*1024):.2f} GB"
-                elif size_bytes > 1024*1024:  # MB
-                    size_text = f"{size_bytes/(1024*1024):.2f} MB"
-                elif size_bytes > 1024:  # KB
-                    size_text = f"{size_bytes/1024:.2f} KB"
-        
-        # Create buttons
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📥 Direct Download",
-                    url=direct_link
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🎬 Stream Online",
-                    url=direct_link
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔗 Copy Link",
-                    callback_data="copy_link"
-                ),
-                InlineKeyboardButton(
-                    text="❌ Close",
-                    callback_data="close_msg"
-                )
-            ]
-        ])
-        
-        success_msg = (
-            f"{get_emotion('happy')} **{random.choice(TERABOX_MESSAGES['success'])}**\n\n"
-            f"📁 **File Name:** `{file_info['name']}`\n"
-            f"📊 **File Size:** {size_text}\n"
-            f"🔗 **Link Type:** Direct Download\n\n"
-            f"**Options:**\n"
-            f"1. Click 'Direct Download' to download\n"
-            f"2. Click 'Stream Online' to watch\n\n"
-            f"⚠️ **Note:** Large files may need download manager!"
-        )
-        
-        await message.reply(
-            success_msg,
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
-        
-    else:
-        # Error message
-        error_msg = (
-            f"{get_emotion('crying')} **{random.choice(TERABOX_MESSAGES['error'])}**\n\n"
-            f"**Possible reasons:**\n"
-            f"• Link expired/invalid ❌\n"
-            f"• File too large (>2GB) 📦\n"
-            f"• Server busy 🚧\n"
-            f"• Password protected 🔒\n\n"
-            f"**Try:**\n"
-            f"1. Check if link works in browser\n"
-            f"2. Try different Terabox link\n"
-            f"3. Wait few minutes and retry"
-        )
-        
-        await message.reply(error_msg, parse_mode="Markdown")
-
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
     rules_text = (
@@ -1206,18 +1029,6 @@ def check_word_game(user_id: int, user_word: str):
     return True, game_data
 
 # --- MESSAGE HANDLER WITH AUTO-MODERATION ---
-# --- TERABOX LINK AUTO-DETECTION ---
-async def handle_all_messages(message: Message, state: FSMContext):
-    if not message.text or not message.from_user:
-        return
-    
-    # Pehle terabox link check karo (auto-detection)
-    if any(pattern in message.text for pattern in TERABOX_PATTERNS):
-        # Process terabox link automatically
-        await process_terabox_link(message)
-        return
-    
-
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     if not message.text or not message.from_user:
@@ -1297,72 +1108,6 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 if user_id in game_sessions:
                     del game_sessions[user_id]
                 return
-
-    # --- TERABOX HELPER FUNCTION ---
-async def process_terabox_link(message: Message):
-    """Auto-process terabox links"""
-    link = message.text.strip()
-    
-    # Only process if it's clearly a terabox link
-    if not any(pattern in link for pattern in TERABOX_PATTERNS):
-        return
-    
-    # Send processing message
-    processing_msg = await message.reply(
-        f"{get_emotion('thinking')} **Auto-detected Terabox link!**\n\n"
-        "Processing your link... ⏳",
-        parse_mode="Markdown"
-    )
-    
-    # Same logic as cmd_terabox
-    direct_link = None
-    for api_template in TERABOX_APIS:
-        try:
-            encoded_url = quote(link, safe='')
-            api_url = api_template.format(encoded_url)
-            
-            response = requests.get(api_url, timeout=15)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('success') and data.get('download_link'):
-                    direct_link = data['download_link']
-                    break
-                elif data.get('direct_link'):
-                    direct_link = data['direct_link']
-                    break
-        except:
-            continue
-    
-    # Send result
-    await processing_msg.delete()
-    
-    if direct_link:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📥 Download Now",
-                    url=direct_link
-                )
-            ]
-        ])
-        
-        await message.reply(
-            f"{get_emotion('happy')} **Auto-converted Terabox link!**\n\n"
-            f"✅ Direct download link ready!\n\n"
-            f"Click below to download:",
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-            reply_to_message_id=message.message_id
-        )
-    else:
-        # Suggest using /terabox command
-        await message.reply(
-            f"{get_emotion('crying')} **Auto-conversion failed!**\n\n"
-            f"Try manual command: `/terabox {link}`\n"
-            f"May work better with command!",
-            parse_mode="Markdown",
-            reply_to_message_id=message.message_id
-        )
     
     # --- NORMAL CONVERSATION ---
     bot_username = (await bot.get_me()).username
@@ -1553,20 +1298,6 @@ async def game_callback(callback: types.CallbackQuery):
         )
     
     await callback.answer()
-
-# --- TERABOX CALLBACK HANDLERS ---
-@dp.callback_query(F.data.in_(["copy_link", "close_msg"]))
-async def terabox_callback(callback: types.CallbackQuery):
-    """Handle terabox callbacks"""
-    if callback.data == "copy_link":
-        # Can't directly copy, so show message
-        await callback.answer(
-            "Link copy karne ke liye button par long press karo!",
-            show_alert=True
-        )
-    elif callback.data == "close_msg":
-        await callback.message.delete()
-        await callback.answer("Closed! ✅")
 
 # --- DAILY REMINDERS ---
 async def send_daily_reminders():
