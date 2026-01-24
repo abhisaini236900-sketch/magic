@@ -1940,57 +1940,47 @@ async def main():
     print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
     
-    # Test MongoDB connection
+    # **IMPORTANT: Pehle webhook clear karo forcefully**
     try:
-        await mongo_client.admin.command('ping')
-        print("✅ MongoDB Connected Successfully!")
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("✅ Webhook cleared forcefully!")
     except Exception as e:
-        print(f"⚠️ MongoDB Connection Failed: {e}")
-        print("⚠️ Some features may not work without MongoDB")
+        print(f"⚠️ Webhook clear error: {e}")
     
-    # Start health check server
-    asyncio.create_task(start_server())
-    
-    # Start automated greeting system
-    await start_greeting_task()
-    
-    # Start daily reminders at 10 AM
-    greeting_scheduler.add_job(
-        send_daily_reminders,
-        CronTrigger(hour=10, minute=0),
-        id='daily_reminders'
-    )
-    
-    # Start cleanup job every hour
-    greeting_scheduler.add_job(
-        cleanup_temp_files,
-        'interval',
-        hours=1,
-        id='cleanup_files'
-    )
-    
-    # Delete old webhook
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook deleted and updates cleared!")
-    
-    # Get bot info
+    # **Bot info check karo**
     me = await bot.get_me()
     print(f"🤖 Bot Info:")
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
     
-    print(f"\n✨ **New Features Active:**")
-    print(f"• 🔍 Web Search with DuckDuckGo")
-    print(f"• 🎨 AI Image Generation")
-    print(f"• 🎤 Edge-TTS Voice")
-    print(f"• ⬇️ Social Media Downloader")
-    print(f"• 💾 MongoDB Storage")
+    # **MongoDB connection check**
+    try:
+        await mongo_client.admin.command('ping')
+        print("✅ MongoDB Connected!")
+    except Exception as e:
+        print(f"⚠️ MongoDB: {e}")
     
-    # Start bot polling
+    # **Start polling with error handling**
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
-    await dp.start_polling(bot)
+    
+    # **Polling start karo with proper parameters**
+    await dp.start_polling(
+        bot, 
+        allowed_updates=dp.resolve_used_update_types(),
+        skip_updates=True  # **Important: Old updates skip karo**
+    )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # **Clear any existing event loop**
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped by user")
+    except Exception as e:
+        print(f"\n❌ Critical error: {e}")
+        print("Restarting in 5 seconds...")
+        time.sleep(5)
