@@ -395,7 +395,7 @@ async def start_greeting_task():
 
 async def get_terabox_data(url: str):
     try:
-        # Hum ek public bypass API use kar rahe hain taaki high speed link mile
+    
         response = requests.get(f"{TERABOX_API}{url}")
         if response.status_code == 200:
             data = response.json()
@@ -406,7 +406,7 @@ async def get_terabox_data(url: str):
             }
     except Exception as e:
         print(f"Terabox Error: {e}")
-    return No
+    return None
 # --- TEST COMMANDS ---
 @dp.message(Command("testgreet"))
 async def test_greeting(message: Message):
@@ -1065,6 +1065,37 @@ async def handle_all_messages(message: Message, state: FSMContext):
         # Check for spam
         if await check_spam(message):
             return
+
+        # --- TERABOX DOWNLOADER FEATURE ---
+    if "terabox" in user_text.lower() or "nephobox" in user_text.lower():
+        processing_msg = await message.reply("⚡ Wait! TeraBox link detect hua hai, process kar rahi hu...")
+        
+        # Link extract karein (agar text mein aur bhi baatein ho)
+        urls = re.findall(r'(https?://\S+)', user_text)
+        if urls:
+            tb_url = urls[0]
+            data = await get_terabox_data(tb_url)
+            
+            if data and data['direct_link']:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Watch Online (Chrome/VLC)", url=data['direct_link'])],
+                    [InlineKeyboardButton(text="📥 Download Fast", url=data['direct_link'])]
+                ])
+                
+                caption = (
+                    f"{get_emotion('happy')} **TeraBox File Ready!**\n\n"
+                    f"📁 **Name:** `{data['file_name']}`\n"
+                    f"⚖️ **Size:** {data['size']}\n\n"
+                    f"✨ *Ab aap isey direct dekh sakte hain bina download kiye!*"
+                )
+                
+                await message.reply(caption, parse_mode="Markdown", reply_markup=keyboard)
+                await processing_msg.delete()
+                return # Taaki AI response na de
+            else:
+                await processing_msg.edit("❌ Sorry! Link process nahi ho paya. Shayad link expired hai.")
+                return
+
     
     # --- GAME HANDLING ---
     if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
