@@ -1926,23 +1926,30 @@ async def handle_ping(request):
     return web.Response(text="🤖 Alita is Alive! 🛡️")
 
 async def start_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    app.router.add_get("/health", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"🌐 Health server started on port {PORT}")
+    """Start health check server"""
+    try:
+        print(f"🌐 Starting health server on port {PORT}...")
+        app = web.Application()
+        app.router.add_get("/", handle_ping)
+        app.router.add_get("/health", handle_ping)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", PORT)
+        await site.start()
+        print(f"✅ Health server started successfully on port {PORT}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to start health server: {e}")
+        return False
 
 async def main():
     print("=" * 50)
     print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
-    print(f"🔧 Using PORT: {PORT}")
+    print(f"🔧 PORT set to: {PORT}")
     print(f"🔧 Using TOKEN: {TOKEN[:10]}...")  # First 10
-    asyncio.create_task(start_server())
-    # **IMPORTANT: Pehle webhook clear karo forcefully**
+    server_task = asyncio.create_task(start_server())
+    print(f"✅ Health server task created on port {PORT}")
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         print("✅ Webhook cleared forcefully!")
