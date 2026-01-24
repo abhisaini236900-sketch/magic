@@ -1037,35 +1037,37 @@ async def handle_all_messages(message: Message, state: FSMContext):
     user_id = message.from_user.id
     chat_id = message.chat.id
     user_text = message.text
-    # --- TERABOX DOWNLOADER FEATURE ---
-    if "terabox" in user_text.lower() or "nephobox" in user_text.lower():
-        processing_msg = await message.reply("⚡ Wait! TeraBox link detect hua hai, process kar rahi hu...")
+    
+        # --- [TERABOX LOGIC START] ---
+    if "terabox" in user_text.lower() or "nephobox" in user_text.lower() or "teraboxapp" in user_text.lower():
+        # Processing message send karte hain
+        processing_msg = await message.reply("🎀 Processing your link, please wait...")
         
-        # Link extract karein (agar text mein aur bhi baatein ho)
-        urls = re.findall(r'(https?://\S+)', user_text)
-        if urls:
-            tb_url = urls[0]
-            data = await get_terabox_data(tb_url)
+        found_urls = re.findall(r'(https?://\S+)', user_text)
+        if found_urls:
+            data = await get_terabox_data(found_urls[0])
             
-            if data and data['direct_link']:
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚀 Watch Online (Chrome/VLC)", url=data['direct_link'])],
-                    [InlineKeyboardButton(text="📥 Download Fast", url=data['direct_link'])]
+            if data and 'download_link' in data:
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎬 Watch Online (Chrome/VLC)", url=data['download_link'])],
+                    [InlineKeyboardButton(text="📥 Direct Download", url=data['download_link'])]
                 ])
                 
-                caption = (
-                    f"{get_emotion('happy')} **TeraBox File Ready!**\n\n"
-                    f"📁 **Name:** `{data['file_name']}`\n"
-                    f"⚖️ **Size:** {data['size']}\n\n"
-                    f"✨ *Ab aap isey direct dekh sakte hain bina download kiye!*"
+                # Yahan edit_text use hoga
+                await processing_msg.edit_text(
+                    f"✨ **Alita TeraDL Service** 🎀\n\n"
+                    f"📁 **File:** `{data.get('file_name', 'Video File')}`\n"
+                    f"⚖️ **Size:** `{data.get('size', 'N/A')}`\n\n"
+                    f"Enjoy your video! 💕",
+                    reply_markup=kb, parse_mode="Markdown"
                 )
-                
-                await message.reply(caption, parse_mode="Markdown", reply_markup=keyboard)
-                await processing_msg.delete()
-                return # Taaki AI response na de
+                return 
             else:
-                await processing_msg.edit("❌ Sorry! Link process nahi ho paya. Shayad link expired hai.")
+                # Agar error aaye to yahan bhi edit_text
+                await processing_msg.edit_text("❌ Sorry! Link process nahi ho paya. Shayad link expired hai.")
                 return
+    # --- [TERABOX LOGIC END] ---
+
     
     # Ignore if bot is checking
     if user_id == bot.id:
