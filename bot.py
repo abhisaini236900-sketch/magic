@@ -758,15 +758,6 @@ EMOTIONAL_RESPONSES = {
 }
 
 def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
-    if user_id:
-        # Try to get from MongoDB first
-        try:
-            user_data = asyncio.run(get_user_data(user_id))
-            if user_data and 'emotion' in user_data:
-                emotion_type = user_data['emotion']
-        except:
-            pass
-    
     if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
         return random.choice(EMOTIONAL_RESPONSES[emotion_type])
     
@@ -1213,8 +1204,14 @@ async def handle_social_media(message: Message):
             if os.path.exists(f"temp_{temp_dir}"):
                 shutil.rmtree(f"temp_{temp_dir}")
 
-# --- QUICK RESPONSES ---
 QUICK_RESPONSES = {
+    'greeting': [
+        "Hii cutie! Kaise ho? 😊",
+        "Hello ji! Aaj kya chal raha hai? 🌸",
+        "Hey! Tum to mujhe yaad aaye! 💖",
+        "Namaste! Aapka din shubh ho! 🙏",
+        "Hi there! Main alita hu, aap? 🎀"
+    ],
     'goodbye': [
         "Bye bye! Phir milenge! 👋",
         "Take care! Miss karungi! 💕",
@@ -1696,7 +1693,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     
     # Quick responses
     if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        if random.random() < 0.4:
+        if random.random() < 0.4 and 'greeting' in QUICK_RESPONSES:  # ✅ Check key exists
             return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}"
     
     if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida']):
@@ -1946,49 +1943,71 @@ async def main():
     print("=" * 50)
     print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
-    print(f"🔧 PORT set to: {PORT}")
-    print(f"🔧 Using TOKEN: {TOKEN[:10]}...")  # First 10
-    server_task = asyncio.create_task(start_server())
-    print(f"✅ Health server task created on port {PORT}")
+    
+    
+    print(f"🔧 Environment Check:")
+    print(f"• PORT: {PORT}")
+    print(f"• TOKEN exists: {'YES' if TOKEN else 'NO'}")
+    print(f"• MONGO_URI exists: {'YES' if MONGO_URI and MONGO_URI != 'mongodb://localhost:27017' else 'NO'}")
+    
+    
+    try:
+        await start_server()
+        print("✅ Health server started")
+    except Exception as e:
+        print(f"⚠️ Health server error: {e}")
+    
+    
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        print("✅ Webhook cleared forcefully!")
+        print("✅ Webhook cleared")
     except Exception as e:
-        print(f"⚠️ Webhook clear error: {e}")
+        print(f"⚠️ Webhook error: {e}")
     
-    # **Bot info check karo**
-    me = await bot.get_me()
-    print(f"🤖 Bot Info:")
-    print(f"• Name: {me.first_name}")
-    print(f"• Username: @{me.username}")
-    print(f"• ID: {me.id}")
     
-    # **MongoDB connection check**
+    try:
+        me = await bot.get_me()
+        print(f"🤖 Bot Info:")
+        print(f"• Name: {me.first_name}")
+        print(f"• Username: @{me.username}")
+        print(f"• ID: {me.id}")
+    except Exception as e:
+        print(f"❌ Bot info error: {e}")
+        return
+
     try:
         await mongo_client.admin.command('ping')
-        print("✅ MongoDB Connected!")
+        print("✅ MongoDB Connected")
     except Exception as e:
-        print(f"⚠️ MongoDB: {e}")
+        print(f"⚠️ MongoDB error: {e}")
+        
+    try:
+        await start_greeting_task()
+        print("✅ Greeting system started")
+    except Exception as e:
+        print(f"⚠️ Greeting system error: {e}")
     
-    # **Start polling with error handling**
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
     
-    # **Polling start karo with proper parameters**
-    await dp.start_polling(
-        bot, 
-        allowed_updates=dp.resolve_used_update_types(),
-        skip_updates=True  # **Important: Old updates skip karo**
-    )
+    try:
+        await dp.start_polling(
+            bot,
+            skip_updates=True,
+            allowed_updates=dp.resolve_used_update_types()
+        )
+    except Exception as e:
+        print(f"❌ Polling error: {e}")
+        raise
 
 if __name__ == "__main__":
-    # ***** PORT *****
-    print(f"🚀 Starting bot on PORT: {PORT}")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
     except Exception as e:
-        print(f"\n❌ Critical error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n❌ Bot crashed: {e}")
+        print("Restarting in 10 seconds...")
+        import time
+        time.sleep(10)
+        
