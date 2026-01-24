@@ -1923,7 +1923,7 @@ async def cleanup_temp_files():
 
 # --- DEPLOYMENT HANDLER ---
 async def handle_ping(request):
-    return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
+    return web.Response(text="🤖 Alita is Alive! 🛡️")
 
 async def start_server():
     app = web.Application()
@@ -1939,7 +1939,9 @@ async def main():
     print("=" * 50)
     print("🎀 ALITA - STARTING UP...")
     print("=" * 50)
-    
+    print(f"🔧 Using PORT: {PORT}")
+    print(f"🔧 Using TOKEN: {TOKEN[:10]}...")  # First 10
+    asyncio.create_task(start_server())
     # **IMPORTANT: Pehle webhook clear karo forcefully**
     try:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -1973,14 +1975,13 @@ async def main():
     )
 
 if __name__ == "__main__":
-    # **Clear any existing event loop**
+    # ***** PORT *****
+    print(f"🚀 Starting bot on PORT: {PORT}")
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
     except Exception as e:
         print(f"\n❌ Critical error: {e}")
-        print("Restarting in 5 seconds...")
-        time.sleep(5)
+        import traceback
+        traceback.print_exc()
