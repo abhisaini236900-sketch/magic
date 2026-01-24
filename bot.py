@@ -77,6 +77,12 @@ def get_current_time_period():
     else:
         return "late_night"
 
+QUICK_RESPONSES = {
+    'greeting': ["Hello! Main Alita hoon.", "Hi there! Link bhejiye process kar dungi.", "Hey! Kaise ho?"],
+    'error': ["Kuch galti ho gayi!", "Main samajh nahi paayi."]
+}
+
+
 # Greeting stickers for different times
 GREETING_STICKERS = {
     "morning": [
