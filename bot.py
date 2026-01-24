@@ -24,7 +24,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-TERABOX_API = "https://terabox-dl-api.vercel.app/api?url=" 
+TERABOX_API = "https://terabox-videoplayer.vercel.app/api?url=" 
 
 
 # Timezone for India
