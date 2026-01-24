@@ -394,19 +394,25 @@ async def start_greeting_task():
     print("✅ Greeting scheduler started!")
 
 async def get_terabox_data(url: str):
+    # Naya working link (Worker based)
+    API_URL = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
     try:
-    
-        response = requests.get(f"{TERABOX_API}{url}")
+        # Timeout badha diya hai taaki slow response pe crash na ho
+        response = requests.get(API_URL, timeout=15)
         if response.status_code == 200:
-            data = response.json()
-            return {
-                "direct_link": data.get("download_link"),
-                "file_name": data.get("file_name", "Video File"),
-                "size": data.get("size", "Unknown")
-            }
+            res_json = response.json()
+            # Alag-alag API alag format bhejti hain, ye dono check karega
+            dl_link = res_json.get('download_link') or res_json.get('direct_link')
+            if dl_link:
+                return {
+                    'download_link': dl_link,
+                    'file_name': res_json.get('file_name', 'Video File'),
+                    'size': res_json.get('size', 'N/A')
+                }
     except Exception as e:
-        print(f"Terabox Error: {e}")
+        print(f"Terabox API Error: {e}")
     return None
+
 # --- TEST COMMANDS ---
 @dp.message(Command("testgreet"))
 async def test_greeting(message: Message):
