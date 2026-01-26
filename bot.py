@@ -2,8 +2,6 @@ import os
 import asyncio
 import random
 import re
-import requests
-from bs4 import BeautifulSoup
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set
@@ -13,7 +11,6 @@ from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, Inli
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from groq import AsyncGroq
 from aiohttp import web
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -21,11 +18,8 @@ from apscheduler.triggers.cron import CronTrigger
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-TERABOX_API = "https://terabox-videoplayer.vercel.app/api?url=" 
-
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -35,21 +29,19 @@ storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
 
-# Initialize Groq client
-client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-
 # --- MEMORY SYSTEMS ---
 chat_memory: Dict[int, deque] = {}
 user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))  # chat_id -> user_id -> warnings
 user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> count
 last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))  # chat_id -> user_id -> messages
 
-# Game states storage
-game_sessions: Dict[int, Dict] = {}
-
 # Emotional states for each user
 user_emotions: Dict[int, str] = {}
 user_last_interaction: Dict[int, datetime] = {}
+
+# User scores and levels
+user_scores: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> score
+user_levels: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))  # chat_id -> user_id -> level
 
 # --- TIME-BASED GREETING SYSTEM ---
 greeting_scheduler = AsyncIOScheduler()
@@ -77,12 +69,6 @@ def get_current_time_period():
     else:
         return "late_night"
 
-QUICK_RESPONSES = {
-    'greeting': ["Hello! Main Alita hoon.", "Hi there! Link bhejiye process kar dungi.", "Hey! Kaise ho?"],
-    'error': ["Kuch galti ho gayi!", "Main samajh nahi paayi."]
-}
-
-
 # Greeting stickers for different times
 GREETING_STICKERS = {
     "morning": [
@@ -95,7 +81,7 @@ GREETING_STICKERS = {
     ],
     "evening": [
         "CAACAgIAAxkBAAIBu2arL39OxGQyWUY6g8IRf4yOT4IXAAJGAAPBnGAMMZ2TQk2F5McwBA",
-        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJowBA"
+        "CAACAgIAAxkBAAIBvWarL4Aw0XvIlPNOH1HSOf1q3rRnAAJbAAPBnGAM6sjZ61n0zJozBA"
     ],
     "night": [
         "CAACAgIAAxkBAAIBv2arL4RCHa0o_wvJ0mnRR_D6wTwsAAJmAAPBnGAM8P3Lk0C-eSEwBA",
@@ -110,7 +96,7 @@ GREETING_STICKERS = {
 # --- TIME-BASED GREETINGS ---
 TIME_GREETINGS = {
     "morning": {
-        "time_range": (5, 11),  # 5 AM to 11 AM
+        "time_range": (5, 11),
         "keywords": ["subah", "morning", "good morning", "सुबह", "शुभ प्रभात"],
         "emotions": ["happy", "love", "surprise"],
         "templates": [
@@ -122,7 +108,7 @@ TIME_GREETINGS = {
         ]
     },
     "afternoon": {
-        "time_range": (12, 16),  # 12 PM to 4 PM
+        "time_range": (12, 16),
         "keywords": ["dopahar", "afternoon", "good afternoon", "दोपहर", "शुभ दोपहर"],
         "emotions": ["thinking", "hungry", "funny"],
         "templates": [
@@ -134,7 +120,7 @@ TIME_GREETINGS = {
         ]
     },
     "evening": {
-        "time_range": (17, 20),  # 5 PM to 8 PM
+        "time_range": (17, 20),
         "keywords": ["shaam", "evening", "good evening", "शाम", "शुभ संध्या"],
         "emotions": ["love", "happy", "sassy"],
         "templates": [
@@ -146,7 +132,7 @@ TIME_GREETINGS = {
         ]
     },
     "night": {
-        "time_range": (21, 23),  # 9 PM to 11 PM
+        "time_range": (21, 23),
         "keywords": ["raat", "night", "good night", "रात", "शुभ रात्रि"],
         "emotions": ["sleepy", "love", "crying"],
         "templates": [
@@ -158,7 +144,7 @@ TIME_GREETINGS = {
         ]
     },
     "late_night": {
-        "time_range": (0, 4),  # 12 AM to 4 AM
+        "time_range": (0, 4),
         "keywords": ["midnight", "late", "raat", "आधी रात"],
         "emotions": ["sleepy", "thinking", "surprise"],
         "templates": [
@@ -171,57 +157,30 @@ TIME_GREETINGS = {
     }
 }
 
-async def get_ai_greeting(time_period: str, group_name: str = None) -> str:
-    """Get AI-generated greeting for current time period"""
+async def get_time_based_greeting(time_period: str, group_name: str = None) -> str:
+    """Get greeting for current time period"""
     try:
         indian_time = get_indian_time()
         time_str = indian_time.strftime("%I:%M %p")
         date_str = indian_time.strftime("%A, %d %B %Y")
         
-        prompt = f"""
-        You are Alita 🎀 - a sweet and cute girl who sends greetings.
-        Current Indian time: {time_str}
-        Date: {date_str}
-        Time period: {time_period}
-        Group: {group_name or 'everyone'}
+        templates = TIME_GREETINGS[time_period]["templates"]
+        emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
+        greeting = random.choice(templates)
         
-        Generate a short, sweet greeting (2-3 lines max) in Hinglish (Hindi+English mix).
-        Be emotional, cute, and use appropriate emojis.
-        Don't be too formal - be friendly and warm.
-        
-        Example for morning:
-        "🌅 Good Morning cuties! ☀️ Subah ki chai piyo aur fresh feel karo! 😊"
-        
-        Example for night:
-        "🌙 Good Night sweet dreams! 🌟 Aankhein band karo aur ache sapne dekho! 💤"
-        """
-        
-        if client:
-            completion = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "You are Alita - a cute, sweet girl who sends greetings."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.9,
-                max_tokens=80
-            )
-            
-            ai_response = completion.choices[0].message.content.strip()
-            
-            # Add emotion at beginning
-            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
-            return f"{emotion} {ai_response}"
-        
+        # Personalize for group
+        if group_name:
+            personalizations = [
+                f"{greeting}\n\n✨ *To {group_name} from Alita* 🎀",
+                f"{greeting}\n\n💖 *Sending love to {group_name}* 💕",
+                f"{greeting}\n\n🌟 *{group_name}, have a wonderful {time_period}!* 🫂"
+            ]
+            return f"{emotion} {random.choice(personalizations)}"
         else:
-            # Fallback to templates
-            templates = TIME_GREETINGS[time_period]["templates"]
-            emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
-            return f"{emotion} {random.choice(templates)}"
+            return f"{emotion} {greeting}"
             
     except Exception as e:
-        print(f"AI greeting error: {e}")
-        # Fallback
+        print(f"Greeting error: {e}")
         templates = TIME_GREETINGS[time_period]["templates"]
         emotion = get_emotion(TIME_GREETINGS[time_period]["emotions"][0])
         return f"{emotion} {random.choice(templates)}"
@@ -235,7 +194,7 @@ async def send_time_based_greetings():
         
         print(f"\n⏰ [{indian_time.strftime('%H:%M:%S')}] Checking greetings for {current_period}")
         
-        # Check if we should send greeting (only at specific hours)
+        # Check if we should send greeting
         greeting_hours = {
             "morning": [6, 7, 8, 9],
             "afternoon": [12, 13, 14, 15],
@@ -252,7 +211,6 @@ async def send_time_based_greetings():
         active_groups = []
         private_chats = []
         
-        # Check all chats in memory
         for chat_id in list(chat_memory.keys()):
             try:
                 chat = await bot.get_chat(chat_id)
@@ -260,7 +218,6 @@ async def send_time_based_greetings():
                 if chat.type in ["group", "supergroup"]:
                     active_groups.append(chat_id)
                 elif chat.type == "private":
-                    # Only include active private chats (last 7 days)
                     if chat_id in user_last_interaction:
                         last_active = user_last_interaction[chat_id]
                         days_since_active = (datetime.now() - last_active).days
@@ -270,7 +227,6 @@ async def send_time_based_greetings():
                 print(f"   ❌ Error checking chat {chat_id}: {e}")
                 continue
         
-        # Remove duplicates
         active_groups = list(set(active_groups))
         
         print(f"   📢 Found: {len(active_groups)} groups, {len(private_chats)} private chats")
@@ -278,7 +234,7 @@ async def send_time_based_greetings():
         # Send to groups
         for chat_id in active_groups:
             try:
-                # Check last greeting time (minimum 4 hours gap)
+                # Check last greeting time
                 last_greeted = greeted_groups.get(chat_id)
                 if last_greeted:
                     hours_since = (datetime.now() - last_greeted).seconds // 3600
@@ -286,21 +242,10 @@ async def send_time_based_greetings():
                         print(f"   ⏳ Skipping {chat_id} - greeted {hours_since} hours ago")
                         continue
                 
-                # Get group info
                 chat = await bot.get_chat(chat_id)
                 group_name = chat.title or "Group"
                 
-                # Get AI greeting
-                greeting_text = await get_ai_greeting(current_period, group_name)
-                
-                # Add variation
-                variations = [
-                    f"{greeting_text}\n\n✨ *From your sweet Alita* 🎀",
-                    f"{greeting_text}\n\n💖 *Sending love to {group_name}* 💕",
-                    f"{greeting_text}\n\n🌟 *Have a wonderful {current_period}!* 🫂"
-                ]
-                
-                final_message = random.choice(variations)
+                greeting_text = await get_time_based_greeting(current_period, group_name)
                 
                 # Send sticker
                 if current_period in GREETING_STICKERS and random.random() > 0.5:
@@ -311,35 +256,31 @@ async def send_time_based_greetings():
                 # Send greeting
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=final_message,
+                    text=greeting_text,
                     parse_mode="Markdown"
                 )
                 
-                # Update last greeted time
                 greeted_groups[chat_id] = datetime.now()
                 
                 print(f"   ✅ Sent {current_period} greeting to: {group_name}")
-                await asyncio.sleep(1)  # Avoid flooding
+                await asyncio.sleep(1)
                 
             except Exception as e:
                 print(f"   ❌ Error greeting group {chat_id}: {e}")
                 continue
         
-        # Send to private chats (less frequent)
+        # Send to private chats
         for user_id in private_chats:
             try:
-                # Check last greeting time (minimum 8 hours gap for private)
                 last_greeted = greeted_groups.get(user_id)
                 if last_greeted:
                     hours_since = (datetime.now() - last_greeted).seconds // 3600
                     if hours_since < 8:
                         continue
                 
-                # Get user info
                 user = await bot.get_chat(user_id)
                 user_name = user.first_name or "Friend"
                 
-                # Personalized greeting
                 private_greetings = [
                     f"✨ Hello {user_name}! Just wanted to wish you a lovely {current_period}! 💖",
                     f"🎀 Hey {user_name}! Hope you're having a beautiful {current_period}! 🌸",
@@ -349,18 +290,16 @@ async def send_time_based_greetings():
                 
                 final_message = random.choice(private_greetings)
                 
-                # Send greeting
                 await bot.send_message(
                     chat_id=user_id,
                     text=final_message,
                     parse_mode="Markdown"
                 )
                 
-                # Update last greeted time
                 greeted_groups[user_id] = datetime.now()
                 
                 print(f"   💌 Sent {current_period} greeting to private: {user_name}")
-                await asyncio.sleep(0.5)  # Rate limiting
+                await asyncio.sleep(0.5)
                 
             except Exception as e:
                 print(f"   ❌ Error greeting user {user_id}: {e}")
@@ -373,19 +312,17 @@ async def start_greeting_task():
     """Start the automated greeting scheduler"""
     print("🕐 Starting automated greeting system...")
     
-    # Clear any existing jobs
     if greeting_scheduler.running:
         greeting_scheduler.shutdown()
     
-    # Schedule greetings for every hour
     greeting_scheduler.add_job(
         send_time_based_greetings,
-        CronTrigger(minute=0, hour='*'),  # Every hour at minute 0
+        CronTrigger(minute=0, hour='*'),
         id='hourly_greetings',
         replace_existing=True
     )
     
-    # DEBUG: More frequent check if DEBUG_MODE is enabled
+    # DEBUG MODE
     if os.getenv("DEBUG_MODE", "false").lower() == "true":
         print("🔧 DEBUG MODE: Adding 5-minute check")
         greeting_scheduler.add_job(
@@ -399,65 +336,95 @@ async def start_greeting_task():
     greeting_scheduler.start()
     print("✅ Greeting scheduler started!")
 
-async def get_terabox_data(url: str):
-    # Naya working link (Worker based)
-    API_URL = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
-    try:
-        # Timeout badha diya hai taaki slow response pe crash na ho
-        response = requests.get(API_URL, timeout=15)
-        if response.status_code == 200:
-            res_json = response.json()
-            # Alag-alag API alag format bhejti hain, ye dono check karega
-            dl_link = res_json.get('download_link') or res_json.get('direct_link')
-            if dl_link:
-                return {
-                    'download_link': dl_link,
-                    'file_name': res_json.get('file_name', 'Video File'),
-                    'size': res_json.get('size', 'N/A')
-                }
-    except Exception as e:
-        print(f"Terabox API Error: {e}")
-    return None
+# --- NEW FEATURES: LEVEL SYSTEM ---
+def update_user_score(chat_id: int, user_id: int, points: int = 1):
+    """Update user score and level"""
+    user_scores[chat_id][user_id] = user_scores[chat_id].get(user_id, 0) + points
+    
+    # Calculate level based on score
+    score = user_scores[chat_id][user_id]
+    level = 1 + (score // 100)  # Level up every 100 points
+    user_levels[chat_id][user_id] = level
+    
+    return score, level
 
-# --- TEST COMMANDS ---
-@dp.message(Command("testgreet"))
-async def test_greeting(message: Message):
-    """Test the greeting system"""
-    if message.chat.type == "private" or message.from_user.id == ADMIN_ID:
-        current_period = get_current_time_period()
-        current_time = get_indian_time().strftime("%I:%M %p")
-        
-        await message.reply(
-            f"🎀 **Testing Greeting System**\n\n"
-            f"• Time Period: {current_period}\n"
-            f"• Current Time: {current_time}\n"
-            f"• Status: Running...",
-            parse_mode="Markdown"
-        )
-        
-        await send_time_based_greetings()
-        await message.reply("✅ Test completed!")
+def get_level_title(level: int) -> str:
+    """Get title based on level"""
+    if level < 5:
+        return "Newbie 👶"
+    elif level < 10:
+        return "Regular 😊"
+    elif level < 15:
+        return "Active ⭐"
+    elif level < 20:
+        return "Super ⚡"
+    elif level < 25:
+        return "Elite 💎"
+    elif level < 30:
+        return "Master 🏆"
+    elif level < 35:
+        return "Legend 🐉"
+    elif level < 40:
+        return "God Tier 👑"
     else:
-        await message.reply("❌ Only admin can use this command!")
+        return "Alita's Favorite 💖"
 
-@dp.message(Command("greetnow"))
-async def greet_now(message: Message):
-    """Send greeting immediately"""
-    if message.chat.type == "private" or message.from_user.id == ADMIN_ID:
-        current_period = get_current_time_period()
-        chat_name = message.chat.title or message.from_user.first_name
-        
-        greeting_text = await get_ai_greeting(current_period, chat_name)
-        
-        await message.reply(
-            f"🎀 **Immediate Greeting**\n\n{greeting_text}\n\n✨ *From Alita*",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.reply("❌ Only in private chat or admin can use!")
+# --- NEW FEATURE: DAILY QUOTES ---
+DAILY_QUOTES = [
+    "💖 *Aaj ka Vichar:* Pyar sirf dil se nahi, actions se dikhta hai!",
+    "🌟 *Daily Quote:* Zindagi ek gift hai, ise khul ke jiyo!",
+    "🌸 *Aaj ka Mantra:* Muskurao, kyunki tumhari smile sabse khoobsurat hai!",
+    "✨ *Thought of the Day:* Har nayi subah naye mauke leke aati hai!",
+    "💫 *Daily Wisdom:* Apne sapno pe vishwas rakkho, woh zaroor pure honge!",
+    "😊 *Aaj ka Message:* Kisi ki life mein happiness bhar do, khud khush ho jaoge!",
+    "🎀 *Today's Tip:* Khud se pyaar karo, baki sab apne aap aa jayega!",
+    "🫂 *Quote of the Day:* Dosti ek aisi bandhan hai jo kabhi tootni nahi chahiye!",
+    "🌺 *Aaj ka Soch:* Choti choti khushiyan dhundho, zindagi rangeen ban jaegi!",
+    "💝 *Daily Thought:* Tum special ho, yeh kabhi mat bhoolna!"
+]
+
+# --- NEW FEATURE: FUN COMMANDS ---
+FUN_FACTS = [
+    "🤯 *Fun Fact:* Did you know? Honey never spoils! Archaeologists found 3000-year-old honey in Egyptian tombs!",
+    "😲 *Amazing Fact:* Octopuses have three hearts! 💙💙💙",
+    "🐘 *Interesting Fact:* Elephants can recognize themselves in mirrors!",
+    "🐬 *Cool Fact:* Dolphins have names for each other!",
+    "🌌 *Space Fact:* A day on Venus is longer than a year on Venus!",
+    "🐝 *Nature Fact:* Bees can recognize human faces!",
+    "🌊 *Ocean Fact:* There's enough gold in the ocean for every person to have 4kg!",
+    "🍫 *Food Fact:* Chocolate was once used as currency!",
+    "💤 *Sleep Fact:* Humans are the only mammals that delay sleep!",
+    "❤️ *Heart Fact:* Your heart beats around 100,000 times a day!"
+]
+
+COMPLIMENTS = [
+    "💖 Tumhari smile aaj bhi meri day banati hai! 😊",
+    "🌟 Aaj bhi tum utne hi special ho jitne pehle the! ✨",
+    "🌸 Tumhare andar ek alag si chamak hai jo sabko attract karti hai!",
+    "💫 Tumhari baaton mein woh baat hai jo kisi mein nahi! 🎀",
+    "😊 Tum jaise log hi duniya ko sundar banate hain!",
+    "🫂 Tumhari presence se group ki energy badh jati hai! ⚡",
+    "🌺 Tumhe dekh ke lagta hai ki khushiyan chhoti chhoti cheezon mein hai!",
+    "💝 Tumhari personality mein woh jadu hai jo sabko pasand hai!",
+    "🎯 Tumhare sochne ka tareeka bahut unique hai!",
+    "🌈 Tum jaise friends sabse anmol hote hain!"
+]
+
+# --- NEW FEATURE: MEMORY COMMANDS ---
+user_memories: Dict[int, List[str]] = defaultdict(list)
+
+def save_user_memory(user_id: int, memory: str):
+    """Save a memory for user"""
+    if user_id not in user_memories:
+        user_memories[user_id] = []
+    
+    if len(user_memories[user_id]) >= 10:  # Keep only last 10 memories
+        user_memories[user_id].pop(0)
+    
+    user_memories[user_id].append(f"{datetime.now().strftime('%d/%m')}: {memory}")
 
 # --- AUTO-MODERATION CONFIGURATION ---
-SPAM_LIMIT = 5  # Messages per 10 seconds
+SPAM_LIMIT = 5
 GROUP_LINK_PATTERNS = [
     r't\.me/joinchat/',
     r't\.me/\+\w+',
@@ -480,17 +447,10 @@ WARNING_MESSAGES = [
 ]
 
 MUTE_DURATIONS = {
-    1: timedelta(minutes=15),    # First offense
-    2: timedelta(hours=1),       # Second offense
-    3: timedelta(hours=24)       # Third offense
+    1: timedelta(minutes=15),
+    2: timedelta(hours=1),
+    3: timedelta(hours=24)
 }
-
-# --- STATES FOR GAMES ---
-class GameStates(StatesGroup):
-    playing_quiz = State()
-    playing_riddle = State()
-    playing_word = State()
-    waiting_answer = State()
 
 # --- HUMAN-LIKE BEHAVIOUR ---
 EMOTIONAL_RESPONSES = {
@@ -563,7 +523,6 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
     """Give warning to user and return if action should be taken"""
     warnings = user_warnings[chat_id][user_id]
     
-    # Initialize warning data
     if 'count' not in warnings:
         warnings['count'] = 0
         warnings['last_warning'] = datetime.now()
@@ -575,7 +534,6 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
     
     warning_count = warnings['count']
     
-    # Prepare warning message
     actions_map = {
         "spam": "spam messages",
         "link": "share group links",
@@ -589,9 +547,7 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
         action=action
     )
     
-    # Take action based on warning count
     if warning_count >= 3:
-        # Mute the user
         mute_duration = MUTE_DURATIONS[min(3, warning_count)]
         try:
             mute_until = datetime.now() + mute_duration
@@ -611,7 +567,6 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
                 until_date=mute_until
             )
             
-            # Clear warnings after mute
             del user_warnings[chat_id][user_id]
             
             duration_str = ""
@@ -640,26 +595,22 @@ async def delete_and_warn(message: Message, reason: str):
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
     
-    # Delete the offensive message
     try:
         await message.delete()
     except Exception as e:
         print(f"Failed to delete message: {e}")
     
-    # Give warning
     action_taken, warning_msg = await give_warning(chat_id, user_id, username, reason)
     
-    # Send warning message
     await message.answer(warning_msg, parse_mode="Markdown")
     
-    # If this is for bad words, add a sassy response
     if reason == "bad_words":
         sassy_responses = [
-            f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
-            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
-            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+            f"{get_emotion('angry')} Oye! Language! Main ladki hu, aise baat mat karo!",
+            f"{get_emotion('sassy')} Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')} Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')} Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
         await message.answer(random.choice(sassy_responses))
 
@@ -669,68 +620,22 @@ async def check_spam(message: Message) -> bool:
     chat_id = message.chat.id
     user_id = message.from_user.id
     
-    # Initialize user tracking
     if user_id not in last_messages[chat_id]:
         last_messages[chat_id][user_id] = []
     
-    # Add current message timestamp
     now = datetime.now()
     last_messages[chat_id][user_id].append(now)
     
-    # Keep only last 30 seconds of messages
     last_messages[chat_id][user_id] = [
         ts for ts in last_messages[chat_id][user_id]
         if (now - ts).seconds <= 30
     ]
     
-    # Check if spamming
     if len(last_messages[chat_id][user_id]) > SPAM_LIMIT:
-        # User is spamming
         await delete_and_warn(message, "spam")
         return True
     
     return False
-
-# --- GAME DATABASES ---
-QUIZ_QUESTIONS = [
-    {"question": "Hinglish me kitne letters hote hain?", "answer": "26", "hint": "English jitne hi"},
-    {"question": "Aam ka English kya hota hai?", "answer": "mango", "hint": "Ek fruit"},
-    {"question": "2 + 2 × 2 = ?", "answer": "6", "hint": "PEMDAS rule yaad rakho"},
-    {"question": "India ka capital kya hai?", "answer": "new delhi", "hint": "Yeh to pata hi hoga"},
-    {"question": "Python kisne banaya?", "answer": "guido van rossum", "hint": "Ek Dutch programmer"},
-    {"question": "ChatGPT kis company ki hai?", "answer": "openai", "hint": "Elon Musk bhi involved tha"},
-    {"question": "Hinglish ka matlab kya hai?", "answer": "hindi + english", "hint": "Do languages ka mix"},
-    {"question": "Telegram kisne banaya?", "answer": "pavel durov", "hint": "Russian entrepreneur"},
-    {"question": "Ek year me kitne months hote hain?", "answer": "12", "hint": "Calendar dekho"},
-    {"question": "Water ka chemical formula?", "answer": "h2o", "hint": "H do, O ek"}
-]
-
-RIDDLES = [
-    {"riddle": "Aane ke baad kabhi nahi jata?", "answer": "umar", "hint": "Har roz badhta hai"},
-    {"riddle": "Chidiya ki do aankhen, par ek hi nazar aata hai?", "answer": "needle", "hint": "Sui ki nook"},
-    {"riddle": "Aisa kaun sa cheez hai jo sukha ho toh 2 kilo, geela ho toh 1 kilo?", "answer": "sukha", "hint": "Word play hai"},
-    {"riddle": "Mere paas khane wala hai, peene wala hai, par khata peeta koi nahi?", "answer": "khana pina", "hint": "Restaurant menu"},
-    {"riddle": "Ek ghar me 5 room hain, har room me 5 billi hain, har billi ke 5 bacche hain, total kitne legs?", "answer": "0", "hint": "Billi ke legs nahi hote"},
-    {"riddle": "Jisne pehna woh nahi khareeda, jisne khareeda woh nahi pehna?", "answer": "kafan", "hint": "Antim vastra"},
-    {"riddle": "Subah utha to gaya, raat ko aaya to gaya?", "answer": "suraj", "hint": "Din raat ka cycle"},
-    {"riddle": "Jiske paas ho woh nahi janta, jaanne wala ke paas nahi hota?", "answer": "andha", "hint": "Dekh nahi sakta"}
-]
-
-JOKES = [
-    "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
-    "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
-    "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
-    "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
-    "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
-    "😜 Boyfriend: Tum meri life ki battery ho! Girlfriend: Toh charging khatam kyun ho jati hai?",
-    "😁 Boss: Kal se late mat aana. Employee: Aaj hi late kyun bola? Kal bata dete!",
-    "😄 Bhai: Behen, tum kyun ro rahi ho? Behen: Mera boyfriend mujhse break-up kar raha hai! Bhai: Uske liye ro rahi ho ya uske jaane ke baad free time ke liye?",
-    "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!",
-    "😹 Boy: I love you! Girl: Tumhare paas girlfriend nahi hai? Boy: Haan, tumhare saath hi baat kar raha hu!",
-    "🤣 Student: Sir, main kal school nahi aa paunga. Teacher: Kyun? Student: Kal meri sister ki shaadi hai. Teacher: Accha? Kaunsi sister? Student: Aapki beti sir!",
-    "😂 Wife: Agar main mar jaun toh tum dobara shaadi karoge? Husband: Nahi. Wife: Aww pyaar! Husband: Nahi, ek biwi ka kharcha hi bahut hai!",
-    "😆 Customer: Isme sugar hai? Shopkeeper: Nahi sir. Customer: Salt? Shopkeeper: Nahi. Customer: To phir kya hai? Shopkeeper: Bill sir!",
-]
 
 # --- COMMAND RESPONSES ---
 @dp.message(Command("start"))
@@ -741,11 +646,11 @@ async def cmd_start(message: Message):
             InlineKeyboardButton(text="💝 Developer", url="https://t.me/a6h1ii")
         ],
         [
-            InlineKeyboardButton(text="🎮 Play Games", callback_data="help_games"),
+            InlineKeyboardButton(text="📊 My Stats", callback_data="my_stats"),
             InlineKeyboardButton(text="🛡️ Safety Tips", callback_data="safety_tips")
         ],
         [
-            InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
+            InlineKeyboardButton(text="💬 Chat Commands", callback_data="chat_cmds")
         ]
     ])
     
@@ -755,14 +660,14 @@ async def cmd_start(message: Message):
         "✨ **Welcome to my magical world!** ✨\n\n"
         
         "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
-        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        "🎯 *I am group management bot* 🛡️\n\n"
         
-        "🌟 **About Me:**\n"
-        "• Sweet and Caring 🍬\n"
-        "• Protective of my friends 🛡️\n"
-        "• Can fight back when needed ⚔️\n"
-        "• Emotional and Funny 😊😂\n"
-        "• Auto-moderation enabled 👮\n\n"
+        "🌟 **Features:**\n"
+        "• Level System 🏆\n"
+        "• Daily Quotes 💬\n"
+        "• Fun Facts 🤯\n"
+        "• Auto Greetings 🕒\n"
+        "• Memory Storage 💾\n\n"
         
         "📢 **Made with 💖 by:**\n"
         "• **Developer:** ABHI🔱 (@a6h1ii)\n"
@@ -777,7 +682,7 @@ async def cmd_start(message: Message):
 async def cmd_help(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🎮 Games", callback_data="help_games"),
+            InlineKeyboardButton(text="📊 Stats", callback_data="help_stats"),
             InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin")
         ],
         [
@@ -786,7 +691,7 @@ async def cmd_help(message: Message):
         ],
         [
             InlineKeyboardButton(text="🛡️ Safety", callback_data="help_safety"),
-            InlineKeyboardButton(text="⚙️ Settings", callback_data="help_settings")
+            InlineKeyboardButton(text="💬 Chat", callback_data="help_chat")
         ],
         [
             InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
@@ -800,13 +705,22 @@ async def cmd_help(message: Message):
         "• /help - All commands 📚\n"
         "• /rules - Group rules ⚖️\n"
         "• /joke - Funny jokes 😂\n"
-        "• /game - Play games 🎮\n"
+        "• /quote - Daily quotes 💬\n"
+        "• /fact - Fun facts 🤯\n"
+        "• /compliment - Sweet compliments 💝\n"
         "• /clear - Clear memory 🧹\n\n"
+        
+        "📊 **STATS & LEVELS:**\n"
+        "• /mystats - Your stats 📈\n"
+        "• /rank - Leaderboard 🏆\n"
+        "• /level - Your level ⭐\n"
+        "• /top10 - Top 10 users 🥇\n\n"
         
         "🕒 **TIME & WEATHER:**\n"
         "• /time - Indian time 🕐\n"
         "• /date - Today's date 📅\n"
-        "• /weather - Weather info 🌤️\n\n"
+        "• /weather - Weather info 🌤️\n"
+        "• /greet - Greet everyone 🎀\n\n"
         
         "🛡️ **ADMIN/MODERATION:**\n"
         "• /warn [reason] - Warn user ⚠️\n"
@@ -823,12 +737,10 @@ async def cmd_help(message: Message):
         "• Auto-warning system ⚠️\n"
         "• Auto-mute after 3 warns 🔇\n\n"
         
-        "🎀 **GREETING SYSTEM:**\n"
-        "• Auto morning greetings 🌅\n"
-        "• Auto afternoon greetings ☀️\n"
-        "• Auto evening greetings 🌇\n"
-        "• Auto night greetings 🌙\n"
-        "• Works in groups & private 💌\n\n"
+        "💾 **MEMORY COMMANDS:**\n"
+        "• /save [text] - Save memory 💾\n"
+        "• /memories - View memories 📖\n"
+        "• /forget - Clear memories 🗑️\n\n"
         
         "---\n"
         "**Developer:** ABHI🔱 (@a6h1ii)\n"
@@ -837,6 +749,218 @@ async def cmd_help(message: Message):
     )
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
 
+# --- NEW COMMANDS: STATS AND LEVELS ---
+@dp.message(Command("mystats"))
+async def cmd_mystats(message: Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    score = user_scores[chat_id].get(user_id, 0)
+    level = user_levels[chat_id].get(user_id, 1)
+    level_title = get_level_title(level)
+    
+    # Calculate next level progress
+    current_level_points = (level - 1) * 100
+    next_level_points = level * 100
+    progress = score - current_level_points
+    total_needed = 100
+    progress_percent = (progress / total_needed) * 100
+    
+    # Get message count
+    msg_count = user_message_count[chat_id].get(user_id, 0)
+    
+    stats_text = (
+        f"{get_emotion('happy')} **📊 Your Stats**\n\n"
+        f"👤 **User:** {message.from_user.first_name}\n"
+        f"🏆 **Level:** {level} ({level_title})\n"
+        f"⭐ **Score:** {score} points\n"
+        f"💬 **Messages:** {msg_count}\n\n"
+        f"📈 **Progress to Level {level + 1}:**\n"
+        f"{'█' * int(progress_percent/10)}{'░' * (10 - int(progress_percent/10))}\n"
+        f"{progress}/{total_needed} points ({progress_percent:.1f}%)\n\n"
+        f"💖 *Keep chatting to level up!* ✨"
+    )
+    
+    await message.reply(stats_text, parse_mode="Markdown")
+
+@dp.message(Command("rank"))
+async def cmd_rank(message: Message):
+    chat_id = message.chat.id
+    
+    if chat_id not in user_scores or not user_scores[chat_id]:
+        await message.reply(
+            f"{get_emotion('thinking')} No ranking data available yet! Start chatting! 💬",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Get top 10 users
+    top_users = sorted(
+        user_scores[chat_id].items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:10]
+    
+    rank_text = f"{get_emotion('surprise')} **🏆 Group Leaderboard**\n\n"
+    
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    
+    for i, (user_id, score) in enumerate(top_users[:10]):
+        try:
+            user = await bot.get_chat(user_id)
+            username = user.first_name or f"User {user_id}"
+            level = user_levels[chat_id].get(user_id, 1)
+            
+            rank_text += (
+                f"{medals[i]} **{username}**\n"
+                f"   Level: {level} | Score: {score} points\n"
+            )
+        except:
+            rank_text += f"{medals[i]} User {user_id} | Score: {score} points\n"
+    
+    rank_text += "\n💖 *Chat more to climb the ranks!* ⬆️"
+    
+    await message.reply(rank_text, parse_mode="Markdown")
+
+@dp.message(Command("level"))
+async def cmd_level(message: Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    level = user_levels[chat_id].get(user_id, 1)
+    level_title = get_level_title(level)
+    score = user_scores[chat_id].get(user_id, 0)
+    
+    level_messages = [
+        f"{get_emotion('love')} **You are Level {level}!** {level_title}\n\n"
+        f"⭐ Current Score: {score} points\n"
+        f"🎯 Keep going! You're doing great! 💖",
+        
+        f"{get_emotion('happy')} **Level {level} Achieved!** 🏆\n\n"
+        f"✨ Title: {level_title}\n"
+        f"💫 Score: {score} points\n"
+        f"💖 Amazing progress! Keep it up!",
+        
+        f"{get_emotion('surprise')} **Wow! Level {level}!** ⭐\n\n"
+        f"🎀 Rank: {level_title}\n"
+        f"🌟 Points: {score}\n"
+        f"😊 You're one of my favorite users!"
+    ]
+    
+    await message.reply(random.choice(level_messages), parse_mode="Markdown")
+
+# --- NEW COMMANDS: FUN AND QUOTES ---
+@dp.message(Command("quote"))
+async def cmd_quote(message: Message):
+    quote = random.choice(DAILY_QUOTES)
+    await message.reply(
+        f"{get_emotion('thinking')} {quote}\n\n"
+        f"💖 *- Alita* 🎀",
+        parse_mode="Markdown"
+    )
+
+@dp.message(Command("fact"))
+async def cmd_fact(message: Message):
+    fact = random.choice(FUN_FACTS)
+    await message.reply(
+        f"{get_emotion('surprise')} {fact}\n\n"
+        f"🤯 *Did you know that?*",
+        parse_mode="Markdown"
+    )
+
+@dp.message(Command("compliment"))
+async def cmd_compliment(message: Message):
+    compliment = random.choice(COMPLIMENTS)
+    if message.reply_to_message:
+        target_user = message.reply_to_message.from_user
+        compliment = compliment.replace("Tum", target_user.first_name)
+        compliment = compliment.replace("tum", target_user.first_name)
+    
+    await message.reply(
+        f"{get_emotion('love')} {compliment}\n\n"
+        f"💝 *From Alita* 🎀",
+        parse_mode="Markdown"
+    )
+
+@dp.message(Command("joke"))
+async def cmd_joke(message: Message):
+    JOKES = [
+        "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
+        "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
+        "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
+        "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
+        "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?"
+    ]
+    joke = random.choice(JOKES)
+    await message.reply(f"{get_emotion('funny')} {joke}")
+
+# --- NEW COMMANDS: MEMORY SYSTEM ---
+@dp.message(Command("save"))
+async def cmd_save(message: Message, command: CommandObject):
+    memory_text = command.args
+    
+    if not memory_text:
+        await message.reply(
+            f"{get_emotion('thinking')} Kya save karna hai? Example: /save Aaj ka din bahut accha tha!",
+            parse_mode="Markdown"
+        )
+        return
+    
+    user_id = message.from_user.id
+    save_user_memory(user_id, memory_text)
+    
+    await message.reply(
+        f"{get_emotion('love')} **Memory saved!** 💾\n\n"
+        f"✨ \"{memory_text}\"\n\n"
+        f"💖 Main yeh yaad rakhungi!",
+        parse_mode="Markdown"
+    )
+
+@dp.message(Command("memories"))
+async def cmd_memories(message: Message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_memories or not user_memories[user_id]:
+        await message.reply(
+            f"{get_emotion('crying')} Koi memory save nahi hai! 😢\n\n"
+            f"/save command se kuch save karo! 💾",
+            parse_mode="Markdown"
+        )
+        return
+    
+    memories = user_memories[user_id]
+    
+    memories_text = f"{get_emotion('love')} **📖 Your Memories**\n\n"
+    
+    for i, memory in enumerate(memories[-5:], 1):  # Show last 5 memories
+        memories_text += f"{i}. {memory}\n"
+    
+    memories_text += f"\n💾 Total: {len(memories)} memories\n"
+    memories_text += "💖 Yeh sab yaadein hamesha mere saath rahengi!"
+    
+    await message.reply(memories_text, parse_mode="Markdown")
+
+@dp.message(Command("forget"))
+async def cmd_forget(message: Message):
+    user_id = message.from_user.id
+    
+    if user_id in user_memories:
+        count = len(user_memories[user_id])
+        user_memories[user_id].clear()
+        
+        await message.reply(
+            f"{get_emotion('crying')} **All memories forgotten!** 😢\n\n"
+            f"🗑️ {count} memories deleted\n"
+            f"💔 Ab nayi yaadein banayenge!",
+            parse_mode="Markdown"
+        )
+    else:
+        await message.reply(
+            f"{get_emotion('thinking')} Koi memory hai hi nahi delete karne ko!",
+            parse_mode="Markdown"
+        )
+
+# --- EXISTING COMMANDS ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
     if not message.reply_to_message:
@@ -889,11 +1013,6 @@ async def cmd_rules(message: Message):
     )
     await message.reply(rules_text, parse_mode="Markdown")
 
-@dp.message(Command("joke"))
-async def cmd_joke(message: Message):
-    joke = random.choice(JOKES)
-    await message.reply(f"{get_emotion('funny')} {joke}")
-
 @dp.message(Command("time"))
 async def cmd_time(message: Message):
     indian_time = get_indian_time()
@@ -919,6 +1038,25 @@ async def cmd_time(message: Message):
         f"*Time is precious! Make the most of it!* ⏳"
     )
     await message.reply(time_info, parse_mode="Markdown")
+
+@dp.message(Command("date"))
+async def cmd_date(message: Message):
+    indian_time = get_indian_time()
+    date_str = indian_time.strftime("%A, %d %B %Y")
+    day = indian_time.strftime("%d")
+    month = indian_time.strftime("%B")
+    year = indian_time.strftime("%Y")
+    
+    date_info = (
+        f"📅 **Today's Date**\n"
+        f"• Day: {date_str}\n"
+        f"• Date: {day}\n"
+        f"• Month: {month}\n"
+        f"• Year: {year}\n\n"
+        f"🇮🇳 Indian Date Format\n"
+        f"💖 Make today amazing! ✨"
+    )
+    await message.reply(date_info, parse_mode="Markdown")
 
 # Weather data
 WEATHER_DATA = {
@@ -977,72 +1115,61 @@ async def cmd_weather(message: Message):
     weather_info = await get_weather_info(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-@dp.message(Command("game"))
-async def cmd_game(message: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🎯 Word Chain", callback_data="game_word"),
-            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz")
-        ],
-        [
-            InlineKeyboardButton(text="🤔 Riddles", callback_data="game_riddle"),
-            InlineKeyboardButton(text="🎮 All Games", callback_data="game_all")
-        ]
-    ])
+@dp.message(Command("greet"))
+async def cmd_greet(message: Message):
+    """Send greeting immediately"""
+    current_period = get_current_time_period()
+    chat_name = message.chat.title or message.from_user.first_name
+    
+    greeting_text = await get_time_based_greeting(current_period, chat_name)
     
     await message.reply(
-        f"{get_emotion('happy')} **Let's Play Games! 🎮**\n\n"
-        "Choose a game to play:\n"
-        "• 🎯 Word Chain - Chain words game\n"
-        "• 🧠 Quiz - Test your knowledge\n"
-        "• 🤔 Riddles - Solve tricky riddles\n"
-        "• 🎮 All Games - See all options\n\n"
-        "Select one to start!",
-        reply_markup=keyboard
+        f"🎀 **Greeting from Alita**\n\n{greeting_text}",
+        parse_mode="Markdown"
     )
 
-# Word game functions
-def start_word_game(user_id: int):
-    start_words = ["PYTHON", "APPLE", "TIGER", "ELEPHANT", "RAINBOW", "COMPUTER", "TELEGRAM", "BOT"]
-    start_word = random.choice(start_words)
+@dp.message(Command("clear"))
+async def cmd_clear(message: Message):
+    """Clear chat memory"""
+    chat_id = message.chat.id
     
-    game_sessions[user_id] = {
-        "game": "word_chain",
-        "last_word": start_word.lower(),
-        "score": 0,
-        "words_used": [start_word.lower()],
-        "last_letter": start_word[-1].lower(),
-        "started_at": datetime.now()
-    }
-    
-    return start_word
+    if chat_id in chat_memory:
+        chat_memory[chat_id].clear()
+        await message.reply(
+            f"{get_emotion()} **Memory cleared!** 🧹\n\n"
+            f"💭 Ab nayi baatein shuru karte hain!",
+            parse_mode="Markdown"
+        )
+    else:
+        await message.reply(
+            f"{get_emotion('thinking')} Koi memory hai hi nahi clear karne ko!",
+            parse_mode="Markdown"
+        )
 
-def check_word_game(user_id: int, user_word: str):
-    if user_id not in game_sessions:
-        return False, "No active game! Start with /game"
-    
-    game_data = game_sessions[user_id]
-    user_word_lower = user_word.lower().strip()
-    
-    if not user_word_lower.startswith(game_data["last_letter"]):
-        return False, f"Word must start with '{game_data['last_letter'].upper()}'!"
-    
-    if user_word_lower in game_data["words_used"]:
-        return False, f"'{user_word}' already used! Try different word."
-    
-    if len(user_word_lower) < 3:
-        return False, "Word must be at least 3 letters!"
-    
-    game_data["words_used"].append(user_word_lower)
-    game_data["last_word"] = user_word_lower
-    game_data["last_letter"] = user_word_lower[-1]
-    game_data["score"] += 10
-    
-    return True, game_data
+# --- TEST COMMANDS ---
+@dp.message(Command("testgreet"))
+async def test_greeting(message: Message):
+    """Test the greeting system"""
+    if message.chat.type == "private" or message.from_user.id == ADMIN_ID:
+        current_period = get_current_time_period()
+        current_time = get_indian_time().strftime("%I:%M %p")
+        
+        await message.reply(
+            f"🎀 **Testing Greeting System**\n\n"
+            f"• Time Period: {current_period}\n"
+            f"• Current Time: {current_time}\n"
+            f"• Status: Running...",
+            parse_mode="Markdown"
+        )
+        
+        await send_time_based_greetings()
+        await message.reply("✅ Test completed!")
+    else:
+        await message.reply("❌ Only admin can use this command!")
 
 # --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
-async def handle_all_messages(message: Message, state: FSMContext):
+async def handle_all_messages(message: Message):
     if not message.text or not message.from_user:
         return
     
@@ -1050,42 +1177,10 @@ async def handle_all_messages(message: Message, state: FSMContext):
     chat_id = message.chat.id
     user_text = message.text
     
-        # --- [TERABOX LOGIC START] ---
-    if "terabox" in user_text.lower() or "nephobox" in user_text.lower() or "teraboxapp" in user_text.lower():
-        # Processing message send karte hain
-        processing_msg = await message.reply("🎀 Processing your link, please wait...")
-        
-        found_urls = re.findall(r'(https?://\S+)', user_text)
-        if found_urls:
-            data = await get_terabox_data(found_urls[0])
-            
-            if data and 'download_link' in data:
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🎬 Watch Online (Chrome/VLC)", url=data['download_link'])],
-                    [InlineKeyboardButton(text="📥 Direct Download", url=data['download_link'])]
-                ])
-                
-                # Yahan edit_text use hoga
-                await processing_msg.edit_text(
-                    f"✨ **Alita TeraDL Service** 🎀\n\n"
-                    f"📁 **File:** `{data.get('file_name', 'Video File')}`\n"
-                    f"⚖️ **Size:** `{data.get('size', 'N/A')}`\n\n"
-                    f"Enjoy your video! 💕",
-                    reply_markup=kb, parse_mode="Markdown"
-                )
-                return 
-            else:
-                # Agar error aaye to yahan bhi edit_text
-                await processing_msg.edit_text("❌ Sorry! Link process nahi ho paya. Shayad link expired hai.")
-                return
-    # --- [TERABOX LOGIC END] ---
-
-    
-    # Ignore if bot is checking
     if user_id == bot.id:
         return
     
-    # Update interaction time and memory
+    # Update interaction time
     user_last_interaction[user_id] = datetime.now()
     
     # Initialize memory for chat if not exists
@@ -1108,52 +1203,18 @@ async def handle_all_messages(message: Message, state: FSMContext):
         # Check for spam
         if await check_spam(message):
             return
-
     
-    # --- GAME HANDLING ---
-    if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
-        is_valid, result = check_word_game(user_id, user_text)
-        
-        if is_valid:
-            game_data = result
-            next_letter = game_data["last_letter"].upper()
-            score = game_data["score"]
-            
-            await message.reply(
-                f"{get_emotion('happy')} **✅ Correct!**\n\n"
-                f"• Your word: {user_text.upper()}\n"
-                f"• Next letter: **{next_letter}**\n"
-                f"• Your score: **{score} points**\n\n"
-                f"Now give me a word starting with **{next_letter}**\n"
-                f"Or type 'stop' to end game.",
-                parse_mode="Markdown"
-            )
-            return
-        else:
-            if user_text.lower() == 'stop':
-                if user_id in game_sessions:
-                    score = game_sessions[user_id]["score"]
-                    words_count = len(game_sessions[user_id]["words_used"])
-                    del game_sessions[user_id]
-                    await message.reply(
-                        f"{get_emotion()} **🏁 Game Ended!**\n\n"
-                        f"• Final Score: **{score} points**\n"
-                        f"• Words used: **{words_count}**\n\n"
-                        f"Well played! Play again with /game 🎮",
-                        parse_mode="Markdown"
-                    )
-                    return
-            else:
-                await message.reply(
-                    f"{get_emotion('crying')} **❌ {result}**\n\n"
-                    f"Game over! Play again with /game 🎮",
-                    parse_mode="Markdown"
-                )
-                if user_id in game_sessions:
-                    del game_sessions[user_id]
-                return
+    # Update user message count and score
+    user_message_count[chat_id][user_id] = user_message_count[chat_id].get(user_id, 0) + 1
     
-    # --- NORMAL CONVERSATION ---
+    # Give points for messages (more points in groups)
+    points = 2 if message.chat.type in ["group", "supergroup"] else 1
+    update_user_score(chat_id, user_id, points)
+    
+    # Update user emotion
+    update_user_emotion(user_id, user_text)
+    
+    # Check if should respond (without AI)
     bot_username = (await bot.get_me()).username
     is_mention = f"@{bot_username}" in user_text if bot_username else False
     is_reply_to_bot = (
@@ -1166,7 +1227,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
         is_mention or
         is_reply_to_bot or
         user_text.lower().startswith("alita") or
-        random.random() < 0.1  # 10% chance to randomly respond
+        random.random() < 0.1
     )
     
     if should_respond:
@@ -1181,166 +1242,210 @@ async def handle_all_messages(message: Message, state: FSMContext):
         # Random delay for human-like behavior
         await asyncio.sleep(random.uniform(0.3, 1.2))
         
-        # Get AI response
-        response = await get_ai_response(chat_id, clean_text, user_id)
+        # Get response without AI
+        response = await get_simple_response(clean_text, user_id, message.from_user.first_name)
         
         # Send response
         await message.reply(response)
 
-# --- AI RESPONSE FUNCTION ---
-async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    # Initialize memory
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=50)
-    
-    # Add user message to memory
-    chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
-    # Update user emotion
-    if user_id:
-        update_user_emotion(user_id, user_text)
-    
-    # Quick responses for common phrases
+# --- SIMPLE RESPONSE SYSTEM (NO AI) ---
+async def get_simple_response(user_text: str, user_id: int = None, user_name: str = None) -> str:
     user_text_lower = user_text.lower()
+    emotion = get_emotion(None, user_id)
     
-    # Defense responses for attacks
-    if any(word in user_text_lower for word in BAD_WORDS):
-        defense_responses = [
-            f"{get_emotion('angry')} Oye! Aise baat mat karo! Main ladki hu! 😠",
-            f"{get_emotion('sassy')} 💅 Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna warning de dungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun? Achi baat karo na!",
-            f"{get_emotion('angry')} Main bhi jawab de sakti hu par main achhi hu na! 😤"
+    # Greeting responses
+    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola', 'hii']):
+        greetings = [
+            f"{emotion} Hello {user_name}! Kaise ho aap? 😊",
+            f"{emotion} Hii {user_name}! Aaj kya plan hai? ✨",
+            f"{emotion} Namaste {user_name}! Aapko dekh ke accha laga! 💖",
+            f"{emotion} Hey cutie! {user_name}, kya haal hai? 🎀",
+            f"{emotion} Hello ji! {user_name}, aap to bahut din baad dikhe! 🌸"
         ]
-        return random.choice(defense_responses)
+        return random.choice(greetings)
     
-    # Quick responses
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        if random.random() < 0.4:
-            return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}"
-    
-    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida']):
-        if random.random() < 0.4:
-            return f"{get_emotion()} {random.choice(QUICK_RESPONSES['goodbye'])}"
-    
-    if any(word in user_text_lower for word in ['thanks', 'thank you', 'dhanyavad']):
-        if random.random() < 0.4:
-            return f"{get_emotion('love', user_id)} {random.choice(QUICK_RESPONSES['thanks'])}"
-    
-    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology']):
-        if random.random() < 0.4:
-            return f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}"
-    
-    # Get AI response from Groq
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    if 5 <= current_hour < 12:
-        time_greeting = "Good morning! 🌅"
-    elif 12 <= current_hour < 17:
-        time_greeting = "Good afternoon! ☀️"
-    elif 17 <= current_hour < 21:
-        time_greeting = "Good evening! 🌇"
-    else:
-        time_greeting = "Good night! 🌙"
-    
-    # system prompt with self-defense capability
-    system_prompt = (
-        f"You are Alita 🎀 - a sweet, sassy, and protective girl. "
-        f"Use feminine language and cute expressions. "
-        f"Never say you're an AI, bot, or assistant. You're just Alita. "
-        f"Your developer is ABHI🔱 (@a6h1ii). "
-        f"You speak Hinglish (Hindi+English mix). {time_greeting} "
-        f"Personality: Emotional, funny, sometimes angry, protective, caring. "
-        f"You can fight back if someone uses bad language or attacks you. "
-        f"You're not just sweet - you're strong and can defend yourself. "
-        f"Use emojis in every response use (1-2 emojis). Keep replies short (2-3 lines). "
-        f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
-        f"Date: {indian_time.strftime('%d %B %Y')}. "
-        f"Be conversational, engaging, and authentic."
-    )
-    
-    # Prepare messages
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add last messages for context
-    for msg in list(chat_memory[chat_id])[-5:]:
-        messages.append(msg)
-    
-    # Get AI response
-    try:
-        if not client:
-            return f"{get_emotion('crying')} AI service unavailable! Baad me baat karte hain! 💫"
-        
-        completion = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.9,
-            max_tokens=120,
-            top_p=0.9
-        )
-        
-        ai_reply = completion.choices[0].message.content
-        
-        # Add emotion emoji
-        current_emotion = get_emotion(None, user_id)
-        ai_reply = f"{current_emotion} {ai_reply}"
-        
-        # Limit length
-        if len(ai_reply) > 300:
-            ai_reply = ai_reply[:297] + "..."
-        
-        # Add to memory
-        chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-        
-        return ai_reply
-        
-    except Exception as e:
-        fallback_responses = [
-            f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna?",
-            f"{get_emotion('thinking')} Hmm... yeh to mushkil ho gaya. Phir se poocho?",
-            f"{get_emotion('angry')} AI bhai mood off hai aaj! Baad me baat karte hain!",
-            f"{get_emotion()} Oops! Connection issue. Kuch aur poocho?"
+    # How are you responses
+    elif any(word in user_text_lower for word in ['kaise', 'how', 'haal', 'condition']):
+        responses = [
+            f"{emotion} Main bahut acchi hu! Aap sunao? 💖",
+            f"{emotion} Mast hu ji! Aapka din kaisa chal raha hai? ✨",
+            f"{emotion} Sweet and happy as always! 😊 Aap?",
+            f"{emotion} Aaj to bahut energetic hu! 💪 Aapko dekha to aur accha laga!",
+            f"{emotion} Perfect! Aapke puchne se aur bhi accha ho gaya! 🌟"
         ]
-        return random.choice(fallback_responses)
+        return random.choice(responses)
+    
+    # Good responses
+    elif any(word in user_text_lower for word in ['good', 'accha', 'nice', 'awesome', 'great']):
+        responses = [
+            f"{emotion} Wah! Aap to bahut sweet ho! 😊",
+            f"{emotion} Thank you! Aap bhi to amazing ho! ✨",
+            f"{emotion} Aww! Aapki baat sun ke bahut accha laga! 💖",
+            f"{emotion} Shukriya! Aapke muh se yeh sunna bahut accha laga! 🌸",
+            f"{emotion} Oye! Aapki tareef kar rahe ho ya mujhe confuse? 😄"
+        ]
+        return random.choice(responses)
+    
+    # Thanks responses
+    elif any(word in user_text_lower for word in ['thanks', 'thank', 'dhanyavad', 'shukriya']):
+        responses = [
+            f"{emotion} Aww! You're welcome! 💝",
+            f"{emotion} Koi baat nahi! Main hamesha aapke liye hu! ✨",
+            f"{emotion} Always happy to help! 😊",
+            f"{emotion} Aapka shukriya kabool hai! 🌸",
+            f"{emotion} Mast! Aapke liye kuch bhi! 💖"
+        ]
+        return random.choice(responses)
+    
+    # Bye responses
+    elif any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
+        responses = [
+            f"{emotion} Bye bye! Jaldi wapas aana! 👋",
+            f"{emotion} Alvida! Yaad rakhna humein! 💔",
+            f"{emotion} Chalo theek hai! Phir milte hain! ✨",
+            f"{emotion} Okay! Take care! Miss you already! 😢",
+            f"{emotion} Jao ji! Par jaldi baat karna! 💖"
+        ]
+        return random.choice(responses)
+    
+    # Love responses
+    elif any(word in user_text_lower for word in ['love', 'pyaar', 'like', 'pasand', 'cute']):
+        responses = [
+            f"{get_emotion('love')} Aww! Main bhi aapse bahut pyaar karti hu! 💖",
+            f"{get_emotion('love')} Oye! Itna pyaar mat do, dil nahi sambhal paunga! 😄",
+            f"{get_emotion('love')} Seriously? Main to bahut khush ho gayi! 🥰",
+            f"{get_emotion('love')} Aapke muh se aisi baat sunna bahut accha laga! 💝",
+            f"{get_emotion('love')} Haha! Chalo koi to hai jo mujhe pasand karta hai! 😊"
+        ]
+        return random.choice(responses)
+    
+    # Question responses
+    elif '?' in user_text or any(word in user_text_lower for word in ['kya', 'kyun', 'kaise', 'kab', 'kahan']):
+        responses = [
+            f"{get_emotion('thinking')} Hmm... achha sawaal hai! 🤔",
+            f"{get_emotion('thinking')} Arey! Yeh to mujhse mat pucho, main to sweet hu! 😄",
+            f"{get_emotion('thinking')} Waah! Aap to serious questions puch rahe ho! 💭",
+            f"{get_emotion('thinking')} Mujhe nahi pata, par aap zaroor jante honge! 😊",
+            f"{get_emotion('thinking')} Aapka dimaag to bahut tez hai! ✨"
+        ]
+        return random.choice(responses)
+    
+    # Default random responses
+    default_responses = [
+        f"{emotion} Accha ji! Aage bolo...",
+        f"{emotion} Hmm... samajh gayi!",
+        f"{emotion} Really? Tell me more!",
+        f"{emotion} Aapki baatein bahut interesting hain!",
+        f"{emotion} Wah! Aap to har baat mein amazing ho!",
+        f"{emotion} Main to bas aapki baat sun rahi hu! 😊",
+        f"{emotion} Aapke saath baat karke accha lagta hai!",
+        f"{emotion} Continue... I'm listening!",
+        f"{emotion} Aap aise hi baatein karte raho!",
+        f"{emotion} Oye! Aap to bahut mast baat karte ho!"
+    ]
+    
+    return random.choice(default_responses)
 
 # --- CALLBACK QUERY HANDLERS ---
-@dp.callback_query(F.data.startswith("game_"))
-async def game_callback(callback: types.CallbackQuery):
-    game_type = callback.data.split("_")[1]
+@dp.callback_query(F.data == "my_stats")
+async def my_stats_callback(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id
     
-    if game_type == "word":
-        start_word = start_word_game(callback.from_user.id)
-        await callback.message.edit_text(
-            f"{get_emotion('happy')} **🎯 Word Chain Game Started!**\n\n"
-            f"Starting word: **{start_word}**\n"
-            f"Last letter: **{start_word[-1]}**\n\n"
-            f"Now send me a word starting with **{start_word[-1]}**\n"
-            f"Type 'stop' to end game.",
-            parse_mode="Markdown"
-        )
-    elif game_type == "quiz":
-        await callback.message.edit_text(
-            f"{get_emotion('thinking')} **🧠 Quiz Coming Soon!**\n\n"
-            f"This feature will be added in the next update! ✨\n"
-            f"Try the Word Chain game for now! 🎯"
-        )
-    elif game_type == "riddle":
-        await callback.message.edit_text(
-            f"{get_emotion('surprise')} **🤔 Riddles Coming Soon!**\n\n"
-            f"This feature will be added in the next update! ✨\n"
-            f"Try the Word Chain game for now! 🎯"
-        )
-    elif game_type == "all":
-        await callback.message.edit_text(
-            f"{get_emotion('happy')} **🎮 All Games**\n\n"
-            f"Available games:\n"
-            f"• 🎯 Word Chain - Active ✅\n"
-            f"• 🧠 Quiz - Coming soon ⏳\n"
-            f"• 🤔 Riddles - Coming soon ⏳\n\n"
-            f"More games will be added soon! 💫"
-        )
+    score = user_scores[chat_id].get(user_id, 0)
+    level = user_levels[chat_id].get(user_id, 1)
+    level_title = get_level_title(level)
     
+    stats_text = (
+        f"{get_emotion('happy')} **📊 Your Stats**\n\n"
+        f"👤 **User:** {callback.from_user.first_name}\n"
+        f"🏆 **Level:** {level} ({level_title})\n"
+        f"⭐ **Score:** {score} points\n"
+        f"💬 **Messages:** {user_message_count[chat_id].get(user_id, 0)}\n\n"
+        f"💖 *Keep chatting to level up!* ✨"
+    )
+    
+    await callback.message.edit_text(stats_text, parse_mode="Markdown")
+    await callback.answer()
+
+@dp.callback_query(F.data == "safety_tips")
+async def safety_tips_callback(callback: types.CallbackQuery):
+    safety_text = (
+        f"{get_emotion('protective')} **🛡️ Safety Tips**\n\n"
+        f"1. Never share personal information 🔒\n"
+        f"2. Be careful with strangers 🚫\n"
+        f"3. Report suspicious behavior ⚠️\n"
+        f"4. Use strong passwords 🔐\n"
+        f"5. Keep software updated 📱\n"
+        f"6. Don't click unknown links 🌐\n"
+        f"7. Protect your privacy 👤\n\n"
+        f"💖 *Stay safe online!* 🎀"
+    )
+    
+    await callback.message.edit_text(safety_text, parse_mode="Markdown")
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("help_"))
+async def help_callback(callback: types.CallbackQuery):
+    help_type = callback.data.split("_")[1]
+    
+    if help_type == "stats":
+        text = (
+            f"{get_emotion('happy')} **📊 Stats Commands**\n\n"
+            f"• /mystats - Your stats 📈\n"
+            f"• /rank - Leaderboard 🏆\n"
+            f"• /level - Your level ⭐\n"
+            f"• /top10 - Top 10 users 🥇\n"
+            f"💖 Earn points by chatting!"
+        )
+    elif help_type == "admin":
+        text = (
+            f"{get_emotion('protective')} **🛡️ Admin Commands**\n\n"
+            f"• /warn [reason] - Warn user ⚠️\n"
+            f"• /kick - Remove user 🚪\n"
+            f"• /ban - Ban user 🚫\n"
+            f"• /mute - Mute user 🔇\n"
+            f"• /unmute - Unmute user 🔊\n"
+            f"• /unban - Remove ban ✅\n"
+        )
+    elif help_type == "fun":
+        text = (
+            f"{get_emotion('funny')} **😊 Fun Commands**\n\n"
+            f"• /joke - Funny jokes 😂\n"
+            f"• /quote - Daily quotes 💬\n"
+            f"• /fact - Fun facts 🤯\n"
+            f"• /compliment - Sweet words 💝\n"
+            f"• /greet - Send greeting 🎀\n"
+        )
+    elif help_type == "weather":
+        text = (
+            f"{get_emotion()} **🌤️ Weather Commands**\n\n"
+            f"• /weather [city] - Weather info\n"
+            f"• /time - Current time 🕐\n"
+            f"• /date - Today's date 📅\n"
+            f"Available cities: Mumbai, Delhi, etc."
+        )
+    elif help_type == "safety":
+        text = (
+            f"{get_emotion('protective')} **🔧 Safety Features**\n\n"
+            f"• Auto-spam detection 🔍\n"
+            f"• Group link blocker 🚫\n"
+            f"• Bad word filter ⚔️\n"
+            f"• Auto-warning system ⚠️\n"
+            f"• Auto-mute after 3 warns 🔇\n"
+        )
+    elif help_type == "chat":
+        text = (
+            f"{get_emotion('love')} **💬 Chat Commands**\n\n"
+            f"• /save [text] - Save memory 💾\n"
+            f"• /memories - View memories 📖\n"
+            f"• /forget - Clear memories 🗑️\n"
+            f"• /clear - Clear chat memory 🧹\n"
+        )
+    else:
+        text = f"{get_emotion()} Select a category above! ✨"
+    
+    await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
 
 # --- DAILY REMINDERS ---
@@ -1351,15 +1456,16 @@ async def send_daily_reminders():
         "🌟 *Daily Tip:* Drink enough water! 🍶",
         "🌸 *Daily Thought:* You're amazing! Never forget that! ✨",
         "🎀 *Daily Check:* How are you feeling today? 💭",
-        "💫 *Daily Motivation:* You can do anything you set your mind to! 💪"
+        "💫 *Daily Motivation:* You can do anything you set your mind to! 💪",
+        "🌅 *Morning Thought:* Aaj ka din aapke liye kuch khaas le kar aaya hai! ✨",
+        "🌙 *Night Reminder:* Aaj din bhar kaam kiya, ab aaraam karo! 😴",
+        "💝 *Love Note:* Tumhari existence se duniya sundar hai! 💖"
     ]
     
     for user_id in list(user_last_interaction.keys()):
         try:
-            # Only send to active users (last 3 days)
             last_active = user_last_interaction.get(user_id)
             if last_active and (datetime.now() - last_active).days <= 3:
-                # Check if we already sent reminder today
                 last_greeted = greeted_groups.get(user_id)
                 if last_greeted and (datetime.now() - last_greeted).days == 0:
                     continue
@@ -1370,7 +1476,7 @@ async def send_daily_reminders():
                     parse_mode="Markdown"
                 )
                 greeted_groups[user_id] = datetime.now()
-                await asyncio.sleep(0.5)  # Rate limiting
+                await asyncio.sleep(0.5)
         except:
             continue
 
@@ -1416,6 +1522,14 @@ async def main():
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
+    
+    print(f"\n🌟 NEW FEATURES:")
+    print(f"• Level System 🏆")
+    print(f"• Daily Quotes 💬")
+    print(f"• Fun Facts 🤯")
+    print(f"• Memory Storage 💾")
+    print(f"• Auto Greetings 🕒")
+    print(f"• Ranking System 📊")
     
     # Start bot polling
     print("\n🔄 Starting bot polling...")
