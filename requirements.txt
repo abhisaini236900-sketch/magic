@@ -1,25 +1,7 @@
-# === CORE DEPENDENCIES ===
+# === ULTRA-MINIMAL REQUIREMENTS ===
 aiogram==3.4.1
-aiohttp==3.9.3
-
-# === AI & LANGUAGE ===
 groq==0.4.2
-SpeechRecognition==3.8.1
-
-# === IMAGE & AUDIO PROCESSING ===
-Pillow==10.0.1
-pydub==0.25.1
-
-# === DATE & TIME ===
 pytz==2024.1
 APScheduler==3.10.4
-
-# === DATA HANDLING ===
 python-dotenv==1.0.0
-
-# === SYSTEM UTILITIES ===
 requests==2.31.0
-urllib3==2.2.1
-
-# === OPTIONAL ENHANCEMENTS ===
-emoji==2.10.1
