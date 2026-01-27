@@ -1,14 +1,13 @@
 # === CORE DEPENDENCIES ===
 aiogram==3.4.1
 aiohttp==3.9.3
-asyncio==3.4.3
 
 # === AI & LANGUAGE ===
 groq==0.4.2
-speechrecognition==3.10.0
+SpeechRecognition==3.8.1
 
 # === IMAGE & AUDIO PROCESSING ===
-Pillow==10.2.0
+Pillow==10.0.1
 pydub==0.25.1
 
 # === DATE & TIME ===
@@ -17,9 +16,6 @@ APScheduler==3.10.4
 
 # === DATA HANDLING ===
 python-dotenv==1.0.0
-
-# === WEB SERVER ===
-aiohttp==3.9.3
 
 # === SYSTEM UTILITIES ===
 requests==2.31.0
