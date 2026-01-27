@@ -1,9 +1,29 @@
-aiogram==3.13.1
-groq==0.11.0
-httpx==0.27.2
-aiohttp==3.10.5
-python-dotenv==1.0.1
-pytz==2023.3
-apscheduler==3.10.4
-requests>=2.31.0
-beautifulsoup4
+# === CORE DEPENDENCIES ===
+aiogram==3.4.1
+aiohttp==3.9.3
+asyncio==3.4.3
+
+# === AI & LANGUAGE ===
+groq==0.4.2
+speechrecognition==3.10.0
+
+# === IMAGE & AUDIO PROCESSING ===
+Pillow==10.2.0
+pydub==0.25.1
+
+# === DATE & TIME ===
+pytz==2024.1
+APScheduler==3.10.4
+
+# === DATA HANDLING ===
+python-dotenv==1.0.0
+
+# === WEB SERVER ===
+aiohttp==3.9.3
+
+# === SYSTEM UTILITIES ===
+requests==2.31.0
+urllib3==2.2.1
+
+# === OPTIONAL ENHANCEMENTS ===
+emoji==2.10.1
