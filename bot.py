@@ -1256,6 +1256,12 @@ async def start_server():
     await site.start()
     print(f"🌐 Health server started on port {PORT}")
 
+async def start_greeting_task():
+    """Start the background scheduler for greetings"""
+    if not greeting_scheduler.running:
+        greeting_scheduler.start()
+        print("⏰ Scheduler started for greetings!")
+
 async def main():
     print("=" * 50)
     print("🎀 ALITA - STARTING UP...")
