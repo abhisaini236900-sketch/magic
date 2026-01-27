@@ -1,7 +1,9 @@
-# === ULTRA-MINIMAL REQUIREMENTS ===
-aiogram==3.4.1
+aiogram==3.3.0
 groq==0.4.2
-pytz==2024.1
-APScheduler==3.10.4
+aiohttp==3.9.1
+pytz==2023.3.post1
+apscheduler==3.10.4
+pillow==10.1.0
+pydub==0.25.1
+SpeechRecognition==3.10.0
 python-dotenv==1.0.0
-requests==2.31.0
