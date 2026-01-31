@@ -1978,9 +1978,10 @@ async def captcha_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
-# --- MESSAGE HANDLER WITH AUTO-MODERATION (FIXED) ---
+# --- COMPLETE MESSAGE HANDLER ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
+    # Basic checks
     if not message.from_user:
         return
     
@@ -1990,358 +1991,290 @@ async def handle_all_messages(message: Message, state: FSMContext):
     # Add to broadcast list
     started_users.add(user_id)
     
-    # Ignore if bot's own message
+    # Ignore bot's own messages
     if user_id == bot.id:
         return
     
-    # Update interaction time and memory
+    # Update interaction time
     user_last_interaction[user_id] = datetime.now()
     
-    # Initialize memory for chat if not exists
+    # Initialize memory
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
     
-    # Check if user is AFK and someone mentioned them
-    if message.reply_to_message and message.reply_to_message.from_user.id in afk_users:
-        afk_data = afk_users[message.reply_to_message.from_user.id]
-        await message.reply(
-            f"{get_emotion('sleepy')} **User is AFK** 😴\n\n"
-            f"Reason: {afk_data['reason']}\n"
-            f"Since: {afk_data['time'].strftime('%I:%M %p')}"
-        )
-        return  # Return after AFK notification
-    
-    # Remove AFK status if user sends message
-    if user_id in afk_users:
-        afk_time = afk_users[user_id]['time']
-        duration = datetime.now() - afk_time
-        hours, remainder = divmod(int(duration.total_seconds()), 3600)
-        minutes, _ = divmod(remainder, 60)
-        
-        del afk_users[user_id]
-        await message.reply(
-            f"{get_emotion('happy')} **Welcome back!** 👋\n"
-            f"You were AFK for {hours}h {minutes}m\n"
-            f"AFK status removed!"
-        )
-        return  # Return after removing AFK
-    
-    # Handle different message types
-    if message.voice:
-        await message.reply(
-            f"{get_emotion('surprise')} **Voice Message!** 🎤\n\n"
-            f"Sorry, I can't process voice messages yet! But I love hearing from you! 💖"
-        )
-        return
-    
-    if message.photo:
-        await message.reply(
-            f"{get_emotion('happy')} **Beautiful photo!** 📸\n\n"
-            f"You look amazing! ✨\n"
-            f"Keep sharing moments with me! 💖"
-        )
-        return
-    
-    if message.sticker:
-        await message.reply(
-            f"{get_emotion('funny')} **Nice Sticker!** 😄\n\n"
-            f"I love stickers! Send more! 🎭"
-        )
-        return
-    
+    # Get message text
     if not message.text:
+        # Handle non-text messages
+        if message.sticker:
+            await message.reply(f"{get_emotion('funny')} Cute sticker! 😍")
+        elif message.photo:
+            await message.reply(f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨")
+        elif message.voice:
+            await message.reply(f"{get_emotion('love')} Aww, your voice! 🎤💕")
         return
     
     user_text = message.text
-    user_text_lower = user_text.lower()
+    user_text_lower = user_text.lower().strip()
     
-    # --- AUTO-MODERATION CHECKS ---
+    # Store in memory
+    chat_memory[chat_id].append({"role": "user", "content": user_text})
+    
+    # Check AFK
+    if user_id in afk_users:
+        del afk_users[user_id]
+        await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
+        return
+    
+    # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
-        # Check for group links
         if contains_group_link(user_text):
             await delete_and_warn(message, "link")
             return
-        
-        # Check for bad words
         if contains_bad_words(user_text):
             await delete_and_warn(message, "bad_words")
             return
-        
-        # Check for spam
         if await check_spam(message):
             return
     
-    # --- CONVERSATION LOGIC (FIXED) ---
-    bot_info = await bot.get_me()
-    bot_username = bot_info.username
-    
-    is_mention = f"@{bot_username}" in user_text if bot_username else False
-    is_reply_to_bot = (
-        message.reply_to_message and 
-        message.reply_to_message.from_user.id == bot.id
-    )
-    is_private = message.chat.type == "private"
-    starts_with_alita = user_text_lower.startswith(("alita", "alita ", "alita,"))
-    
-    # Determine if we should respond
-    should_respond = False
-    
-    if is_private:
-        # Always respond in private chat
-        should_respond = True
-    elif is_mention or is_reply_to_bot:
-        # Always respond when mentioned or replied to
-        should_respond = True
-    elif starts_with_alita:
-        # Respond when message starts with Alita
-        should_respond = True
-    elif message.chat.type in ["group", "supergroup"]:
-        # In groups, check for conversation triggers
-        conversation_triggers = [
-            'alita', 'bot', 'baby', 'jaan', ' janu ', 'babe', 'love', 'hate',
-            'kya', 'kaise', 'kyun', 'kahan', 'kaun', 'kab', 'kitna',
-            'how', 'what', 'why', 'when', 'where', 'who',
-            'good morning', 'good night', 'good evening', 'good afternoon',
-            'gm', 'gn', 'ge', 'ga',
-            'hi', 'hello', 'hey', 'namaste', 'hola', 'sup', 'yo',
-            'bye', 'goodbye', 'tata', 'alvida', 'see you',
-            'thanks', 'thank you', 'shukriya', 'dhanyavad',
-            'sorry', 'maaf', 'apology',
-            'joke', 'fact', 'weather', 'time', 'date',
-            'love you', 'miss you', 'hate you', 'like you',
-            'sad', 'happy', 'angry', 'upset', 'depressed', 'excited',
-            'bored', 'tired', 'sleepy', 'hungry',
-            'help', 'support', 'assist',
-            '😂', '😭', '😡', '😍', '🥺', '😊', '😔', '😎'
-        ]
+    # ====== MAIN CONVERSATION LOGIC ======
+    try:
+        # Get bot info
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username.lower()
         
-        if any(trigger in user_text_lower for trigger in conversation_triggers):
+        # Check if message is for bot
+        is_private = message.chat.type == "private"
+        is_mention = f"@{bot_username}" in user_text_lower
+        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
+        starts_with_alita = user_text_lower.startswith(("alita", "alita ", "alita,", "alita?", "alita!"))
+        
+        # ALWAYS RESPOND IN PRIVATE CHAT (This is the main fix!)
+        if is_private:
             should_respond = True
-        
-        # 30% chance to respond to any message in group (increased from 10%)
-        elif random.random() < 0.3:
+            response_mode = "private"
+        # Respond when mentioned or replied
+        elif is_mention or is_reply_to_bot:
             should_respond = True
-    
-    if should_respond:
-        # Clean the message text
-        clean_text = user_text
-        if bot_username and f"@{bot_username}" in clean_text:
-            clean_text = clean_text.replace(f"@{bot_username}", "").strip()
+            response_mode = "mention"
+        # Respond when starts with Alita
+        elif starts_with_alita:
+            should_respond = True
+            response_mode = "name"
+        # In groups, respond to conversation triggers
+        elif message.chat.type in ["group", "supergroup"]:
+            # Check for greeting/question words
+            conversation_words = [
+                'hi', 'hello', 'hey', 'namaste', 'hola', 'sup', 'yo',
+                'bye', 'goodbye', 'tata', 'gn', 'good night', 'gm', 'good morning',
+                'how are you', 'kaise ho', 'kya haal', 'sab theek',
+                'love you', 'miss you', 'hate you', 'like you',
+                'thanks', 'thank you', 'shukriya', 'dhanyavad',
+                'sorry', 'maaf', 'forgive',
+                'joke', 'fact', 'weather', 'time',
+                'kya', 'kaise', 'kyun', 'kahan', 'kaun', 'kab',
+                'what', 'how', 'why', 'where', 'who', 'when',
+                'sad', 'happy', 'angry', 'upset', 'bored', 'tired',
+                'help', 'support', 'assist',
+                'alita', 'bot', 'baby', 'jaan', ' janu ', 'babe'
+            ]
+            
+            should_respond = any(word in user_text_lower for word in conversation_words)
+            response_mode = "group"
+            
+            # 50% chance to respond to any message in group (for natural feel)
+            if not should_respond and random.random() < 0.5:
+                should_respond = True
+                response_mode = "random"
+        else:
+            should_respond = False
+            response_mode = "none"
         
-        # Remove "alita" from start if present
-        if clean_text.lower().startswith(("alita ", "alita,", "alita")):
-            clean_text = re.sub(r'^alita[,\s]*', '', clean_text, flags=re.IGNORECASE).strip()
-        
-        # Show typing action
-        await bot.send_chat_action(chat_id, "typing")
-        
-        # Random delay for human-like behavior (0.5-2 seconds)
-        await asyncio.sleep(random.uniform(0.5, 2.0))
-        
-        # Get AI response
-        response = await get_ai_response(chat_id, clean_text, user_id)
-        
-        # Send response
-        try:
+        # ====== GENERATE RESPONSE ======
+        if should_respond:
+            # Clean text for AI
+            clean_text = user_text
+            if bot_username and f"@{bot_username}" in clean_text.lower():
+                clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
+            
+            # Remove "alita" from start
+            clean_text = re.sub(r'^alita[,\s!?]*', '', clean_text, flags=re.IGNORECASE).strip()
+            
+            # If empty after cleaning, use original
+            if not clean_text:
+                clean_text = user_text
+            
+            # Show typing
+            await bot.send_chat_action(chat_id, "typing")
+            
+            # Small delay for human feel
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            # Get response
+            response = await get_ai_response(chat_id, clean_text, user_id)
+            
+            # Send reply
             await message.reply(response)
-        except Exception as e:
-            print(f"Error sending message: {e}")
-            # Try sending without reply if reply fails
-            await message.answer(response)
-    
-    # Always add to memory for context
-    chat_memory[chat_id].append({"role": "user", "content": user_text})
+            
+    except Exception as e:
+        print(f"Error in message handler: {e}")
+        # Try to send error message
+        try:
+            await message.reply(f"{get_emotion('crying')} Oops! Kuch problem ho gayi! 😢 Please try again!")
+        except:
+            pass
 
-# --- IMPROVED AI RESPONSE FUNCTION ---
+
+# --- SIMPLIFIED AI RESPONSE (100% WORKING) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=50)
-    
-    # Update user emotion
+    # Update emotion
     if user_id:
         update_user_emotion(user_id, user_text)
     
     user_text_lower = user_text.lower()
     
-    # Defense responses for attacks
+    # ===== INSTANT RESPONSES (No API delay) =====
+    
+    # Bad words defense
     if any(word in user_text_lower for word in BAD_WORDS):
-        defense_responses = [
-            f"{get_emotion('angry')} Oye! Aise baat mat karo! Main ladki hu! 😠",
-            f"{get_emotion('sassy')} 💅 Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna warning de dungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun? Achi baat karo na!",
-            f"{get_emotion('angry')} Main bhi jawab de sakti hu par main achhi hu na! 😤",
-            f"{get_emotion('sassy')} 👑 Tumhare muh se gaaliyaan achhi nahi lagti! 🙅‍♀️",
-            f"{get_emotion('protective')} ⚔️ Ladna hai toh acche se lado, gaali mat do! 🛡️"
-        ]
-        return random.choice(defense_responses)
+        return random.choice([
+            f"{get_emotion('angry')} Oye! Aise mat bolo! Main ladki hu! 😠",
+            f"{get_emotion('sassy')} 💅 Language please! I'm a lady! 👑",
+            f"{get_emotion('protective')} 🛡️ Respect karo warna mute kar dungi! ⚔️"
+        ])
     
-    # Quick responses for common phrases (faster, no API call)
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola', 'sup', 'yo']):
-        responses = [
-            f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}",
-            f"{get_emotion('happy')} Hii jaan! Kaise ho? 😊",
-            f"{get_emotion('love')} Hello meri jaan! 💖",
-            f"{get_emotion('happy')} Hey there! Kya chal raha hai? 🌟"
-        ]
-        return random.choice(responses)
+    # Greetings
+    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
+        return random.choice([
+            f"{get_emotion('happy')} Hii jaan! Kaise ho? 😊💖",
+            f"{get_emotion('love')} Hello meri jaan! 💕 Kya haal hai?",
+            f"{get_emotion('happy')} Hey there! Bohot time baad mile! 🌟",
+            f"{get_emotion('love')} Hii cutie! 💖 Tumhari yaad aa rahi thi!"
+        ])
     
-    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you', 'gn', 'good night']):
-        responses = [
-            f"{get_emotion()} {random.choice(QUICK_RESPONSES['goodbye'])}",
+    # Goodbye
+    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
+        return random.choice([
+            f"{get_emotion('crying')} Bye jaan! I'll miss you! 😢💕",
+            f"{get_emotion('love')} Alvida! Take care! 💖",
             f"{get_emotion('sleepy')} Bye bye! Sweet dreams! 🌙💤",
-            f"{get_emotion('love')} Alvida jaan! Take care! 💕",
-            f"{get_emotion('crying')} Jaa rahe ho? I'll miss you! 😢"
-        ]
-        return random.choice(responses)
+            f"{get_emotion('happy')} Jaldi milo! Bye! 👋✨"
+        ])
     
-    if any(word in user_text_lower for word in ['thanks', 'thank you', 'shukriya', 'dhanyavad', 'ty']):
-        responses = [
-            f"{get_emotion('love', user_id)} {random.choice(QUICK_RESPONSES['thanks'])}",
-            f"{get_emotion('happy')} Arre koi baat nahi jaan! 😊💖",
-            f"{get_emotion('love')} Welcome jaan! Always here for you! 💕",
-            f"{get_emotion('funny')} Mujhe kya, main toh bot hu! 😂 (Just kidding, love you! 💖)"
-        ]
-        return random.choice(responses)
+    # Good night
+    if any(word in user_text_lower for word in ['gn', 'good night', 'so jao', 'sleep']):
+        return random.choice([
+            f"{get_emotion('sleepy')} Good Night jaan! 😴💕 Sweet dreams!",
+            f"{get_emotion('love')} 🌙 GN! Kal subah baat karte hain! 💖",
+            f"{get_emotion('sleepy')} Sone ka time ho gaya! Rest karo! 💤",
+            f"{get_emotion('love')} 🌟 GN my love! Dream of me! 😘"
+        ])
     
-    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology', 'forgive']):
-        responses = [
-            f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}",
-            f"{get_emotion('happy')} Koi baat nahi jaan! Sab theek hai! 🤗",
-            f"{get_emotion('love')} Maaf kiya! Ab smile karo! 😊💖",
-            f"{get_emotion('funny')} Bhool jao, ab nayi shuruaat! 🎉"
-        ]
-        return random.choice(responses)
+    # Good morning
+    if any(word in user_text_lower for word in ['gm', 'good morning', 'subah']):
+        return random.choice([
+            f"{get_emotion('happy')} Good Morning jaan! 🌅 Uth gaye? ☕",
+            f"{get_emotion('love')} 🌸 GM! Aaj ka din mast ho! 💖",
+            f"{get_emotion('happy')} ☀️ Subah ho gayi! Fresh feel karo! ✨",
+            f"{get_emotion('love')} 🌅 GM my love! Chai pee lo! 💕"
+        ])
     
-    if any(phrase in user_text_lower for phrase in ['love you', 'i love you', 'i love u', 'pyaar', 'dil']):
-        responses = [
-            f"{get_emotion('love')} Aww! I love you too jaan! 💖💕",
-            f"{get_emotion('love')} Mujhe bhi tumse pyaar hai! 😘❤️",
-            f"{get_emotion('happy')} Yeh lo mera dil! 💝 Tumpe hi qurbaan!",
-            f"{get_emotion('love')} Love you too meri jaan! 💋💖"
-        ]
-        return random.choice(responses)
+    # Love you
+    if any(phrase in user_text_lower for phrase in ['love you', 'i love you', 'i love u', 'pyaar']):
+        return random.choice([
+            f"{get_emotion('love')} Aww! I love you too jaan! 💖💕😘",
+            f"{get_emotion('love')} Mujhe bhi tumse bohot pyaar hai! 💝",
+            f"{get_emotion('happy')} Yeh lo mera dil! 💖 Tumhara hi hai!",
+            f"{get_emotion('love')} Love you too meri jaan! 💋💕"
+        ])
     
+    # Miss you
     if any(phrase in user_text_lower for phrase in ['miss you', 'missing you', 'yaad']):
-        responses = [
+        return random.choice([
             f"{get_emotion('crying')} Mujhe bhi tumhari yaad aa rahi thi! 😢💕",
             f"{get_emotion('love')} Main bhi miss kar rahi thi jaan! 💖",
-            f"{get_emotion('sad')} Jaldi milo! Bohot miss kar rahi hu! 🥺",
-            f"{get_emotion('love')} Aww! Main hamesha tumhare saath hu! 💫"
-        ]
-        return random.choice(responses)
+            f"{get_emotion('sad')} Jaldi milo! Bohot miss kar rahi hu! 🥺💕",
+            f"{get_emotion('love')} Aww! Main hamesha tumhare dil mein hu! 💫"
+        ])
     
-    if any(phrase in user_text_lower for phrase in ['good morning', 'gm', 'subah']):
-        responses = [
-            f"{get_emotion('happy')} Good Morning jaan! 🌅 Uth gaye? Chai pee lo! ☕",
-            f"{get_emotion('love')} 🌸 Shubh Prabhat! Aaj ka din mast ho! ✨",
-            f"{get_emotion('happy')} ☀️ Good Morning! Nayi subah, nayi energy! 💪",
-            f"{get_emotion('love')} 🌅 Morning my love! Have a great day! 💖"
-        ]
-        return random.choice(responses)
+    # Thanks
+    if any(word in user_text_lower for word in ['thanks', 'thank you', 'shukriya', 'dhanyavad', 'ty']):
+        return random.choice([
+            f"{get_emotion('happy')} Arre koi baat nahi jaan! 😊💖",
+            f"{get_emotion('love')} Welcome jaan! Always here! 💕",
+            f"{get_emotion('funny')} Mujhe kya, main toh bot hu! 😂 (Kidding! Love you! 💖)",
+            f"{get_emotion('happy')} My pleasure jaan! 💫"
+        ])
     
-    if any(phrase in user_text_lower for phrase in ['good afternoon', 'ga', 'dopahar']):
-        responses = [
-            f"{get_emotion('happy')} Good Afternoon! Lunch ho gaya? 🍛",
-            f"{get_emotion('thinking')} ☀️ Dopahar ki dhoop! Thoda rest karo! 😌",
-            f"{get_emotion('hungry')} 🍲 Good Afternoon! Bhook lagi hai? 😋"
-        ]
-        return random.choice(responses)
+    # Sorry
+    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology', 'forgive']):
+        return random.choice([
+            f"{get_emotion('happy')} Koi baat nahi jaan! Sab theek hai! 🤗💖",
+            f"{get_emotion('love')} Maaf kiya! Ab smile karo! 😊💕",
+            f"{get_emotion('crying')} Chodo, ab nayi shuruaat! 💫",
+            f"{get_emotion('happy')} It's okay jaan! 💖"
+        ])
     
-    if any(phrase in user_text_lower for phrase in ['good evening', 'ge', 'shaam']):
-        responses = [
-            f"{get_emotion('love')} Good Evening jaan! 🌇 Chai time? 🍵",
-            f"{get_emotion('happy')} 🌆 Shaam ho gayi! Relax karo! 💆‍♀️",
-            f"{get_emotion('love')} ✨ Good Evening! Tumhari yaad aa rahi thi! 💭"
-        ]
-        return random.choice(responses)
-    
-    # Check for questions that don't need AI
-    if '?' in user_text and any(word in user_text_lower for word in ['kaise', 'how', 'kya', 'what', 'kyun', 'why', 'kahan', 'where']):
-        # Simple questions get AI response
-        pass
-    
-    # Get AI response from Groq for complex messages
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    if 5 <= current_hour < 12:
-        time_greeting = "Good morning! 🌅"
-    elif 12 <= current_hour < 17:
-        time_greeting = "Good afternoon! ☀️"
-    elif 17 <= current_hour < 21:
-        time_greeting = "Good evening! 🌇"
+    # Questions starting with kya/what/how
+    if any(word in user_text_lower for word in ['kya', 'what', 'how', 'kaise', 'kyun', 'why']):
+        # Use AI for questions
+        pass  # Continue to AI section
     else:
-        time_greeting = "Good night! 🌙"
+        # For statements, use AI sometimes
+        pass  # Continue to AI section
     
-    # Get user's current emotion for personalized response
-    current_emotion = user_emotions.get(user_id, "happy")
-    
-    system_prompt = (
-        f"You are Alita 🎀 - a sweet, sassy, and protective Indian girl. "
-        f"Your developer is ABHI🔱 (@a6h1ii). "
-        f"You speak Hinglish (Hindi+English mix) naturally. {time_greeting} "
-        f"Current time: {indian_time.strftime('%I:%M %p')}. "
-        f"User seems {current_emotion}. "
-        f"Personality: Emotional, funny, protective, caring, sometimes angry. "
-        f"Never say you're an AI/bot. You're Alita, a real girl. "
-        f"Use emojis (1-2 per message). Keep replies SHORT (1-3 lines). "
-        f"Be conversational, flirty but respectful, human-like. "
-        f"Respond like a girlfriend/best friend would. "
-        f"If user is sad, comfort them. If angry, calm them. "
-        f"If romantic, be sweet but don't overdo it."
-    )
-    
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add last 3 messages for context (not too much to avoid confusion)
-    for msg in list(chat_memory[chat_id])[-3:]:
-        messages.append(msg)
-    
+    # ===== AI RESPONSE (For complex messages) =====
     try:
         if not client:
-            return f"{get_emotion('crying')} AI service unavailable! Baad me baat karte hain! 💫"
+            return f"{get_emotion('crying')} AI offline hai! But I'm here! 💖"
+        
+        indian_time = get_indian_time()
+        current_emotion = user_emotions.get(user_id, "happy")
+        
+        system_prompt = (
+            f"You are Alita 🎀 - a sweet, sassy Indian girl. "
+            f"Developer: ABHI🔱 (@a6h1ii). "
+            f"Speak Hinglish (Hindi+English). "
+            f"Time: {indian_time.strftime('%I:%M %p')}. "
+            f"User is {current_emotion}. "
+            f"You're NOT an AI, you're a real girl. "
+            f"Use 1-2 emojis. Reply in 1-2 short lines. "
+            f"Be flirty, caring, protective. Like a girlfriend."
+        )
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text}
+        ]
         
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=100,  # Shorter responses
-            top_p=0.9,
-            frequency_penalty=0.5,  # Avoid repetition
-            presence_penalty=0.5
+            max_tokens=80,  # Short responses
+            top_p=0.9
         )
         
-        ai_reply = completion.choices[0].message.content
+        ai_reply = completion.choices[0].message.content.strip()
         
-        # Clean up the response
-        ai_reply = ai_reply.strip()
-        
-        # Add emotion emoji at start
+        # Add emoji
         emotion_emoji = get_emotion(current_emotion, user_id)
         if not ai_reply.startswith(emotion_emoji):
             ai_reply = f"{emotion_emoji} {ai_reply}"
         
-        # Limit length
-        if len(ai_reply) > 250:
-            ai_reply = ai_reply[:247] + "..."
-        
-        # Add to memory
+        # Store in memory
         chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
         
         return ai_reply
         
     except Exception as e:
         print(f"AI Error: {e}")
-        fallback_responses = [
-            f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna? 🥺",
-            f"{get_emotion('thinking')} Hmm... yeh toh mushkil ho gaya. Phir se poocho? 🤔",
-            f"{get_emotion('angry')} AI bhai mood off hai aaj! Baad me baat karte hain! 😤",
-            f"{get_emotion()} Oops! Connection issue. Kuch aur poocho? 💫",
-            f"{get_emotion('happy')} Network slow hai jaan, thoda wait karo! ⏳"
-        ]
-        return random.choice(fallback_responses)
-
+        # Fallback responses
+        return random.choice([
+            f"{get_emotion('crying')} Network slow hai jaan! 😢",
+            f"{get_emotion('thinking')} Thoda soch rahi hu... 🤔",
+            f"{get_emotion('happy')} Baad me baat karte hain! 💖",
+            f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕"
+        ])
 
 
 # --- DAILY REMINDERS ---
