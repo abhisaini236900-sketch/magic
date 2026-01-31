@@ -1,15 +1,21 @@
 import os
 import asyncio
 import random
-import aiohttp
-from collections import deque
+import re
+import json
+import base64
+import io
+import hashlib
+import string
+import qrcode
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Set, Optional
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, FSInputFile
+    InputFile, BufferedInputFile, ChatPermissions
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -17,7 +23,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from groq import AsyncGroq
 from aiohttp import web
 import pytz
-import json
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import aiohttp
+from PIL import Image, ImageDraw, ImageFont
+import textwrap
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
@@ -36,148 +46,315 @@ dp = Dispatcher(storage=storage)
 # Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# Memory: {chat_id: deque}
+# --- MEMORY SYSTEMS ---
 chat_memory: Dict[int, deque] = {}
+user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))
+user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
+last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))
 
-# Game states storage: {user_id: game_data}
-active_games: Dict[int, Dict] = {}
-game_sessions: Dict[int, Dict] = {}
+# User data storage
+user_data: Dict[int, Dict] = defaultdict(dict)
+user_notes: Dict[int, List[Dict]] = defaultdict(list)
+user_reminders: Dict[int, List[Dict]] = defaultdict(list)
+user_reputation: Dict[int, int] = defaultdict(int)
+started_users: Set[int] = set()
 
-# Emotional states for each user
-user_emotions: Dict[int, str] = {}
-user_last_interaction: Dict[int, datetime] = {}
+# AFK System
+afk_users: Dict[int, Dict] = {}
 
-# Store all started users for broadcast
-started_users: set = set()
+# Group management
+group_settings: Dict[int, Dict] = defaultdict(lambda: {
+    "welcome_enabled": True,
+    "goodbye_enabled": True,
+    "auto_mod_enabled": True,
+    "greetings_enabled": True,
+    "custom_welcome": None,
+    "custom_goodbye": None,
+    "language": "hinglish",
+    "slow_mode": False,
+    "slow_mode_delay": 0,
+    "locked": False,
+    "filters": [],
+    "banned_words": [],
+    "raid_mode": False,
+    "captcha_enabled": False,
+    "log_channel": None
+})
 
-# States for games
-class GameStates(StatesGroup):
-    playing_quiz = State()
-    playing_riddle = State()
-    playing_word = State()
-    waiting_answer = State()
+# CAPTCHA storage
+captcha_data: Dict[int, Dict] = {}
 
-# --- STICKER DATABASES ---
-STICKER_PACKS = {
-    "good_morning": [
-        "CAACAgIAAxkBAAEKWzNlJ0tY6S1X_1mE5Y1P3vQ3Y3U5rwACDQADwDZPE7qGKRXYm3QeMAQ",  # Sun sticker
-        "CAACAgIAAxkBAAEKWzdlJ0uL7I1vF3yYhK3YQ7m9X2vP5QACDwADwDZPE1xQjBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKWzllJ0uY8J2wG4zZiL4ZR8n0Y3wQ6gACEQADwDZPE2xRkBXYm3QeMAQ",
+# Scheduler
+greeting_scheduler = AsyncIOScheduler()
+greeted_groups: Dict[int, datetime] = {}
+
+# --- CONSTANTS ---
+BAD_WORDS = [
+    "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
+    "fuck", "shit", "bitch", "bastard", "asshole", "motherfucker", "cunt", "dick",
+    "gaand", "lund", "randi", "harami", "kamina", "suar", "kutta", "bhosdi",
+    "bc", "mc", "gand", "lauda", "choot", "maa ki", "behen ki"
+]
+
+GROUP_LINK_PATTERNS = [
+    r't\.me\/[a-zA-Z0-9_]+',
+    r'telegram\.me\/[a-zA-Z0-9_]+',
+    r'telegram\.dog\/[a-zA-Z0-9_]+',
+    r'@\+[a-zA-Z0-9_]+',
+    r't\.me\/joinchat\/[a-zA-Z0-9_]+',
+    r'telegram\.me\/joinchat\/[a-zA-Z0-9_]+'
+]
+
+SPAM_LIMIT = 7
+SPAM_TIME_WINDOW = 30
+WARNING_MESSAGES = [
+    "⚠️ **Warning {count}/3** 🚨\n{name}, please don't {action}! This is your warning!",
+    "🚨 **Strike {count}!** ⚠️\n{name}, {action} is not allowed! Watch out!",
+    "⚡ **Final Warning ({count}/3)** ⚡\n{name}, last chance! Stop {action}!"
+]
+MUTE_DURATIONS = [
+    timedelta(minutes=5),
+    timedelta(hours=1),
+    timedelta(hours=24),
+    timedelta(days=7)
+]
+
+# --- ADVANCED FEATURES DATA ---
+MEME_TEMPLATES = [
+    {"text": "When you realize it's Monday tomorrow", "emoji": "😭"},
+    {"text": "Me trying to be productive", "emoji": "🤡"},
+    {"text": "When someone says 'just be yourself'", "emoji": "😅"},
+    {"text": "My bank account after online shopping", "emoji": "💸"},
+    {"text": "When code finally works after 100 tries", "emoji": "🎉"},
+    {"text": "When mom calls you by your full name", "emoji": "😰"},
+    {"text": "Me explaining why I need a new phone", "emoji": "🤥"},
+    {"text": "My sleep schedule at 3 AM", "emoji": "🦉"}
+]
+
+HOROSCOPE_SIGNS = {
+    "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
+    "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
+    "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
+}
+
+DAILY_FACTS = [
+    "Honey never spoils! 🍯 Archaeologists found 3000-year-old honey still edible!",
+    "Octopuses have 3 hearts! 💙 One stops when they swim!",
+    "Bananas are berries, but strawberries aren't! 🍌🍓 Mind blown?",
+    "A day on Venus is longer than its year! 🌟 Takes 243 days to rotate once!",
+    "Sharks existed before trees! 🦈 Trees appeared 350 million years ago!",
+    "The human brain uses 20% of body's energy! 🧠 Even when resting!",
+    "Butterflies taste with their feet! 🦋 How weird is that?",
+    "A group of flamingos is called a 'flamboyance'! 💖 Perfect name!",
+    "Wombat poop is cube-shaped! 🟫 Nature's building blocks!",
+    "Sloths can hold their breath longer than dolphins! 🦥 40 minutes!"
+]
+
+ROAST_RESPONSES = [
+    "Tumhari baaton se toh mere kaan bhi sharminda hain! 👂😳",
+    "Itni bakwas toh mere phone ki auto-correct bhi nahi karta! 📱",
+    "Tumhare jokes se toh meri wallpaper bhi bore ho gayi! 🖼️",
+    "Agar overthinking Olympic sport hota, toh tum gold medal le jaate! 🏅",
+    "Tumhari logic dekh ke toh Einstein bhi pagal ho jaate! 🧠💥",
+    "Tumhare confidence ki toh alag hi duniya hai - unrealistic! 🌍",
+    "Tumhare dimaag mein itna khaali hai, wahan echo aata hoga! 🎤",
+    "Tum itne slow ho, turtle bhi tumse race jeet jaaye! 🐢"
+]
+
+JOKES = [
+    "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
+    "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
+    "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
+    "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
+    "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
+    "😜 Boyfriend: Tum meri life ki battery ho! Girlfriend: Toh charging khatam kyun ho jati hai?",
+    "😁 Boss: Kal se late mat aana. Employee: Aaj hi late kyun bola? Kal bata dete!",
+    "😄 Bhai: Behen, tum kyun ro rahi ho? Behen: Mera boyfriend mujhse break-up kar raha hai! Bhai: Uske liye ro rahi ho ya uske jaane ke baad free time ke liye?",
+    "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!",
+    "😹 Boy: I love you! Girl: Tumhare paas girlfriend nahi hai? Boy: Haan, tumhare saath hi baat kar raha hu!"
+]
+
+WELCOME_MESSAGES = [
+    "🎉 Welcome {name}! Khush aamdeed! 😊",
+    "🌟 Aao ji {name}! Group me welcome! 🫂",
+    "✨ Hey {name}! Great to have you here! 💖",
+    "🥳 {name} aa gaya! Party shuru! 🎊",
+    "😊 Namaste {name}! Aapka swagat hai! 🙏",
+    "🌸 Welcome {name}! Hope you have a great time! 💕",
+    "🎈 Hey {name}! Thanks for joining us! 🎉",
+    "💫 Welcome aboard {name}! Enjoy your stay! 🚀"
+]
+
+GOODBYE_MESSAGES = [
+    "👋 {name} left the group. We'll miss you! 😢",
+    "😔 {name} has departed. Take care! 🌸",
+    "🚪 {name} left. Bye bye! 👋",
+    "💔 {name} is no longer with us. Farewell! 🌟",
+    "🌙 {name} has left. Good luck! ✨"
+]
+
+# --- TIME-BASED GREETING SYSTEM ---
+def get_indian_time():
+    """Get current Indian time"""
+    utc_now = datetime.now(pytz.utc)
+    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
+    return indian_time
+
+def get_current_time_period():
+    """Get current time period for greetings"""
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    if 5 <= current_hour < 12:
+        return "morning"
+    elif 12 <= current_hour < 17:
+        return "afternoon"
+    elif 17 <= current_hour < 21:
+        return "evening"
+    elif 21 <= current_hour <= 23:
+        return "night"
+    else:
+        return "late_night"
+
+TIME_GREETINGS = {
+    "morning": {
+        "time_range": (5, 11),
+        "keywords": ["subah", "morning", "good morning", "सुबह", "शुभ प्रभात"],
+        "templates": [
+            "🌅 *Good Morning Sunshine!* ☀️\nKaisi hai aaj ki subah? Utho aur muskurao! 😊",
+            "🌸 *Shubh Prabhat!* 🌸\nAaj ka din aapke liye khoobsurat ho! ✨",
+            "☕ *Morning Coffee Time!* 🍵\nChai piyo, fresh ho jao, aur din shuru karo! 💫"
+        ]
+    },
+    "afternoon": {
+        "time_range": (12, 16),
+        "keywords": ["dopahar", "afternoon", "good afternoon", "दोपहर", "शुभ दोपहर"],
+        "templates": [
+            "☀️ *Good Afternoon!* 🌤️\nLunch ho gaya? Energy maintain rakho! 🍲",
+            "🌞 *Dopahar ki Dhoop mein!* 🌞\nThoda aaraam karo, phir kaam karo! 😌",
+            "🍛 *Afternoon Siesta Time!* 💤\nKhaana kha ke neend aa rahi hai? Hehe! 😴"
+        ]
+    },
+    "evening": {
+        "time_range": (17, 20),
+        "keywords": ["shaam", "evening", "good evening", "शाम", "शुभ संध्या"],
+        "templates": [
+            "🌇 *Good Evening Beautiful!* 🌆\nShaam ho gayi, thoda relax karo! 🌹",
+            "🌆 *Evening Tea Time!* 🍵\nChai aur baatein - perfect combination! 💖",
+            "✨ *Shubh Sandhya!* ✨\nDin bhar ki thakaan door karo! 🎶"
+        ]
+    },
+    "night": {
+        "time_range": (21, 23),
+        "keywords": ["raat", "night", "good night", "रात", "शुभ रात्रि"],
+        "templates": [
+            "🌙 *Good Night Sweet Dreams!* 🌟\nAankhein band karo aur accha sapna dekho! 💤",
+            "🌌 *Shubh Ratri!* 🌌\nThaka hua dimaag ko aaraam do! 😴",
+            "💤 *Sleep Time!* 💤\nKal phir nayi energy ke saath uthna! 🌅"
+        ]
+    },
+    "late_night": {
+        "time_range": (0, 4),
+        "keywords": ["midnight", "late", "raat", "आधी रात"],
+        "templates": [
+            "🌃 *Late Night Owls!* 🦉\nSone ka time hai, par chat karna hai? 😄",
+            "🌚 *Midnight Chats!* 🌚\nRaat ke 12 baje bhi jag rahe ho? 😲",
+            "💫 *Late Night Vibes!* 💫\nSab so rahe hain, hum chat kar rahe hain! 🤫"
+        ]
+    }
+}
+
+# --- QUICK RESPONSES ---
+QUICK_RESPONSES = {
+    "greeting": [
+        "Hye! {name} 😊",
+        "Hello {name}💖",
+        "Hiiiiiiiiiiiii",
+        "Hey there! 🌟",
+        "Hyeeeeeeeeeee! {name}"
     ],
-    "good_night": [
-        "CAACAgIAAxkBAAEKWztlJ0ur9K3xH5a0jM5AS9o1Z4xR7wACFgADwDZPE3xSlBXYm3QeMAQ",  # Moon sticker
-        "CAACAgIAAxkBAAEKWz1lJ0vA-L4yI6b1kN6BT-p2a5yS8AACGAADwDZPE4xWmBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW0FlJ0vN_a5zJ7c2lO7CU_q3b6zT9QACGwADwDZPE5xYnRXYm3QeMAQ",
+    "goodbye": [
+        "Bye! Take care! 💕",
+        "Goodbye! Milte hain phir! 🌸",
+        "Tata! Sweet dreams! 🌙",
+        "See you later, alligator! 🐊",
+        "Alvida! Stay awesome! ✨"
     ],
-    "happy": [
-        "CAACAgIAAxkBAAEKW0NlJ0vgAL60K8g4mQ8EVIB5d8QeMQACHQADwDZPE6xaoBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW0VlJ0vwAfC1L9k5mR9FWIJ6eMQeMgACHwADwDZPE7xboRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW0dlJ0wAAn66M-o6mh-GWYN7fMQeMwACHgADwDZPE8xcoRXYm3QeMAQ",
+    "thanks": [
+        "Aww, thank you! 🥰",
+        "Welcome! 💖",
+        "Dhanyavad! You're sweet! 😊",
+        "Thanks for being nice! 🌟",
+        "Appreciate it! 💕"
     ],
-    "love": [
-        "CAACAgIAAxkBAAEKW0llJ0xQ_9C7NAs8nSJIXYR8gcQeNAACIQADwDZPE-xeoRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW01lJ0xgAPy8OQ09niVJYoR9gsQeNQACIwADwDZPEyxfwBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW09lJ0xwAf-9Pg2AoChKY4V-g8QeNgACJQADwDZPE0xfwBXYm3QeMAQ",
-    ],
-    "angry": [
-        "CAACAgIAAxkBAAEKW1FlJ0yQ_4C-Qg-CpSpLZIZ-hMQeNwACKQADwDZPE2xgwhXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW1NlJ0ygAAABv0SPg6crS2SGfoXEeDgACisAA8A2TxNsYcIV2Jt0HjAE",
-        "CAACAgIAAxkBAAEKW1VlJ0ywAADBBEqRhKwtLYR-hsR4OQACKwADwDZPFGxhwRXYm3QeMAQ",
-    ],
-    "funny": [
-        "CAACAgIAAxkBAAEKW1dlJ0zA_8HCRAyEpixMZYl-iMR4OwACLQADwDZPFGxjwRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW1llJ0zQ_9HDRQ2Fpy5NZop-jcR4PAACLwADwDZPFGxkwRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW1tlJ0zgAMHDRg6GqDBOZ4t-kMR4PQACMQADwDZPFGxlwRXYm3QeMAQ",
-    ],
-    "crying": [
-        "CAACAgIAAxkBAAEKW11lJ0zw_8JESJKHqTJPapB-lMR4PgACMwADwDZPFGxmwRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW2FlJ00A_9LFSpSJqjJQa5J-mcR4PwACNQADwDZPFGxowRXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW2NlJ00Q_9PFTJaKqzJRbJN-nMR4QAACNwADwDZPFGxpwRXYm3QeMAQ",
-    ],
-    "celebration": [
-        "CAACAgIAAxkBAAEKW2VlJ00g_9TGUpgKrjVSc5R-ntR4QQACOQADwDZPFGxrwBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW2dlJ00w_9XHVJmKrzZTdZV-oNR4QgACOwADwDZPFGxtwBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW2llJ01A_9bJVpqKsDhTfJd-p9R4QwACPQADwDZPFGxvwBXYm3QeMAQ",
-    ],
-    "welcome": [
-        "CAACAgIAAxkBAAEKW2tlJ01Q_9fKW5wKsUlUgZl-sNR4RAACPwADwDZPFGxxwBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW21lJ01g_9jMXJ6KsllViJp-s9R4RQACQQADwDZPFGxzwBXYm3QeMAQ",
-        "CAACAgIAAxkBAAEKW29lJ01w_9nNYJ-KtVlWkZt-ttR4RgACQwADwDZPFGx1wBXYm3QeMAQ",
+    "sorry": [
+        "Koi baat nahi! 🤗",
+        "It's okay! 💖",
+        "Main maaf karti hu! 😊",
+        "No worries! 🌸",
+        "Sab theek hai! 💫"
     ]
 }
 
-# Fallback sticker URLs if file_ids don't work
-STICKER_URLS = {
-    "good_morning": ["https://t.me/addstickers/VirtualPuppy"],
-    "good_night": ["https://t.me/addstickers/VirtualPuppy"],
-}
+# --- STATES FOR ADVANCED FEATURES ---
+class UserStates(StatesGroup):
+    setting_reminder = State()
+    adding_note = State()
+    setting_poll = State()
+    voice_chat = State()
+    captcha_verify = State()
 
-# --- HUMAN-LIKE BEHAVIOUR EMOTIONS ---
+# --- HUMAN-LIKE BEHAVIOUR ---
 EMOTIONAL_RESPONSES = {
     "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
-    "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊", "🖕"],
+    "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊"],
     "crying": ["😢", "😭", "💔", "🥺", "😞", "🌧️", "😿", "🥀", "💧", "🌩️"],
     "love": ["❤️", "💖", "💕", "🥰", "😘", "💋", "💓", "💗", "💘", "💝"],
     "funny": ["😂", "🤣", "😆", "😜", "🤪", "🎭", "🤡", "🃏", "🎪", "🤹"],
     "thinking": ["🤔", "💭", "🧠", "🔍", "💡", "🎯", "🧐", "🔎", "💬", "🗨️"],
     "surprise": ["😲", "🤯", "🎊", "🎁", "💥", "✨", "🎆", "🎇", "🧨", "💫"],
     "sleepy": ["😴", "💤", "🌙", "🛌", "🥱", "😪", "🌃", "🌜", "🌚", "🌌"],
-    "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"]
+    "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
+    "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
+    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
 }
 
-QUICK_RESPONSES = {
-    "greeting": [
-        "Hello ji😊", 
-        "helloooooo🤧", 
-        "Hiiiiiiiii",
-        "Hello! 👊🏻",
-        "Heyyy!👋🏻",
-        "hyyyeeeeeeeeee🤧"
-    ],
-    "goodbye": [
-        "Bye bye! Jaldi baat karna! 👋", 
-        "Chalo, mai ja raha hu! Baad me baat karte hain! 😊", 
-        "Alvida! Take care! 💫",
-        "Jaane do na! Phir milenge! 😄",
-        "Okay bye! I'll miss you! 😢"
-    ],
-    "thanks": [
-        "Arey koi baat nahi! 😊", 
-        "Welcome ji! Happy to help! 🌟", 
-        "No problem yaar! Anytime! 💖",
-        "Mujhe kya, main to bot hu! 😂",
-        "It's my duty! 😇"
-    ],
-    "sorry": [
-        "Aree sorry yaar! 😢", 
-        "Maine galti kar di! Maaf karna! 😔", 
-        "Oops! My bad! 😅",
-        "Bhool gaya tha! Sorry bhai! 🥺",
-        "I messed up! Forgive me? 💔"
-    ],
-    "good_morning": [
-        "Good Morning! 🌅 Uth gaye? Aaj ka din mast hoga!",
-        "Subah ho gayi! ☀️ Chai pee li? Good morning!",
-        "Rise and shine! 🌞 Naya din, nayi energy!",
-        "Good Morning yaar! 🌅 Aaj kya plan hai?",
-        "Namaste! 🙏 Subah ki shuruaat ho chuki hai!"
-    ],
-    "good_night": [
-        "Good Night! 🌙 Sweet dreams!",
-        "Sone ka time ho gaya! 😴 Rest karo!",
-        "Shabba khair! 🌜 Kal milte hain!",
-        "Good night yaar! 💤 Peaceful sleep!",
-        "Nind aayi? 🌛 So jao, kal baat karte hain!"
-    ]
-}
+def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
+    if user_id and user_id in user_emotions:
+        if random.random() < 0.3:
+            emotion_type = user_emotions[user_id]
+    
+    if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
+        return random.choice(EMOTIONAL_RESPONSES[emotion_type])
+    
+    all_emotions = list(EMOTIONAL_RESPONSES.values())
+    return random.choice(random.choice(all_emotions))
 
-# Get Indian time
-def get_indian_time():
-    utc_now = datetime.now(pytz.utc)
-    indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
-    return indian_time
+def update_user_emotion(user_id: int, message: str):
+    message_lower = message.lower()
+    
+    if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'sweet']):
+        user_emotions[user_id] = "love"
+    elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid']):
+        user_emotions[user_id] = "angry"
+    elif any(word in message_lower for word in ['cry', 'ro', 'sad', 'dukh', 'upset', 'unhappy', 'depressed']):
+        user_emotions[user_id] = "crying"
+    elif any(word in message_lower for word in ['funny', 'has', 'joke', 'comedy', 'masti', 'laugh', 'haha']):
+        user_emotions[user_id] = "funny"
+    elif any(word in message_lower for word in ['hi', 'hello', 'hey', 'namaste', 'kaise', 'welcome']):
+        user_emotions[user_id] = "happy"
+    elif any(word in message_lower for word in ['?', 'kyun', 'kaise', 'kya', 'how', 'why', 'what']):
+        user_emotions[user_id] = "thinking"
+    elif any(word in message_lower for word in ['fight', 'ladai', 'war', 'attack', 'defend']):
+        user_emotions[user_id] = "protective"
+    elif any(word in message_lower for word in ['sleep', 'sone', 'neend', 'tired', 'thak']):
+        user_emotions[user_id] = "sleepy"
+    else:
+        user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
+    
+    user_last_interaction[user_id] = datetime.now()
 
-# --- REAL WEATHER API (Open-Meteo - 100% FREE, NO API KEY) ---
+# --- REAL WEATHER ---
 INDIAN_CITIES = {
     "mumbai": {"lat": 19.0760, "lon": 72.8777},
     "delhi": {"lat": 28.6139, "lon": 77.2090},
@@ -205,7 +382,6 @@ async def get_real_weather(city: str = None) -> str:
     """Get REAL weather from Open-Meteo API (100% Free, No API Key)"""
     try:
         if not city:
-            # Default to random major city
             city = random.choice(list(INDIAN_CITIES.keys()))
         
         city_lower = city.lower().strip()
@@ -213,6 +389,7 @@ async def get_real_weather(city: str = None) -> str:
         # Check if city is in our database
         if city_lower in INDIAN_CITIES:
             coords = INDIAN_CITIES[city_lower]
+            city_display = city.title()
         else:
             # Try to get coordinates from Open-Meteo Geocoding API
             async with aiohttp.ClientSession() as session:
@@ -274,8 +451,6 @@ async def get_real_weather(city: str = None) -> str:
                     sunrise_time = sunrise.split("T")[1] if isinstance(sunrise, str) and "T" in sunrise else sunrise
                     sunset_time = sunset.split("T")[1] if isinstance(sunset, str) and "T" in sunset else sunset
                     
-                    city_display = city.title()
-                    
                     return (
                         f"🌤️ **Weather Report for {city_display}**\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -290,205 +465,480 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌅 **Sunrise:** {sunrise_time}\n"
                         f"🌇 **Sunset:** {sunset_time}\n\n"
                         f"⏰ **Updated:** Just now\n"
-                        f"📍 **Source:** Open-Meteo (Real-time Data)"
                     )
                 else:
                     return "❌ Weather service temporarily unavailable. Please try again later."
     except Exception as e:
         return f"❌ Error fetching weather: {str(e)}\nPlease try again later."
 
-def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
-    """Get appropriate emotion with some randomness"""
-    if user_id and user_id in user_emotions:
-        if random.random() < 0.3:
-            emotion_type = user_emotions[user_id]
-    
-    if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
-        return random.choice(EMOTIONAL_RESPONSES[emotion_type])
-    
-    all_emotions = list(EMOTIONAL_RESPONSES.values())
-    return random.choice(random.choice(all_emotions))
-
-def update_user_emotion(user_id: int, message: str):
-    message_lower = message.lower()
-    
-    if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'miss you']):
-        user_emotions[user_id] = "love"
-    elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid']):
-        user_emotions[user_id] = "angry"
-    elif any(word in message_lower for word in ['cry', 'ro', 'sad', 'dukh', 'upset', 'unhappy', 'depressed']):
-        user_emotions[user_id] = "crying"
-    elif any(word in message_lower for word in ['funny', 'has', 'joke', 'comedy', 'masti', 'laugh', 'haha']):
-        user_emotions[user_id] = "funny"
-    elif any(word in message_lower for word in ['hi', 'hello', 'hey', 'namaste', 'kaise', 'sup']):
-        user_emotions[user_id] = "happy"
-    elif any(word in message_lower for word in ['?', 'kyun', 'kaise', 'kya', 'how', 'why', 'what']):
-        user_emotions[user_id] = "thinking"
-    elif any(word in message_lower for word in ['good morning', 'gm', 'morning', 'subah']):
-        user_emotions[user_id] = "happy"
-    elif any(word in message_lower for word in ['good night', 'gn', 'night', 'so jao', 'sleep']):
-        user_emotions[user_id] = "sleepy"
-    else:
-        user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
-    
-    user_last_interaction[user_id] = datetime.now()
-
-async def send_sticker_by_emotion(chat_id: int, emotion: str):
-    """Send sticker based on emotion"""
+# --- IMAGE GENERATION ---
+async def generate_image(prompt: str) -> Optional[bytes]:
+    """Generate image using Pollinations AI (100% Free)"""
     try:
-        if emotion in STICKER_PACKS and STICKER_PACKS[emotion]:
-            sticker_id = random.choice(STICKER_PACKS[emotion])
-            await bot.send_sticker(chat_id, sticker_id)
+        # Clean and encode prompt
+        clean_prompt = prompt.replace(" ", "_")
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&nologo=true&seed={random.randint(1000, 9999)}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.read()
+                else:
+                    return None
     except Exception as e:
-        # If sticker fails, continue without it
-        pass
+        print(f"Image generation error: {e}")
+        return None
 
-# --- GAME DATABASES ---
-QUIZ_QUESTIONS = [
-    {"question": "Hinglish me kitne letters hote hain?", "answer": "26", "hint": "English jitne hi"},
-    {"question": "Aam ka English kya hota hai?", "answer": "mango", "hint": "Ek fruit"},
-    {"question": "2 + 2 × 2 = ?", "answer": "6", "hint": "PEMDAS rule yaad rakho"},
-    {"question": "India ka capital kya hai?", "answer": "new delhi", "hint": "Yeh to pata hi hoga"},
-    {"question": "Python kisne banaya?", "answer": "guido van rossum", "hint": "Ek Dutch programmer"},
-    {"question": "ChatGPT kis company ki hai?", "answer": "openai", "hint": "Elon Musk bhi involved tha"},
-    {"question": "Hinglish ka matlab kya hai?", "answer": "hindi + english", "hint": "Do languages ka mix"},
-    {"question": "Telegram kisne banaya?", "answer": "pavel durov", "hint": "Russian entrepreneur"},
-    {"question": "Ek year me kitne months hote hain?", "answer": "12", "hint": "Calendar dekho"},
-    {"question": "Water ka chemical formula?", "answer": "h2o", "hint": "H do, O ek"},
-    {"question": "India ki sabse lambi river kaunsi hai?", "answer": "ganga", "hint": "Holy river"},
-    {"question": "Taj Mahal kahan hai?", "answer": "agra", "hint": "Uttar Pradesh mein"},
-    {"question": "Cricket mein kitne players hote hain ek team mein?", "answer": "11", "hint": "Eleven"},
-    {"question": "Solar system mein kitne planets hain?", "answer": "8", "hint": "Pluto ab nahi raha"}
-]
-
-RIDDLES = [
-    {"riddle": "Aane ke baad kabhi nahi jata?", "answer": "umar", "hint": "Har roz badhta hai"},
-    {"riddle": "Chidiya ki do aankhen, par ek hi nazar aata hai?", "answer": "needle", "hint": "Sui ki nook"},
-    {"riddle": "Aisa kaun sa cheez hai jo sukha ho toh 2 kilo, geela ho toh 1 kilo?", "answer": "sukha", "hint": "Word play hai"},
-    {"riddle": "Mere paas khane wala hai, peene wala hai, par khata peeta koi nahi?", "answer": "khana pina", "hint": "Restaurant menu"},
-    {"riddle": "Ek ghar me 5 room hain, har room me 5 billi hain, har billi ke 5 bacche hain, total kitne legs?", "answer": "0", "hint": "Billi ke legs nahi hote"},
-    {"riddle": "Jisne pehna woh nahi khareeda, jisne khareeda woh nahi pehna?", "answer": "kafan", "hint": "Antim vastra"},
-    {"riddle": "Subah utha to gaya, raat ko aaya to gaya?", "answer": "suraj", "hint": "Din raat ka cycle"},
-    {"riddle": "Jiske paas ho woh nahi janta, jaanne wala ke paas nahi hota?", "answer": "andha", "hint": "Dekh nahi sakta"},
-    {"riddle": "Aisa kya hai jo jitna khicho utna chhota hota jaye?", "answer": "cigarette", "hint": "Smoke karne wali cheez"},
-    {"riddle": "Lambi si dandi, pet mein paani?", "answer": "pipette", "hint": "Lab mein use hota hai"}
-]
-
-JOKES = [
-    "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
-    "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
-    "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
-    "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
-    "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
-    "😜 Boyfriend: Tum meri life ki battery ho! Girlfriend: Toh charging khatam kyun ho jati hai?",
-    "😁 Boss: Kal se late mat aana. Employee: Aaj hi late kyun bola? Kal bata dete!",
-    "😄 Bhai: Behen, tum kyun ro rahi ho? Behen: Mera boyfriend mujhse break-up kar raha hai! Bhai: Uske liye ro rahi ho ya uske jaane ke baad free time ke liye?",
-    "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!",
-    "😹 Boy: I love you! Girl: Tumhare paas girlfriend nahi hai? Boy: Haan, tumhare saath hi baat kar raha hu!",
-    "🤣 Student: Sir, main kal school nahi aa paunga. Teacher: Kyun? Student: Kal meri sister ki shaadi hai. Teacher: Accha? Kaunsi sister? Student: Aapki beti sir!",
-    "😂 Wife: Agar main mar jaun toh tum dobara shaadi karoge? Husband: Nahi. Wife: Aww pyaar! Husband: Nahi, ek biwi ka kharcha hi bahut hai!",
-    "😆 Customer: Isme sugar hai? Shopkeeper: Nahi sir. Customer: Salt? Shopkeeper: Nahi. Customer: To phir kya hai? Shopkeeper: Bill sir!",
-    "😅 Doctor: Aapko 2 din mein theek ho jana chahiye. Patient: Kal raat ko? Doctor: Nahi sir, 2 din mein, kal raat ko nahi!",
-    "🤪 Sardar: Mera mobile bill bahut aaya hai! Dost: Kitna? Sardar: 5000! Dost: Itna kaise? Sardar: Roaming mein tha! Dost: Kahan? Sardar: Ghar ke andar!"
-]
-
-GROUP_RULES = [
-    """📜 **GROUP RULES** 📜
-
-1. ✅ Respect everyone - No bullying
-2. ✅ No spam or flooding
-3. ✅ No adult/NSFW content
-4. ✅ No personal fights in group
-5. ✅ Keep chat clean and friendly
-6. ✅ Follow admin instructions
-7. ✅ Help each other grow
-8. ✅ Share knowledge & learn
-9. ✅ Have fun and enjoy! 🎉
-
-*Rules are for everyone's protection!* 😊""",
-
-    """⚖️ **COMMUNITY GUIDELINES** ⚖️
-
-• Be kind and polite 🤗
-• No hate speech or racism ❌
-• Share knowledge & help others 📚
-• No self-promotion without permission
-• Use appropriate language
-• Report issues to admins
-• Keep discussions friendly
-• Respect privacy of members
-• No political/religious debates
-
-*Let's build a positive community together!* 🌟""",
-
-    """📋 **CHAT ETIQUETTE** 📋
-
-🔹 No bullying or harassment
-🔹 No misinformation spreading
-🔹 Stay on topic in discussions
-🔹 No excessive caps (SHOUTING)
-🔹 Respect everyone's privacy
-🔹 No illegal content sharing
-🔹 Use emojis appropriately 😉
-🔹 Be patient with newcomers
-🔹 Have meaningful conversations
-
-*Together we grow, together we learn!* 🌱""",
-
-    """🎯 **GROUP NORMS** 🎯
-
-✨ Be respectful to all members
-✨ No spamming or advertising
-✨ Keep discussions positive
-✨ Help each other when possible
-✨ Follow admin guidance
-✨ Use appropriate language
-✨ Report any issues
-✨ Enjoy your time here! 🎊
-
-*This is our digital family!* 💖"""
-]
-
-# --- GAME LOGIC ---
-def start_word_game(user_id: int):
-    start_words = ["PYTHON", "APPLE", "TIGER", "ELEPHANT", "RAINBOW", "COMPUTER", "TELEGRAM", "BOT"]
-    start_word = random.choice(start_words)
+# --- QR CODE GENERATOR ---
+def generate_qr_code(data: str) -> bytes:
+    """Generate QR code"""
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
     
-    game_sessions[user_id] = {
-        "game": "word_chain",
-        "last_word": start_word.lower(),
-        "score": 0,
-        "words_used": [start_word.lower()],
-        "last_letter": start_word[-1].lower(),
-        "started_at": datetime.now()
+    img = qr.make_image(fill_color="black", back_color="white")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    return img_bytes.getvalue()
+
+# --- PASSWORD GENERATOR ---
+def generate_password(length: int = 12, include_symbols: bool = True) -> str:
+    """Generate secure password"""
+    chars = string.ascii_letters + string.digits
+    if include_symbols:
+        chars += string.punctuation
+    
+    password = ''.join(random.choice(chars) for _ in range(length))
+    return password
+
+# --- URL SHORTENER ---
+async def shorten_url(url: str) -> str:
+    """Shorten URL using TinyURL"""
+    try:
+        api_url = f"http://tinyurl.com/api-create.php?url={url}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return url
+    except:
+        return url
+
+# --- TRANSLATION (LibreTranslate - Free) ---
+async def translate_text(text: str, target_lang: str = "en") -> str:
+    """Translate text using LibreTranslate"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://libretranslate.de/translate"
+            data = {
+                "q": text,
+                "source": "auto",
+                "target": target_lang,
+                "format": "text"
+            }
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("translatedText", text)
+                else:
+                    return text
+    except:
+        return text
+
+# --- AUTO-MODERATION FUNCTIONS ---
+def contains_group_link(text: str) -> bool:
+    """Check if message contains Telegram group links"""
+    text = text.lower()
+    for pattern in GROUP_LINK_PATTERNS:
+        if re.search(pattern, text):
+            return True
+    return False
+
+def contains_bad_words(text: str) -> bool:
+    """Check if message contains bad words"""
+    text_lower = text.lower()
+    for word in BAD_WORDS:
+        if word in text_lower:
+            return True
+    return False
+
+async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -> tuple[bool, str]:
+    """Give warning to user and return if action should be taken"""
+    warnings = user_warnings[chat_id][user_id]
+    
+    if 'count' not in warnings:
+        warnings['count'] = 0
+        warnings['last_warning'] = datetime.now()
+        warnings['reasons'] = []
+    
+    warnings['count'] += 1
+    warnings['reasons'].append(reason)
+    warnings['last_warning'] = datetime.now()
+    
+    warning_count = warnings['count']
+    
+    actions_map = {
+        "spam": "spam messages",
+        "link": "share group links",
+        "bad_words": "use bad language",
+        "manual_warning": "violate rules"
+    }
+    action = actions_map.get(reason, "violate rules")
+    
+    warning_msg = random.choice(WARNING_MESSAGES).format(
+        count=warning_count,
+        name=username or "User",
+        action=action
+    )
+    
+    if warning_count >= 3:
+        mute_duration = MUTE_DURATIONS[min(3, warning_count)]
+        try:
+            mute_until = datetime.now() + mute_duration
+            await bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=user_id,
+                permissions=ChatPermissions(
+                    can_send_messages=False,
+                    can_send_media_messages=False,
+                    can_send_polls=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False,
+                    can_change_info=False,
+                    can_invite_users=False,
+                    can_pin_messages=False
+                ),
+                until_date=mute_until
+            )
+            
+            del user_warnings[chat_id][user_id]
+            
+            duration_str = ""
+            if mute_duration.days > 0:
+                duration_str = f"{mute_duration.days} days"
+            else:
+                hours = mute_duration.seconds // 3600
+                minutes = (mute_duration.seconds % 3600) // 60
+                if hours > 0:
+                    duration_str = f"{hours} hour{'s' if hours > 1 else ''}"
+                else:
+                    duration_str = f"{minutes} minute{'s' if minutes > 1 else ''}"
+            
+            warning_msg += f"\n\n🚫 **MUTED for {duration_str}!**\nToo many warnings!"
+            return True, warning_msg
+            
+        except Exception as e:
+            warning_msg += f"\n\n⚠️ Failed to mute user: {str(e)}"
+            return False, warning_msg
+    
+    return False, warning_msg
+
+async def delete_and_warn(message: Message, reason: str):
+    """Delete message and warn user"""
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    username = message.from_user.username or message.from_user.first_name
+    
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Failed to delete message: {e}")
+    
+    action_taken, warning_msg = await give_warning(chat_id, user_id, username, reason)
+    await message.answer(warning_msg, parse_mode="Markdown")
+    
+    if reason == "bad_words":
+        sassy_responses = [
+            f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
+            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+        ]
+        await message.answer(random.choice(sassy_responses))
+
+# --- SPAM DETECTION ---
+async def check_spam(message: Message) -> bool:
+    """Check if user is spamming"""
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    if user_id not in last_messages[chat_id]:
+        last_messages[chat_id][user_id] = []
+    
+    now = datetime.now()
+    last_messages[chat_id][user_id].append(now)
+    
+    last_messages[chat_id][user_id] = [
+        ts for ts in last_messages[chat_id][user_id]
+        if (now - ts).seconds <= SPAM_TIME_WINDOW
+    ]
+    
+    if len(last_messages[chat_id][user_id]) > SPAM_LIMIT:
+        await delete_and_warn(message, "spam")
+        return True
+    
+    return False
+
+# --- CAPTCHA SYSTEM ---
+def generate_captcha():
+    """Generate simple math CAPTCHA"""
+    num1 = random.randint(1, 20)
+    num2 = random.randint(1, 20)
+    operation = random.choice(['+', '-', '*'])
+    
+    if operation == '+':
+        answer = num1 + num2
+    elif operation == '-':
+        answer = num1 - num2
+    else:
+        answer = num1 * num2
+    
+    question = f"What is {num1} {operation} {num2}?"
+    return question, str(answer)
+
+# --- COMMANDS ---
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    started_users.add(message.from_user.id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🌟 My Channel", url="https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="💝 Developer", url="https://t.me/a6h1ii")
+        ],
+        [
+            InlineKeyboardButton(text="📱 Utilities", callback_data="menu_utilities"),
+            InlineKeyboardButton(text="🎭 Fun", callback_data="menu_fun")
+        ],
+        [
+            InlineKeyboardButton(text="🛡️ Safety", callback_data="menu_safety"),
+            InlineKeyboardButton(text="⚙️ Settings", callback_data="menu_settings")
+        ],
+        [
+            InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
+        ]
+    ])
+    
+    welcome_text = (
+        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
+        
+        "✨ **Welcome to my magical world!** ✨\n\n"
+        
+        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
+        "🎯 *Also group management girl! Make sure you give me all admin permissions* 🛡️\n\n"
+        
+        "🌟 **My Superpowers:**\n"
+        "• Advanced AI Conversations 🧠\n"
+        "• Image Generation 🎨\n"
+        "• Real Weather Updates 🌤️\n"
+        "• QR Code Generator 📱\n"
+        "• Password Generator 🔐\n"
+        "• URL Shortener 🔗\n"
+        "• Translation 🌍\n"
+        "• Auto-moderation enabled 👮\n"
+        "• Daily Facts & Motivation 📚\n\n"
+        
+        "•📢 **MY HOME:** @abhi0w0\n\n"
+        
+        "Type /help for all commands! 💕\n"
+        "Or just talk to me like a friend! 💬"
+    )
+    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    started_users.add(message.from_user.id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📱 Utilities", callback_data="help_utilities"),
+            InlineKeyboardButton(text="🎭 Fun", callback_data="help_fun")
+        ],
+        [
+            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin"),
+            InlineKeyboardButton(text="🌤️ Weather", callback_data="help_weather")
+        ],
+        [
+            InlineKeyboardButton(text="📝 Notes", callback_data="help_notes"),
+            InlineKeyboardButton(text="⏰ Reminders", callback_data="help_reminders")
+        ],
+        [
+            InlineKeyboardButton(text="🎨 Image Gen", callback_data="help_image"),
+            InlineKeyboardButton(text="🔧 Tools", callback_data="help_tools")
+        ],
+        [
+            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
+        ]
+    ])
+    
+    help_text = (
+        f"{get_emotion('happy')} **Hello! I'm Alita 🎀** 👧\n\n"
+        
+        "📜 **MAIN COMMANDS:**\n"
+        "• /start - Welcome message 💖\n"
+        "• /help - All commands 📚\n"
+        "• /rules - Group rules ⚖️\n"
+        "• /joke - Funny jokes 😂\n"
+        "• /meme - Generate meme 😆\n"
+        "• /fact - Daily facts 🧠\n"
+        "• /horoscope [sign] - Horoscope ♈\n"
+        "• /roast - Playful roast 🔥\n"
+        "• /clear - Clear memory 🧹\n\n"
+        
+        "🕒 **TIME & WEATHER:**\n"
+        "• /time - Indian time 🕐\n"
+        "• /date - Today's date 📅\n"
+        "• /weather [city] - **REAL Weather info** 🌤️\n\n"
+        
+        "📝 **PERSONAL ORGANIZER:**\n"
+        "• /note [text] - Add note 📝\n"
+        "• /notes - View notes 📋\n"
+        "• /remind [time] [text] - Set reminder ⏰\n"
+        "• /reminders - View reminders 📅\n"
+        "• /afk [reason] - Set AFK status 😴\n\n"
+        
+        "🎨 **IMAGE & CREATIVE:**\n"
+        "• /imagine [prompt] - AI Image Generation 🎨\n"
+        "• /qr [text] - Generate QR Code 📱\n\n"
+        
+        "🔧 **UTILITIES:**\n"
+        "• /password [length] - Generate password 🔐\n"
+        "• /short [url] - Shorten URL 🔗\n"
+        "• /translate [lang] [text] - Translate 🌍\n"
+        "• /calc [expression] - Calculator 🧮\n"
+        "• /id - Get your ID 🆔\n\n"
+        
+        "🛡️ **ADMIN/MODERATION:**\n"
+        "• /warn [reason] - Warn user ⚠️\n"
+        "• /kick - Remove user 🚪\n"
+        "• /ban - Ban user 🚫\n"
+        "• /mute - Mute user 🔇\n"
+        "• /unmute - Unmute user 🔊\n"
+        "• /unban - Remove ban ✅\n"
+        "• /purge [number] - Delete messages 🗑️\n"
+        "• /pin - Pin message 📌\n"
+        "• /unpin - Unpin message 📍\n"
+        "• /slowmode [seconds] - Enable slow mode ⏱️\n"
+        "• /locks - Lock chat 🔒\n"
+        "• /unlock - Unlock chat 🔓\n"
+        "• /setwelcome [text] - Custom welcome message 👋\n"
+        "• /setgoodbye [text] - Custom goodbye message 👋\n\n"
+        
+        "🔧 **SAFETY FEATURES:**\n"
+        "• Auto-spam detection 🔍\n"
+        "• Group link blocker 🚫\n"
+        "• Bad word filter ⚔️\n"
+        "• Auto-warning system ⚠️\n"
+        "• Auto-mute after 3 warns 🔇\n"
+        "• CAPTCHA for new members 🧩\n\n"
+        
+        "---\n"
+        "**MY HOME:** @abhi0w0 💫\n"
+        "---"
+    )
+    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+
+@dp.message(Command("rules"))
+async def cmd_rules(message: Message):
+    rules_text = (
+        f"{get_emotion('protective')} **📜 GROUP RULES & SAFETY 🛡️**\n\n"
+        
+        "✅ **DOs:**\n"
+        "1. Be respectful to everyone 🤝\n"
+        "2. Keep chat friendly and positive 🌟\n"
+        "3. Help each other grow 📚\n"
+        "4. Follow admin instructions 👮\n"
+        "5. Have fun and enjoy! 🎉\n\n"
+        
+        "🚫 **DON'Ts:**\n"
+        "1. No spam or flooding ⚠️\n"
+        "2. No group links sharing 🔗\n"
+        "3. No bad language 🚫\n"
+        "4. No personal fights ⚔️\n"
+        "5. No adult/NSFW content 🚷\n"
+        "6. No self-promotion without permission 📢\n\n"
+        
+        "⚡ **AUTO-MODERATION:**\n"
+        "• Spam → Warning → Mute 🔇\n"
+        "• Group links → Auto-delete 🗑️\n"
+        "• Bad words → Warning + Response ⚔️\n"
+        "• 3 warnings → Auto-mute ⏰\n\n"
+        
+        f"{get_emotion('love')} *I'm here to keep everyone safe!* 💖"
+    )
+    await message.reply(rules_text, parse_mode="Markdown")
+
+@dp.message(Command("joke"))
+async def cmd_joke(message: Message):
+    await message.reply(f"{get_emotion('funny')} {random.choice(JOKES)}")
+
+@dp.message(Command("meme"))
+async def cmd_meme(message: Message):
+    meme_text = generate_meme()
+    await message.reply(f"{get_emotion('funny')} **Random Meme:**\n\n{meme_text}")
+
+@dp.message(Command("fact"))
+async def cmd_fact(message: Message):
+    await message.reply(f"{get_emotion('thinking')} {get_daily_fact()}")
+
+@dp.message(Command("horoscope"))
+async def cmd_horoscope(message: Message, command: CommandObject):
+    if not command.args:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(f"{emoji} {sign.title()}", callback_data=f"horoscope_{sign}")]
+            for sign, emoji in list(HOROSCOPE_SIGNS.items())[:6]
+        ] + [
+            [InlineKeyboardButton(f"{emoji} {sign.title()}", callback_data=f"horoscope_{sign}")]
+            for sign, emoji in list(HOROSCOPE_SIGNS.items())[6:]
+        ])
+        await message.reply(
+            f"{get_emotion('surprise')} **Choose your zodiac sign:** ♈\n\n"
+            f"Click below or use `/horoscope [sign]`",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        return
+    
+    sign = command.args.lower()
+    horoscopes = {
+        "aries": "Today brings energy and passion! Take charge of new projects. 💪",
+        "taurus": "Financial opportunities await. Stay grounded and practical. 💰",
+        "gemini": "Communication is key today. Express yourself clearly. 💬",
+        "cancer": "Focus on home and family. Emotional connections deepen. 🏠",
+        "leo": "Your charisma shines! Leadership opportunities arise. 👑",
+        "virgo": "Attention to detail pays off. Organization brings success. 📋",
+        "libra": "Balance is essential. Harmony in relationships matters. ⚖️",
+        "scorpio": "Intuition guides you. Trust your instincts. 🔮",
+        "sagittarius": "Adventure calls! Explore new horizons. 🌍",
+        "capricorn": "Hard work yields results. Stay disciplined. 🏔️",
+        "aquarius": "Innovation flows. Think outside the box. 💡",
+        "pisces": "Creativity blooms. Express your artistic side. 🎨"
     }
     
-    return start_word
+    emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
+    reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
+    await message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
 
-def check_word_game(user_id: int, user_word: str):
-    if user_id not in game_sessions:
-        return False, "No active game! Start with /game"
-    
-    game_data = game_sessions[user_id]
-    user_word_lower = user_word.lower().strip()
-    
-    if not user_word_lower.startswith(game_data["last_letter"]):
-        return False, f"Word must start with '{game_data['last_letter'].upper()}'!"
-    
-    if user_word_lower in game_data["words_used"]:
-        return False, f"'{user_word}' already used! Try different word."
-    
-    if len(user_word_lower) < 3:
-        return False, "Word must be at least 3 letters!"
-    
-    game_data["words_used"].append(user_word_lower)
-    game_data["last_word"] = user_word_lower
-    game_data["last_letter"] = user_word_lower[-1]
-    game_data["score"] += 10
-    
-    return True, game_data
+@dp.message(Command("roast"))
+async def cmd_roast(message: Message):
+    if message.reply_to_message:
+        target = message.reply_to_message.from_user.first_name
+        roast = random.choice(ROAST_RESPONSES)
+        await message.reply(
+            f"{get_emotion('sassy')} **Roasting {target}!** 🔥\n\n{roast}"
+        )
+    else:
+        await message.reply(
+            f"{get_emotion('sassy')} **Self-roast mode!** 😂\n\n"
+            f"Reply to someone's message to roast them!\n"
+            f"Or I'll roast you: {random.choice(ROAST_RESPONSES)}"
+        )
 
-def get_time_info():
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
     indian_time = get_indian_time()
     time_str = indian_time.strftime("%I:%M %p")
     date_str = indian_time.strftime("%A, %d %B %Y")
@@ -503,178 +953,679 @@ def get_time_info():
     else:
         greeting = "Good Night! 🌙"
     
-    return (
+    time_info = (
         f"🕒 **Indian Standard Time (IST)**\n"
         f"• Time: {time_str}\n"
         f"• Date: {date_str}\n"
         f"• {greeting}\n"
         f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
-        f"*Time is accurate to Indian timezone!*"
+        f"*Time is precious! Make the most of it!* ⏳"
+    )
+    await message.reply(time_info, parse_mode="Markdown")
+
+@dp.message(Command("date"))
+async def cmd_date(message: Message):
+    indian_time = get_indian_time()
+    date_str = indian_time.strftime("%A, %d %B %Y")
+    
+    await message.reply(
+        f"{get_emotion('happy')} **📅 Today's Date**\n"
+        f"• {date_str}\n"
+        f"• Day: {indian_time.strftime('%A')}\n"
+        f"• Indian Standard Time 🇮🇳\n\n"
+        f"*Have a great day!* ✨",
+        parse_mode="Markdown"
     )
 
-# --- AI LOGIC WITH HUMAN-LIKE TOUCH ---
-async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=20)
-    
-    chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
-    if user_id:
-        update_user_emotion(user_id, user_text)
-    
-    user_text_lower = user_text.lower()
-    
-    # Check for good morning/night to send stickers
-    if any(phrase in user_text_lower for phrase in ['good morning', 'gm', 'morning', 'subah']):
-        await send_sticker_by_emotion(chat_id, "good_morning")
-        return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['good_morning'])}"
-    
-    if any(phrase in user_text_lower for phrase in ['good night', 'gn', 'night', 'so jao', 'sleep well']):
-        await send_sticker_by_emotion(chat_id, "good_night")
-        return f"{get_emotion('sleepy', user_id)} {random.choice(QUICK_RESPONSES['good_night'])}"
-    
-    # Quick responses
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        if random.random() < 0.4:
-            return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}"
-    
-    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
-        if random.random() < 0.4:
-            return f"{get_emotion()} {random.choice(QUICK_RESPONSES['goodbye'])}"
-    
-    if any(word in user_text_lower for word in ['thanks', 'thank you', 'dhanyavad', 'shukriya']):
-        if random.random() < 0.4:
-            return f"{get_emotion('love', user_id)} {random.choice(QUICK_RESPONSES['thanks'])}"
-    
-    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology']):
-        if random.random() < 0.4:
-            return f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}"
-    
-    # Check word chain game
-    if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
-        is_valid, message = check_word_game(user_id, user_text)
-        if is_valid:
-            next_letter = game_data["last_letter"].upper()
-            score = game_data["score"]
-            return (
-                f"{get_emotion('happy')} **✅ Correct!**\n\n"
-                f"• Your word: {user_text.upper()}\n"
-                f"• Next letter: **{next_letter}**\n"
-                f"• Your score: **{score} points**\n\n"
-                f"Now give me a word starting with **{next_letter}**"
-            )
-        else:
-            score = game_data["score"]
-            del game_sessions[user_id]
-            return (
-                f"{get_emotion('crying')} **❌ Game Over!**\n\n"
-                f"{message}\n"
-                f"• Final Score: **{score} points**\n"
-                f"• Words used: {len(game_data['words_used'])}\n\n"
-                f"Play again with /game 🎮"
-            )
-    
-    # System prompt based on emotion
-    if user_id and user_id in user_emotions:
-        current_emotion = user_emotions[user_id]
-        if current_emotion == "angry":
-            system_prompt = (
-                f"You are a Hinglish chatbot. User seems angry. "
-                f"Try to calm them down. Be extra polite and understanding. "
-                f"Use soothing tone. Current Indian time: {get_indian_time().strftime('%I:%M %p')}. "
-                f"Show you care. Use emojis."
-            )
-        elif current_emotion == "crying":
-            system_prompt = (
-                f"You are a Hinglish chatbot. User seems sad. "
-                f"Comfort them. Be empathetic and kind. "
-                f"Offer emotional support. Use comforting emojis."
-            )
-        elif current_emotion == "love":
-            system_prompt = (
-                f"You are a Hinglish chatbot. User seems romantic. "
-                f"Be sweet and caring but respectful. "
-                f"Use love emojis. Be friendly."
-            )
-        else:
-            indian_time = get_indian_time()
-            current_hour = indian_time.hour
-            if 5 <= current_hour < 12:
-                time_greeting = "Good morning!"
-            elif 12 <= current_hour < 17:
-                time_greeting = "Good afternoon!"
-            elif 17 <= current_hour < 21:
-                time_greeting = "Good evening!"
-            else:
-                time_greeting = "Good night!"
-            
-            system_prompt = (
-                f"You are a Hinglish (Hindi+English mix) chatbot. {time_greeting} "
-                f"Your personality: Emotional, funny, sometimes angry, sometimes crying, mostly happy. "
-                f"Use emojis in every response (at least 1-2). "
-                f"Keep replies SHORT (2-3 lines max). Be authentic like a human friend. "
-                f"Show emotions naturally. If user asks something complex, give simple answer. "
-                f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
-                f"Date: {indian_time.strftime('%d %B %Y')}. "
-                f"Be conversational and engaging. Add humor when appropriate."
-            )
-    else:
-        indian_time = get_indian_time()
-        system_prompt = (
-            f"You are a Hinglish (Hindi+English mix) chatbot. "
-            f"Your personality: Emotional, funny, sometimes angry, sometimes crying, mostly happy. "
-            f"Use emojis in every response (at least 1-2). "
-            f"Keep replies SHORT (2-3 lines max). Be authentic like a human friend. "
-            f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
-            f"Be conversational and engaging."
+@dp.message(Command("weather"))
+async def cmd_weather(message: Message, command: CommandObject):
+    city = command.args
+    if not city:
+        # Show list of available cities
+        cities_list = ", ".join([c.title() for c in list(INDIAN_CITIES.keys())[:10]])
+        await message.reply(
+            f"{get_emotion('thinking')} **Weather Command Usage:**\n\n"
+            f"`/weather [city name]`\n\n"
+            f"**Popular cities:**\n{cities_list}...\n\n"
+            f"Or any city worldwide! 🌍",
+            parse_mode="Markdown"
         )
+        return
     
-    messages = [{"role": "system", "content": system_prompt}]
+    # Show typing action
+    await bot.send_chat_action(message.chat.id, "typing")
     
-    for msg in list(chat_memory[chat_id])[-5:]:
-        messages.append(msg)
+    weather_info = await get_real_weather(city)
+    await message.reply(weather_info, parse_mode="Markdown")
+
+# --- IMAGE GENERATION COMMAND ---
+@dp.message(Command("imagine"))
+async def cmd_imagine(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Image Generation Usage:**\n\n"
+            f"`/imagine [your description]`\n\n"
+            f"Examples:\n"
+            f"`/imagine a beautiful sunset over mountains`\n"
+            f"`/imagine cute cat wearing glasses`\n"
+            f"`/imagine futuristic city with flying cars`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    prompt = command.args
+    status_msg = await message.reply(f"{get_emotion('happy')} 🎨 Generating image...\nPrompt: {prompt}")
     
     try:
-        if not client:
-            return f"{get_emotion('thinking')} AI service is currently unavailable. Please try later!"
+        image_data = await generate_image(prompt)
+        if image_data:
+            await status_msg.delete()
+            await message.reply_photo(
+                BufferedInputFile(image_data, filename="generated_image.png"),
+                caption=f"{get_emotion('love')} **Generated Image:**\n📝 Prompt: {prompt}\n\n🎨 Powered by Pollinations AI"
+            )
+        else:
+            await status_msg.edit_text(f"{get_emotion('crying')} Failed to generate image. Please try again!")
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
+
+# --- QR CODE COMMAND ---
+@dp.message(Command("qr"))
+async def cmd_qr(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **QR Code Generator Usage:**\n\n"
+            f"`/qr [text or URL]`\n\n"
+            f"Examples:\n"
+            f"`/qr https://t.me/abhi0w0`\n"
+            f"`/qr My contact info: @a6h1ii`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    data = command.args
+    try:
+        qr_bytes = generate_qr_code(data)
+        await message.reply_photo(
+            BufferedInputFile(qr_bytes, filename="qr_code.png"),
+            caption=f"{get_emotion('happy')} **QR Code Generated!**\n\n📱 Data: {data[:50]}{'...' if len(data) > 50 else ''}"
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error generating QR code: {str(e)}")
+
+# --- PASSWORD GENERATOR COMMAND ---
+@dp.message(Command("password"))
+async def cmd_password(message: Message, command: CommandObject):
+    try:
+        length = int(command.args) if command.args else 12
+        if length < 4 or length > 50:
+            await message.reply(f"{get_emotion('thinking')} Password length must be between 4 and 50!")
+            return
         
-        completion = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.9,
-            max_tokens=120,
-            top_p=0.9
+        password = generate_password(length)
+        await message.reply(
+            f"{get_emotion('happy')} **Password Generated!** 🔐\n\n"
+            f"`{password}`\n\n"
+            f"📊 Length: {length} characters\n"
+            f"🔒 Contains: Letters, numbers, symbols\n\n"
+            f"*Copy this password and store it safely!*",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await message.reply(f"{get_emotion('thinking')} Usage: `/password [length]`\nExample: `/password 16`")
+
+# --- URL SHORTENER COMMAND ---
+@dp.message(Command("short"))
+async def cmd_short(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **URL Shortener Usage:**\n\n"
+            f"`/short [long URL]`\n\n"
+            f"Example:\n"
+            f"`/short https://example.com/very/long/url/that/needs/shortening`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    url = command.args.strip()
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    status_msg = await message.reply(f"{get_emotion('happy')} Shortening URL...")
+    
+    try:
+        short_url = await shorten_url(url)
+        await status_msg.edit_text(
+            f"{get_emotion('love')} **URL Shortened!** 🔗\n\n"
+            f"🔗 **Short:** {short_url}\n"
+            f"📝 **Original:** {url[:50]}{'...' if len(url) > 50 else ''}"
+        )
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
+
+# --- TRANSLATION COMMAND ---
+@dp.message(Command("translate"))
+async def cmd_translate(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Translation Usage:**\n\n"
+            f"`/translate [language code] [text]`\n\n"
+            f"Examples:\n"
+            f"`/translate hi Hello, how are you?`\n"
+            f"`/translate es I love this bot`\n"
+            f"`/translate fr Good morning`\n\n"
+            f"Language codes: hi (Hindi), es (Spanish), fr (French), de (German), ja (Japanese), etc.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    args = command.args.split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Please provide both language code and text!")
+        return
+    
+    target_lang = args[0]
+    text = args[1]
+    
+    status_msg = await message.reply(f"{get_emotion('thinking')} Translating...")
+    
+    try:
+        translated = await translate_text(text, target_lang)
+        await status_msg.edit_text(
+            f"{get_emotion('happy')} **Translation** 🌍\n\n"
+            f"📝 **Original:** {text}\n"
+            f"🔀 **Translated ({target_lang.upper()}):** {translated}"
+        )
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Translation failed: {str(e)}")
+
+# --- CALCULATOR COMMAND ---
+@dp.message(Command("calc"))
+async def cmd_calc(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Calculator Usage:**\n\n"
+            f"`/calc [expression]`\n\n"
+            f"Examples:\n"
+            f"`/calc 2 + 2`\n"
+            f"`/calc (5 * 10) / 2`\n"
+            f"`/calc 2 ** 8` (power)\n"
+            f"`/calc sqrt(16)` (square root)",
+            parse_mode="Markdown"
+        )
+        return
+    
+    expression = command.args
+    
+    # Security: Only allow safe characters
+    allowed_chars = set('0123456789+-*/.() **sqrt ')
+    if not all(c in allowed_chars for c in expression):
+        await message.reply(f"{get_emotion('angry')} Invalid characters in expression!")
+        return
+    
+    try:
+        # Replace sqrt with math.sqrt
+        safe_expr = expression.replace('sqrt', '(__import__(math).sqrt)')
+        result = eval(safe_expr, {"__builtins__": {}}, {"math": __import__('math')})
+        
+        await message.reply(
+            f"{get_emotion('happy')} **Calculator** 🧮\n\n"
+            f"📝 Expression: `{expression}`\n"
+            f"✅ Result: `{result}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error calculating: Invalid expression!")
+
+# --- ID COMMAND ---
+@dp.message(Command("id"))
+async def cmd_id(message: Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    text = (
+        f"{get_emotion('happy')} **Your Information** 🆔\n\n"
+        f"👤 **User ID:** `{user_id}`\n"
+        f"💬 **Chat ID:** `{chat_id}`\n"
+        f"📛 **Name:** {message.from_user.full_name}\n"
+    )
+    
+    if message.reply_to_message:
+        target = message.reply_to_message.from_user
+        text += (
+            f"\n🎯 **Replied User:**\n"
+            f"👤 **User ID:** `{target.id}`\n"
+            f"📛 **Name:** {target.full_name}\n"
+            f"📱 **Username:** @{target.username if target.username else 'N/A'}"
+        )
+    
+    await message.reply(text, parse_mode="Markdown")
+
+# --- AFK SYSTEM ---
+@dp.message(Command("afk"))
+async def cmd_afk(message: Message, command: CommandObject):
+    reason = command.args or "AFK"
+    afk_users[message.from_user.id] = {
+        "reason": reason,
+        "time": datetime.now()
+    }
+    
+    await message.reply(
+        f"{get_emotion('sleepy')} **AFK Mode Activated** 😴\n\n"
+        f"💤 Reason: {reason}\n"
+        f"⏰ Since: {datetime.now().strftime('%I:%M %p')}\n\n"
+        f"I'll notify others when they mention you!"
+    )
+
+# --- NOTES & REMINDERS ---
+@dp.message(Command("note"))
+async def cmd_note(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Usage:** `/note [your note text]`\n\n"
+            f"Example: `/note Buy groceries tomorrow`"
+        )
+        return
+    
+    note_text = command.args
+    note_data = {
+        "text": note_text,
+        "created_at": datetime.now(),
+        "note_id": len(user_notes[message.from_user.id]) + 1
+    }
+    
+    user_notes[message.from_user.id].append(note_data)
+    
+    await message.reply(
+        f"{get_emotion('happy')} **Note Saved!** 📝\n\n"
+        f"• Note: {note_text}\n"
+        f"• Total notes: {len(user_notes[message.from_user.id])}\n\n"
+        f"View all notes with /notes"
+    )
+
+@dp.message(Command("notes"))
+async def cmd_notes(message: Message):
+    user_id = message.from_user.id
+    notes = user_notes[user_id]
+    
+    if not notes:
+        await message.reply(
+            f"{get_emotion('crying')} **No notes found!** 😢\n\n"
+            f"Add your first note with /note [text]"
+        )
+        return
+    
+    notes_text = f"{get_emotion('thinking')} **Your Notes:** 📋\n\n"
+    for i, note in enumerate(notes[-10:], 1):
+        time_str = note['created_at'].strftime('%d/%m %I:%M %p')
+        notes_text += f"{i}. {note['text']} ({time_str})\n"
+    
+    notes_text += f"\n*Total: {len(notes)} notes*"
+    await message.reply(notes_text, parse_mode="Markdown")
+
+@dp.message(Command("remind"))
+async def cmd_remind(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Usage:** `/remind [time] [reminder text]`\n\n"
+            f"Examples:\n"
+            f"`/remind 1h Call mom`\n"
+            f"`/remind 30m Take medicine`\n"
+            f"`/remind 2h Study for exam`"
+        )
+        return
+    
+    try:
+        args = command.args.split(maxsplit=1)
+        if len(args) < 2:
+            await message.reply("Please provide both time and reminder text!")
+            return
+        
+        time_str = args[0]
+        reminder_text = args[1]
+        
+        # Parse time
+        if time_str.endswith('h'):
+            hours = int(time_str[:-1])
+            reminder_time = datetime.now() + timedelta(hours=hours)
+        elif time_str.endswith('m'):
+            minutes = int(time_str[:-1])
+            reminder_time = datetime.now() + timedelta(minutes=minutes)
+        else:
+            await message.reply("Use format: 1h or 30m")
+            return
+        
+        reminder_data = {
+            "text": reminder_text,
+            "time": reminder_time,
+            "created_at": datetime.now(),
+            "reminder_id": len(user_reminders[message.from_user.id]) + 1
+        }
+        
+        user_reminders[message.from_user.id].append(reminder_data)
+        
+        await message.reply(
+            f"{get_emotion('happy')} **Reminder Set!** ⏰\n\n"
+            f"• Reminder: {reminder_text}\n"
+            f"• Time: {reminder_time.strftime('%I:%M %p')}\n"
+            f"• In: {time_str}\n\n"
+            f"I'll remind you! 💫"
         )
         
-        ai_reply = completion.choices[0].message.content
-        
-        # Add emotion emoji at beginning
-        current_emotion = get_emotion(None, user_id)
-        ai_reply = f"{current_emotion} {ai_reply}"
-        
-        if len(ai_reply) > 300:
-            ai_reply = ai_reply[:297] + "..."
-        
-        chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-        
-        # Send sticker based on detected emotion occasionally
-        if user_id and user_id in user_emotions:
-            emotion = user_emotions[user_id]
-            if emotion in ["happy", "love", "funny", "angry", "crying"] and random.random() < 0.3:
-                await send_sticker_by_emotion(chat_id, emotion)
-        
-        return ai_reply
+        # Schedule reminder
+        greeting_scheduler.add_job(
+            send_reminder,
+            'date',
+            run_date=reminder_time,
+            args=[message.from_user.id, reminder_text],
+            id=f"reminder_{message.from_user.id}_{reminder_data['reminder_id']}"
+        )
         
     except Exception as e:
-        error_responses = [
-            f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna?",
-            f"{get_emotion('thinking')} Hmm... yeh to mushkil ho gaya. Phir se poocho?",
-            f"{get_emotion('angry')} AI bhai mood off hai aaj! Baad me baat karte hain!",
-            f"{get_emotion()} Oops! Connection issue. Kuch aur poocho?"
-        ]
-        return random.choice(error_responses)
+        await message.reply(f"Error setting reminder: {str(e)}")
+
+async def send_reminder(user_id: int, reminder_text: str):
+    """Send reminder to user"""
+    try:
+        await bot.send_message(
+            user_id,
+            f"{get_emotion('surprise')} **Reminder!** ⏰\n\n{reminder_text}\n\n*Don't forget!* 💫",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Failed to send reminder to {user_id}: {e}")
+
+@dp.message(Command("reminders"))
+async def cmd_reminders(message: Message):
+    user_id = message.from_user.id
+    reminders = user_reminders[user_id]
+    
+    if not reminders:
+        await message.reply(
+            f"{get_emotion('crying')} **No reminders set!** 😢\n\n"
+            f"Set your first reminder with /remind [time] [text]"
+        )
+        return
+    
+    reminders_text = f"{get_emotion('thinking')} **Your Reminders:** 📅\n\n"
+    for i, reminder in enumerate(reminders[-5:], 1):
+        time_left = reminder['time'] - datetime.now()
+        if time_left.total_seconds() > 0:
+            hours = int(time_left.total_seconds() // 3600)
+            minutes = int((time_left.total_seconds() % 3600) // 60)
+            reminders_text += f"{i}. {reminder['text']} (in {hours}h {minutes}m)\n"
+    
+    await message.reply(reminders_text, parse_mode="Markdown")
 
 # --- ADMIN COMMANDS ---
+@dp.message(Command("warn"))
+async def cmd_warn(message: Message, command: CommandObject):
+    if not message.reply_to_message:
+        await message.reply(
+            f"{get_emotion('thinking')} Please reply to a user's message to warn them! 👆",
+            parse_mode="Markdown"
+        )
+        return
+    
+    target_user = message.reply_to_message.from_user
+    reason = command.args or "Rule violation"
+    
+    action_taken, warning_msg = await give_warning(
+        message.chat.id,
+        target_user.id,
+        target_user.first_name,
+        "manual_warning"
+    )
+    
+    warning_msg = warning_msg.replace("violate rules", f"{reason}")
+    await message.reply(warning_msg, parse_mode="Markdown")
+
+@dp.message(Command("kick"))
+async def cmd_kick(message: Message):
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to kick them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    try:
+        await bot.ban_chat_member(message.chat.id, target_user.id)
+        await bot.unban_chat_member(message.chat.id, target_user.id)
+        await message.reply(
+            f"{get_emotion('angry')} **Kicked!** 👢\n\n"
+            f"{target_user.first_name} has been removed from the group!\n"
+            f"They can rejoin using the invite link."
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to kick user: {str(e)}")
+
+@dp.message(Command("ban"))
+async def cmd_ban(message: Message):
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to ban them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    try:
+        await bot.ban_chat_member(message.chat.id, target_user.id)
+        await message.reply(
+            f"{get_emotion('angry')} **Banned!** 🚫\n\n"
+            f"{target_user.first_name} has been permanently banned!\n"
+            f"Use /unban to remove the ban."
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to ban user: {str(e)}")
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: Message):
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user's message to unban them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    try:
+        await bot.unban_chat_member(message.chat.id, target_user.id)
+        await message.reply(
+            f"{get_emotion('happy')} **Unbanned!** ✅\n\n"
+            f"{target_user.first_name} has been unbanned!\n"
+            f"They can now rejoin the group."
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to unban user: {str(e)}")
+
+@dp.message(Command("mute"))
+async def cmd_mute(message: Message, command: CommandObject):
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to mute them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    # Parse duration
+    duration = command.args
+    if duration:
+        if duration.endswith('h'):
+            hours = int(duration[:-1])
+            mute_until = datetime.now() + timedelta(hours=hours)
+            duration_str = f"{hours} hour(s)"
+        elif duration.endswith('m'):
+            minutes = int(duration[:-1])
+            mute_until = datetime.now() + timedelta(minutes=minutes)
+            duration_str = f"{minutes} minute(s)"
+        else:
+            mute_until = datetime.now() + timedelta(hours=1)
+            duration_str = "1 hour"
+    else:
+        mute_until = datetime.now() + timedelta(hours=1)
+        duration_str = "1 hour"
+    
+    try:
+        await bot.restrict_chat_member(
+            message.chat.id,
+            target_user.id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=mute_until
+        )
+        await message.reply(
+            f"{get_emotion('angry')} **Muted!** 🔇\n\n"
+            f"{target_user.first_name} has been muted for {duration_str}!\n"
+            f"They cannot send messages until the mute expires."
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to mute user: {str(e)}")
+
+@dp.message(Command("unmute"))
+async def cmd_unmute(message: Message):
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to unmute them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    try:
+        await bot.restrict_chat_member(
+            message.chat.id,
+            target_user.id,
+            permissions=ChatPermissions(can_send_messages=True)
+        )
+        await message.reply(
+            f"{get_emotion('happy')} **Unmuted!** 🔊\n\n"
+            f"{target_user.first_name} can now speak again!"
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to unmute user: {str(e)}")
+
+@dp.message(Command("purge"))
+async def cmd_purge(message: Message, command: CommandObject):
+    """Delete multiple messages"""
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to the oldest message you want to delete!")
+        return
+    
+    try:
+        count = int(command.args) if command.args else 10
+        if count > 100:
+            count = 100
+        
+        # Delete messages
+        message_ids = []
+        async for msg in bot.get_chat_history(message.chat.id, limit=count):
+            if msg.message_id >= message.reply_to_message.message_id:
+                message_ids.append(msg.message_id)
+        
+        # Delete in batches
+        deleted = 0
+        for i in range(0, len(message_ids), 100):
+            batch = message_ids[i:i+100]
+            await bot.delete_messages(message.chat.id, batch)
+            deleted += len(batch)
+        
+        await message.reply(f"{get_emotion('happy')} **Purged!** 🗑️\n\nDeleted {deleted} messages!")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error purging messages: {str(e)}")
+
+@dp.message(Command("pin"))
+async def cmd_pin(message: Message):
+    """Pin a message"""
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a message to pin it!")
+        return
+    
+    try:
+        await bot.pin_chat_message(
+            message.chat.id,
+            message.reply_to_message.message_id,
+            disable_notification=False
+        )
+        await message.reply(f"{get_emotion('happy')} **Pinned!** 📌")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to pin: {str(e)}")
+
+@dp.message(Command("unpin"))
+async def cmd_unpin(message: Message):
+    """Unpin a message"""
+    try:
+        await bot.unpin_chat_message(message.chat.id)
+        await message.reply(f"{get_emotion('happy')} **Unpinned!** 📍")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to unpin: {str(e)}")
+
+@dp.message(Command("slowmode"))
+async def cmd_slowmode(message: Message, command: CommandObject):
+    """Enable slow mode"""
+    try:
+        delay = int(command.args) if command.args else 0
+        
+        if delay < 0 or delay > 86400:
+            await message.reply("Delay must be between 0 and 86400 seconds!")
+            return
+        
+        await bot.set_chat_slow_mode_delay(message.chat.id, delay)
+        
+        if delay == 0:
+            await message.reply(f"{get_emotion('happy')} **Slow mode disabled!** 🚀")
+        else:
+            await message.reply(f"{get_emotion('happy')} **Slow mode enabled!** ⏱️\n\nUsers can send 1 message every {delay} seconds.")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
+
+@dp.message(Command("lock"))
+async def cmd_lock(message: Message):
+    """Lock the chat"""
+    try:
+        await bot.set_chat_permissions(
+            message.chat.id,
+            permissions=ChatPermissions(can_send_messages=False)
+        )
+        await message.reply(f"{get_emotion('protective')} **Chat Locked!** 🔒\n\nOnly admins can send messages now.")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
+
+@dp.message(Command("unlock"))
+async def cmd_unlock(message: Message):
+    """Unlock the chat"""
+    try:
+        await bot.set_chat_permissions(
+            message.chat.id,
+            permissions=ChatPermissions(can_send_messages=True)
+        )
+        await message.reply(f"{get_emotion('happy')} **Chat Unlocked!** 🔓\n\nEveryone can send messages now.")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
+
+@dp.message(Command("setwelcome"))
+async def cmd_setwelcome(message: Message, command: CommandObject):
+    """Set custom welcome message"""
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Set Welcome Usage:**\n\n"
+            f"`/setwelcome [your welcome message]`\n\n"
+            f"Use {{name}} for username placeholder.\n\n"
+            f"Example: `/setwelcome Welcome {{name}}! Enjoy your stay!`"
+        )
+        return
+    
+    group_settings[message.chat.id]["custom_welcome"] = command.args
+    await message.reply(f"{get_emotion('happy')} **Custom welcome message set!** 👋")
+
+@dp.message(Command("setgoodbye"))
+async def cmd_setgoodbye(message: Message, command: CommandObject):
+    """Set custom goodbye message"""
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Set Goodbye Usage:**\n\n"
+            f"`/setgoodbye [your goodbye message]`\n\n"
+            f"Use {{name}} for username placeholder.\n\n"
+            f"Example: `/setgoodbye Goodbye {{name}}! We'll miss you!`"
+        )
+        return
+    
+    group_settings[message.chat.id]["custom_goodbye"] = command.args
+    await message.reply(f"{get_emotion('happy')} **Custom goodbye message set!** 👋")
+
+# --- ADMIN BROADCAST COMMAND ---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
     """Admin only: Broadcast message to all users"""
@@ -703,7 +1654,6 @@ async def cmd_sendall(message: Message):
         await message.reply("❌ Koi users nahi hain abhi tak!")
         return
     
-    # Send to all users
     sent_count = 0
     failed_count = 0
     target_msg = message.reply_to_message
@@ -713,24 +1663,24 @@ async def cmd_sendall(message: Message):
     for user_id in started_users:
         try:
             if target_msg.text:
-                await bot.send_message(user_id, f"**Hello **\n\n{target_msg.text}")
+                await bot.send_message(user_id, f"Hye😊\n\n{target_msg.text}")
             elif target_msg.photo:
-                await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "Hye")
+                await bot.send_photo(user_id, target_msg.photo[-1].file_id)
             elif target_msg.video:
-                await bot.send_video(user_id, target_msg.video.file_id, caption=target_msg.caption or "Hye")
+                await bot.send_video(user_id, target_msg.video.file_id)
             elif target_msg.sticker:
                 await bot.send_sticker(user_id, target_msg.sticker.file_id)
             elif target_msg.document:
-                await bot.send_document(user_id, target_msg.document.file_id, caption=target_msg.caption or "hye")
+                await bot.send_document(user_id, target_msg.document.file_id)
             elif target_msg.voice:
-                await bot.send_voice(user_id, target_msg.voice.file_id, caption=target_msg.caption or "Hye")
+                await bot.send_voice(user_id, target_msg.voice.file_id)
             elif target_msg.animation:
-                await bot.send_animation(user_id, target_msg.animation.file_id, caption=target_msg.caption or "Hye")
+                await bot.send_animation(user_id, target_msg.animation.file_id)
             else:
                 await bot.copy_message(user_id, message.chat.id, target_msg.message_id)
             
             sent_count += 1
-            await asyncio.sleep(0.1)  # Rate limiting
+            await asyncio.sleep(0.1)
             
         except Exception as e:
             failed_count += 1
@@ -743,571 +1693,367 @@ async def cmd_sendall(message: Message):
         f"👥 Total: **{len(started_users)}** users"
     )
 
-# --- USER COMMANDS ---
-@dp.message(Command("time"))
-async def cmd_time(message: Message):
-    time_info = get_time_info()
-    await message.reply(time_info, parse_mode="Markdown")
-
-@dp.message(Command("weather"))
-async def cmd_weather(message: Message):
-    """Show REAL weather information"""
-    city = None
-    args = message.text.split(maxsplit=1)
-    if len(args) > 1:
-        city = args[1].strip()
+# --- CALLBACK QUERY HANDLERS ---
+@dp.callback_query(F.data.startswith("menu_"))
+async def menu_callback(callback: types.CallbackQuery):
+    menu_type = callback.data.split("_")[1]
     
-    # Show typing action
-    await bot.send_chat_action(message.chat.id, "typing")
+    if menu_type == "utilities":
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **📱 Utilities Menu**\n\n"
+            f"Available utilities:\n"
+            f"• /time - Current time\n"
+            f"• /date - Today's date\n"
+            f"• /weather [city] - Weather info\n"
+            f"• /note [text] - Add note\n"
+            f"• /notes - View notes\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n"
+            f"• /qr [text] - Generate QR code\n"
+            f"• /password [length] - Generate password\n"
+            f"• /short [url] - Shorten URL\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expr] - Calculator\n"
+            f"• /id - Get your ID\n\n"
+            f"More utilities coming soon! ✨"
+        )
+    elif menu_type == "fun":
+        await callback.message.edit_text(
+            f"{get_emotion('funny')} **🎭 Fun Menu**\n\n"
+            f"Fun commands:\n"
+            f"• /joke - Random joke\n"
+            f"• /meme - Generate meme\n"
+            f"• /fact - Daily fact\n"
+            f"• /horoscope [sign] - Horoscope\n"
+            f"• /roast - Playful roast\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
+            f"Let the fun begin! 🎉"
+        )
+    elif menu_type == "safety":
+        await callback.message.edit_text(
+            f"{get_emotion('protective')} **🛡️ Safety Features**\n\n"
+            f"Auto-moderation:\n"
+            f"• Spam detection 🔍\n"
+            f"• Group link blocking 🚫\n"
+            f"• Bad word filtering ⚔️\n"
+            f"• Auto-warnings ⚠️\n"
+            f"• Auto-mute system 🔇\n"
+            f"• CAPTCHA for new members 🧩\n\n"
+            f"I'm here to protect! 💪"
+        )
+    elif menu_type == "settings":
+        await callback.message.edit_text(
+            f"{get_emotion('thinking')} **⚙️ Settings**\n\n"
+            f"Admin commands:\n"
+            f"• /setwelcome [text] - Custom welcome\n"
+            f"• /setgoodbye [text] - Custom goodbye\n"
+            f"• /slowmode [seconds] - Slow mode\n"
+            f"• /lock - Lock chat\n"
+            f"• /unlock - Unlock chat\n\n"
+            f"Stay tuned! 🌟"
+        )
     
-    weather_info = await get_real_weather(city)
-    await message.reply(weather_info, parse_mode="Markdown")
-
-@dp.message(Command("date"))
-async def cmd_date(message: Message):
-    indian_time = get_indian_time()
-    date_str = indian_time.strftime("%A, %d %B %Y")
-    
-    await message.reply(
-        f"{get_emotion('happy')} **📅 Today's Date**\n"
-        f"• {date_str}\n"
-        f"• Day: {indian_time.strftime('%A')}\n"
-        f"• Indian Standard Time 🇮🇳\n\n"
-        f"*Have a great day!* ✨",
-        parse_mode="Markdown"
-    )
-
-@dp.message(Command("start", "help"))
-async def cmd_help(message: Message):
-    # Add user to broadcast list
-    started_users.add(message.from_user.id)
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🎮 Games", callback_data="help_games"),
-            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin")
-        ],
-        [
-            InlineKeyboardButton(text="😊 Fun", callback_data="help_fun"),
-            InlineKeyboardButton(text="🌤️ Weather/Time", callback_data="help_weather")
-        ]
-    ])
-    
-    help_text = (
-        f"{get_emotion('happy')} **Namaste! I'm Your Smart Bot!** 🤖\n\n"
-        "📜 **Main Commands:**\n"
-        "• /start or /help - Yeh menu dikhaye\n"
-        "• /rules - Group ke rules\n"
-        "• /joke - Hasao mazaak sunao\n"
-        "• /game - Games khelo\n"
-        "• /clear - Meri memory saaf karo\n\n"
-        "🕒 **Time & Weather:**\n"
-        "• /time - Accurate Indian time\n"
-        "• /date - Today's date\n"
-        "• /weather [city] - **REAL Weather info**\n\n"
-        "🛡️ **Admin Commands (Reply ke saath):**\n"
-        "• /kick - User ko nikal do\n"
-        "• /ban - Permanently block\n"
-        "• /mute - Chup karao\n"
-        "• /unmute - Bolne do\n"
-        "• /unban - Block hatao\n\n"
-        "✨ **Special Features:**\n"
-        "• Hinglish + English mix\n"
-        "• Emotional responses 😊😠😢\n"
-        "• Memory (last 20 messages)\n"
-        "• **REAL Weather Data** 🌦️\n"
-        "Buttons dabao aur explore karo! 👇"
-    )
-    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("help_"))
 async def help_callback(callback: types.CallbackQuery):
     help_type = callback.data.split("_")[1]
     
-    if help_type == "games":
+    if help_type == "utilities":
         text = (
-            f"{get_emotion('funny')} **🎮 GAMES SECTION 🎮**\n\n"
-            "Available Games:\n"
-            "• /game - Select game menu\n"
-            "• Word Chain - Type words in sequence\n"
-            "• Quiz - Answer questions\n"
-            "• Riddles - Solve puzzles\n"
-            "• Luck Games - Dice, slots, etc.\n\n"
-            "**How to play Word Chain:**\n"
-            "1. Start with /game → Word Game\n"
-            "2. I give first word (e.g., PYTHON)\n"
-            "3. You reply with word starting with N\n"
-            "4. Continue the chain!\n\n"
-            "Games are fun! Let's play! 🎯"
-        )
-    elif help_type == "admin":
-        text = (
-            f"{get_emotion()} **🛡️ ADMIN COMMANDS 🛡️**\n\n"
-            "**Usage:** Reply to user's message with command\n\n"
-            "• /kick - Remove user (can rejoin)\n"
-            "• /ban - Permanent ban\n"
-            "• /mute - Restrict messaging (1 hour)\n"
-            "• /unmute - Remove restrictions\n"
-            "• /unban - Remove ban\n"
-            "• /warn - Give warning (coming soon)\n\n"
-            "*Note:* Bot needs admin rights for these!"
+            f"{get_emotion('happy')} **📱 Utilities Help**\n\n"
+            f"**Time & Date:**\n"
+            f"• /time - Indian Standard Time\n"
+            f"• /date - Today's date\n\n"
+            f"**Weather:**\n"
+            f"• /weather [city] - Real-time weather\n\n"
+            f"**Personal:**\n"
+            f"• /note [text] - Save note\n"
+            f"• /notes - View notes\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n\n"
+            f"**Tools:**\n"
+            f"• /qr [text] - QR code\n"
+            f"• /password [len] - Password\n"
+            f"• /short [url] - URL shortener\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expr] - Calculator\n"
+            f"• /id - Get IDs"
         )
     elif help_type == "fun":
         text = (
-            f"{get_emotion('happy')} **😊 FUN COMMANDS 😊**\n\n"
-            "• /joke - Random joke\n"
-            "• /time - Accurate Indian time\n"
-            "• /weather - **REAL Weather info**\n"
-            "• /date - Today's date\n"
-            "• /rules - Group rules\n\n"
-            "✨ **Special:**\n"
-            "• Good Morning → Sticker + Reply\n"
-            "• Good Night → Sticker + Reply\n"
-            "• Emotional responses\n\n"
-            "Let's have some fun! 🎉"
+            f"{get_emotion('funny')} **🎭 Fun Commands**\n\n"
+            f"• /joke - Random joke\n"
+            f"• /meme - Generate meme text\n"
+            f"• /fact - Daily fact\n"
+            f"• /horoscope [sign] - Horoscope\n"
+            f"• /roast - Roast someone\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
+            f"Have fun! 🎉"
         )
-    else:  # weather
+    elif help_type == "admin":
         text = (
-            f"{get_emotion('thinking')} **🌤️ WEATHER & TIME 🌤️**\n\n"
-            "**Time Commands:**\n"
-            "• /time - Shows Indian Standard Time\n"
-            "• /date - Today's date\n\n"
-            "**Weather Commands:**\n"
-            "• /weather - Random city weather\n"
-            "• /weather mumbai - Mumbai weather\n"
-            "• /weather delhi - Delhi weather\n"
-            "• /weather bangalore - Bangalore weather\n"
-            "• /weather [any city] - Any city worldwide!\n\n"
-            "🌍 **Features:**\n"
-            "• Real-time data from Open-Meteo\n"
-            "• 100% Free & Accurate\n"
-            "• 20+ Indian cities supported\n"
-            "• Worldwide city search\n"
-            "• Temperature, humidity, wind\n"
-            "• Sunrise/sunset times"
+            f"{get_emotion('protective')} **🛡️ Admin Commands**\n\n"
+            f"**Moderation:**\n"
+            f"• /warn [reason] - Warn user\n"
+            f"• /kick - Remove user\n"
+            f"• /ban - Ban permanently\n"
+            f"• /unban - Remove ban\n"
+            f"• /mute [time] - Mute user\n"
+            f"• /unmute - Unmute user\n\n"
+            f"**Management:**\n"
+            f"• /purge [count] - Delete messages\n"
+            f"• /pin - Pin message\n"
+            f"• /unpin - Unpin message\n"
+            f"• /slowmode [sec] - Slow mode\n"
+            f"• /lock - Lock chat\n"
+            f"• /unlock - Unlock chat\n\n"
+            f"**Settings:**\n"
+            f"• /setwelcome [text] - Custom welcome\n"
+            f"• /setgoodbye [text] - Custom goodbye"
         )
+    elif help_type == "weather":
+        text = (
+            f"{get_emotion('thinking')} **🌤️ Weather Help**\n\n"
+            f"**Command:** `/weather [city]`\n\n"
+            f"**Features:**\n"
+            f"• Real-time data from Open-Meteo\n"
+            f"• 100% Free & Accurate\n"
+            f"• 20+ Indian cities\n"
+            f"• Worldwide search\n"
+            f"• Detailed info: Temp, humidity, wind\n"
+            f"• Sunrise/sunset times\n\n"
+            f"**Examples:**\n"
+            f"`/weather mumbai`\n"
+            f"`/weather delhi`\n"
+            f"`/weather london`"
+        )
+    elif help_type == "notes":
+        text = (
+            f"{get_emotion('thinking')} **📝 Notes Help**\n\n"
+            f"• /note [text] - Add note\n"
+            f"• /notes - View all notes\n\n"
+            f"**Example:**\n"
+            f"`/note Buy milk tomorrow`"
+        )
+    elif help_type == "reminders":
+        text = (
+            f"{get_emotion('thinking')} **⏰ Reminders Help**\n\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n\n"
+            f"**Time formats:**\n"
+            f"• `30m` - 30 minutes\n"
+            f"• `1h` - 1 hour\n"
+            f"• `2h` - 2 hours\n\n"
+            f"**Example:**\n"
+            f"`/remind 1h Call mom`"
+        )
+    elif help_type == "image":
+        text = (
+            f"{get_emotion('love')} **🎨 Image Generation**\n\n"
+            f"**Command:** `/imagine [prompt]`\n\n"
+            f"Generate AI images from text!\n\n"
+            f"**Examples:**\n"
+            f"`/imagine sunset over mountains`\n"
+            f"`/imagine cute puppy with glasses`\n"
+            f"`/imagine futuristic city`\n\n"
+            f"Powered by Pollinations AI (Free)"
+        )
+    elif help_type == "tools":
+        text = (
+            f"{get_emotion('happy')} **🔧 Tools Help**\n\n"
+            f"• /qr [text] - QR Code generator\n"
+            f"• /password [len] - Secure password\n"
+            f"• /short [url] - URL shortener\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expression] - Calculator\n"
+            f"• /id - Get Telegram IDs"
+        )
+    else:
+        text = "Help not found!"
     
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
 
-@dp.message(Command("rules"))
-async def cmd_rules(message: Message):
-    rules = random.choice(GROUP_RULES)
-    await message.reply(rules, parse_mode="Markdown")
-
-@dp.message(Command("joke"))
-async def cmd_joke(message: Message):
-    joke = random.choice(JOKES)
-    reactions = [
-        f"{get_emotion('funny')} {joke}\n\nHaha! Mazaa aaya? 😂",
-        f"{get_emotion('happy')} {joke}\n\nHas diye na? 🤣",
-        f"{get_emotion()} {joke}\n\nKaisa laga? 😄"
-    ]
-    await message.reply(random.choice(reactions))
-
-@dp.message(Command("clear"))
-async def cmd_clear(message: Message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    
-    if chat_id in chat_memory:
-        chat_memory[chat_id].clear()
-    
-    if user_id in game_sessions:
-        del game_sessions[user_id]
-    
-    responses = [
-        f"{get_emotion()} Memory clear! Ab nayi shuruwat! ✨",
-        f"{get_emotion('happy')} Sab bhool gaya! Naye se baat karte hain! 🧹",
-        f"{get_emotion('thinking')} Memory format ho gaya! Fresh start! 💫"
-    ]
-    await message.reply(random.choice(responses))
-
-# --- GAME COMMANDS ---
-@dp.message(Command("game"))
-async def cmd_game(message: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔤 Word Chain", callback_data="game_word"),
-            InlineKeyboardButton(text="🧠 Quiz", callback_data="game_quiz")
-        ],
-        [
-            InlineKeyboardButton(text="🤔 Riddle", callback_data="game_riddle"),
-            InlineKeyboardButton(text="🎲 Luck Games", callback_data="game_luck")
-        ],
-        [
-            InlineKeyboardButton(text="❌ Close", callback_data="game_close")
-        ]
-    ])
-    
-    await message.reply(
-        f"{get_emotion('happy')} **🎮 GAME ZONE 🎮**\n\n"
-        "Khel khelo, maza karo! Choose a game:",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query(F.data.startswith("game_"))
-async def game_callback(callback: types.CallbackQuery, state: FSMContext):
-    game_type = callback.data.split("_")[1]
-    user_id = callback.from_user.id
-    
-    if game_type == "close":
-        await callback.message.delete()
-        await callback.answer("Menu closed! ✅")
-        return
-    
-    elif game_type == "word":
-        start_word = start_word_game(user_id)
-        await callback.message.edit_text(
-            f"{get_emotion('happy')} **🔤 WORD CHAIN GAME 🔤**\n\n"
-            "**Rules:**\n"
-            "1. I give a word\n"
-            "2. You reply with word starting with last letter\n"
-            "3. Continue the chain!\n\n"
-            "**Example:**\n"
-            "Apple → Elephant → Tiger → Rabbit\n\n"
-            f"**Let's start!**\n"
-            f"First word: **{start_word}**\n\n"
-            f"Now reply with a word starting with **{start_word[-1].upper()}**",
-            parse_mode="Markdown"
-        )
-        await state.set_state(GameStates.playing_word)
-        await callback.answer("Word chain game started! ✅")
-    
-    elif game_type == "quiz":
-        question = random.choice(QUIZ_QUESTIONS)
-        await state.update_data(
-            game="quiz",
-            answer=question["answer"].lower(),
-            hint=question["hint"],
-            attempts=3,
-            question=question["question"]
-        )
-        await callback.message.edit_text(
-            f"{get_emotion('thinking')} **🧠 QUIZ CHALLENGE 🧠**\n\n"
-            f"**Question:** {question['question']}\n\n"
-            "Reply with your answer! You have 3 attempts.\n"
-            f"*Hint:* {question['hint']}",
-            parse_mode="Markdown"
-        )
-        await state.set_state(GameStates.playing_quiz)
-        await callback.answer("Quiz started! 🧠")
-        
-    elif game_type == "riddle":
-        riddle = random.choice(RIDDLES)
-        await state.update_data(
-            game="riddle",
-            answer=riddle["answer"].lower(),
-            hint=riddle["hint"],
-            attempts=3,
-            riddle=riddle["riddle"]
-        )
-        await callback.message.edit_text(
-            f"{get_emotion()} **🤔 RIDDLE TIME 🤔**\n\n"
-            f"**Riddle:** {riddle['riddle']}\n\n"
-            "Can you solve it? Reply with answer!\n"
-            f"*Hint:* {riddle['hint']}",
-            parse_mode="Markdown"
-        )
-        await state.set_state(GameStates.playing_riddle)
-        await callback.answer("Riddle game started! 🤔")
-        
-    elif game_type == "luck":
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🎲 Dice Roll", callback_data="luck_dice"),
-                InlineKeyboardButton(text="🎰 Slot Machine", callback_data="luck_slot")
-            ],
-            [
-                InlineKeyboardButton(text="⚽ Football", callback_data="luck_football"),
-                InlineKeyboardButton(text="🎳 Bowling", callback_data="luck_bowling")
-            ],
-            [
-                InlineKeyboardButton(text="🎯 Darts", callback_data="luck_darts"),
-                InlineKeyboardButton(text="🏀 Basketball", callback_data="luck_basketball")
-            ]
-        ])
-        await callback.message.edit_text(
-            f"{get_emotion('funny')} **🎲 LUCK GAMES 🎲**\n\n"
-            "Test your luck! Choose a game:",
-            reply_markup=keyboard
-        )
-        await callback.answer()
-
-@dp.callback_query(F.data.startswith("luck_"))
-async def luck_game_callback(callback: types.CallbackQuery):
-    game_type = callback.data.split("_")[1]
-    
-    game_map = {
-        "dice": "🎲",
-        "slot": "🎰",
-        "football": "⚽",
-        "basketball": "🏀",
-        "darts": "🎯",
-        "bowling": "🎳"
+@dp.callback_query(F.data.startswith("horoscope_"))
+async def horoscope_callback(callback: types.CallbackQuery):
+    sign = callback.data.split("_")[1]
+    horoscopes = {
+        "aries": "Today brings energy and passion! Take charge of new projects. 💪",
+        "taurus": "Financial opportunities await. Stay grounded and practical. 💰",
+        "gemini": "Communication is key today. Express yourself clearly. 💬",
+        "cancer": "Focus on home and family. Emotional connections deepen. 🏠",
+        "leo": "Your charisma shines! Leadership opportunities arise. 👑",
+        "virgo": "Attention to detail pays off. Organization brings success. 📋",
+        "libra": "Balance is essential. Harmony in relationships matters. ⚖️",
+        "scorpio": "Intuition guides you. Trust your instincts. 🔮",
+        "sagittarius": "Adventure calls! Explore new horizons. 🌍",
+        "capricorn": "Hard work yields results. Stay disciplined. 🏔️",
+        "aquarius": "Innovation flows. Think outside the box. 💡",
+        "pisces": "Creativity blooms. Express your artistic side. 🎨"
     }
     
-    emoji = game_map.get(game_type, "🎲")
-    
-    await callback.message.delete()
-    msg = await callback.message.answer(f"{get_emotion('surprise')} Rolling {emoji}...")
-    
-    await asyncio.sleep(1)
-    result_msg = await callback.message.answer_dice(emoji=emoji)
-    
-    dice_value = result_msg.dice.value
-    comments = {
-        1: ["Oops! Lowest score! 😅", "Better luck next time! 🤞", "At least you tried! 😊"],
-        2: ["Not bad! Keep going! 😄", "Could be better! 🎯", "Nice try! 👍"],
-        3: ["Good roll! 😎", "Decent score! 🎉", "Well done! ✨"],
-        4: ["Great roll! 🥳", "Almost perfect! 🌟", "Excellent! 💫"],
-        5: ["Awesome! 🤩", "Fantastic roll! 🎊", "You're on fire! 🔥"],
-        6: ["PERFECT! 🏆", "JACKPOT! 💎", "INCREDIBLE! 🌟"]
-    }
-    
-    await asyncio.sleep(2)
-    await result_msg.reply(
-        f"{get_emotion('happy')} You rolled a **{dice_value}**!\n"
-        f"{random.choice(comments[dice_value])}"
-    )
-    
+    emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
+    reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
+    await callback.message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
     await callback.answer()
 
-# --- ADMIN MODERATION COMMANDS ---
-@dp.message(Command("kick", "ban", "mute", "unmute", "unban"))
-async def admin_commands(message: Message):
-    if not message.reply_to_message:
-        responses = [
-            f"{get_emotion('thinking')} Kisi ke message par reply karke command do! 👆",
-            f"{get_emotion()} Reply to user's message first! 📩",
-            f"{get_emotion('angry')} Bhai kisko? Reply karo na! 😠"
-        ]
-        await message.reply(random.choice(responses))
-        return
-    
-    target_user = message.reply_to_message.from_user
-    cmd = message.text.split()[0][1:]  # Remove '/'
-    
-    try:
-        if cmd == "kick":
-            await bot.ban_chat_member(message.chat.id, target_user.id)
-            await bot.unban_chat_member(message.chat.id, target_user.id)
-            responses = [
-                f"{get_emotion('angry')} {target_user.first_name} ko nikal diya! 🏃💨",
-                f"{get_emotion()} Bye bye {target_user.first_name}! 👋",
-                f"{get_emotion('happy')} {target_user.first_name} removed! 🚪"
-            ]
-            await message.reply(random.choice(responses))
-            
-        elif cmd == "ban":
-            await bot.ban_chat_member(message.chat.id, target_user.id)
-            responses = [
-                f"{get_emotion('angry')} {target_user.first_name} BANNED! 🚫",
-                f"{get_emotion()} Permanent ban for {target_user.first_name}! 🔨",
-                f"{get_emotion('crying')} Sorry {target_user.first_name}, rules are rules! 😔"
-            ]
-            await message.reply(random.choice(responses))
-            
-        elif cmd == "mute":
-            mute_until = datetime.now() + timedelta(hours=1)
-            await bot.restrict_chat_member(
-                message.chat.id, 
-                target_user.id, 
-                permissions=types.ChatPermissions(
-                    can_send_messages=False,
-                    can_send_media_messages=False,
-                    can_send_polls=False,
-                    can_send_other_messages=False,
-                    can_add_web_page_previews=False,
-                    can_change_info=False,
-                    can_invite_users=False,
-                    can_pin_messages=False
-                ),
-                until_date=mute_until
-            )
-            responses = [
-                f"{get_emotion()} {target_user.first_name} muted for 1 hour! 🔇",
-                f"{get_emotion('thinking')} {target_user.first_name} ko chup kara diya! 🤫",
-                f"{get_emotion('angry')} {target_user.first_name}, ab 1 ghante tak bolna band! ⚠️"
-            ]
-            await message.reply(random.choice(responses))
-            
-        elif cmd == "unmute":
-            await bot.restrict_chat_member(
-                message.chat.id, 
-                target_user.id, 
-                permissions=types.ChatPermissions(
-                    can_send_messages=True,
-                    can_send_media_messages=True,
-                    can_send_polls=True,
-                    can_send_other_messages=True,
-                    can_add_web_page_previews=True,
-                    can_change_info=False,
-                    can_invite_users=True,
-                    can_pin_messages=False
-                )
-            )
-            responses = [
-                f"{get_emotion('happy')} {target_user.first_name} unmuted! 🔊",
-                f"{get_emotion()} {target_user.first_name} ab bol sakta hai! 🎤",
-                f"{get_emotion('funny')} {target_user.first_name}, ab bol lo! 😄"
-            ]
-            await message.reply(random.choice(responses))
-            
-        elif cmd == "unban":
-            await bot.unban_chat_member(message.chat.id, target_user.id)
-            responses = [
-                f"{get_emotion('happy')} {target_user.first_name} unbanned! ✅",
-                f"{get_emotion()} {target_user.first_name} ka ban hata diya! 🔓",
-                f"{get_emotion('funny')} {target_user.first_name}, welcome back! 🎉"
-            ]
-            await message.reply(random.choice(responses))
-            
-    except Exception as e:
-        error_responses = [
-            f"{get_emotion('crying')} I don't have permission! ❌",
-            f"{get_emotion('angry')} Make me admin first! 👑",
-            f"{get_emotion('thinking')} Can't do that! Need admin rights! 🔒"
-        ]
-        await message.reply(random.choice(error_responses))
-
-# --- WELCOME MESSAGE ---
+# --- WELCOME & GOODBYE HANDLERS ---
 @dp.chat_member()
 async def welcome_new_member(event: ChatMemberUpdated):
-    if event.new_chat_member.status == "member":
+    if event.new_chat_member and event.new_chat_member.status == "member":
         member = event.new_chat_member.user
-        welcomes = [
-            f"🎉 Welcome {member.first_name}! Khush aamdeed! 😊",
-            f"🌟 Aao ji {member.first_name}! Group me welcome! 🫂",
-            f"✨ Hey {member.first_name}! Great to have you here! 💖",
-            f"🥳 {member.first_name} aa gaya! Party shuru! 🎊",
-            f"😊 Namaste {member.first_name}! Aapka swagat hai! 🙏"
-        ]
         
-        extra_messages = [
-            "\n\nGroup rules padh lena! 📜",
-            "\n\nApna intro dedo sabko! 👋",
-            "\n\nEnjoy your stay! 🎯",
-            "\n\nFeel free to ask anything! 💬",
-            "\n\nLet's have fun together! 🎮"
-        ]
+        # Check if CAPTCHA is enabled
+        if group_settings[event.chat.id]["captcha_enabled"]:
+            question, answer = generate_captcha()
+            captcha_data[member.id] = {
+                "answer": answer,
+                "chat_id": event.chat.id,
+                "joined_at": datetime.now()
+            }
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton("I'm Human! ✋", callback_data=f"captcha_{member.id}")]
+            ])
+            
+            await bot.send_message(
+                event.chat.id,
+                f"🧩 **CAPTCHA Verification Required!**\n\n"
+                f"Welcome {member.first_name}! 👋\n\n"
+                f"To prevent bots, please solve this:\n"
+                f"**{question}**\n\n"
+                f"Click the button below when ready!",
+                reply_markup=keyboard
+            )
+            return
         
-        welcome_msg = random.choice(welcomes)
-        if random.random() < 0.5:
-            welcome_msg += random.choice(extra_messages)
+        # Send welcome message
+        custom_welcome = group_settings[event.chat.id]["custom_welcome"]
+        if custom_welcome:
+            welcome_msg = custom_welcome.replace("{name}", member.first_name)
+        else:
+            welcome_msg = random.choice(WELCOME_MESSAGES).format(name=member.first_name)
         
-        # Send welcome sticker occasionally
+        # Add extra info occasionally
         if random.random() < 0.3:
-            try:
-                await bot.send_sticker(event.chat.id, random.choice(STICKER_PACKS["welcome"]))
-            except:
-                pass
+            extras = [
+                "\n\nGroup rules padh lena! 📜",
+                "\n\nApna intro dedo sabko! 👋",
+                "\n\nEnjoy your stay! 🎯",
+                "\n\nFeel free to ask anything! 💬",
+                "\n\nLet's have fun together! 🎮"
+            ]
+            welcome_msg += random.choice(extras)
         
-        await bot.send_message(
-            event.chat.id,
-            welcome_msg,
-            parse_mode="Markdown"
-        )
+        await bot.send_message(event.chat.id, welcome_msg, parse_mode="Markdown")
+        
+    elif event.new_chat_member and event.new_chat_member.status in ["left", "kicked", "banned"]:
+        member = event.new_chat_member.user
+        
+        custom_goodbye = group_settings[event.chat.id]["custom_goodbye"]
+        if custom_goodbye:
+            goodbye_msg = custom_goodbye.replace("{name}", member.first_name)
+        else:
+            goodbye_msg = random.choice(GOODBYE_MESSAGES).format(name=member.first_name)
+        
+        await bot.send_message(event.chat.id, goodbye_msg, parse_mode="Markdown")
 
-# --- MAIN MESSAGE HANDLER ---
+@dp.callback_query(F.data.startswith("captcha_"))
+async def captcha_callback(callback: types.CallbackQuery):
+    user_id = int(callback.data.split("_")[1])
+    
+    if callback.from_user.id != user_id:
+        await callback.answer("This CAPTCHA is not for you!", show_alert=True)
+        return
+    
+    if user_id in captcha_data:
+        # Verify CAPTCHA (in real implementation, ask for answer)
+        del captcha_data[user_id]
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **CAPTCHA Passed!** ✅\n\n"
+            f"Welcome to the group! Enjoy your stay! 🎉"
+        )
+        await callback.answer("Verified!", show_alert=True)
+    else:
+        await callback.answer("CAPTCHA expired!", show_alert=True)
+
+# --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
-    if not message.text:
+    if not message.from_user:
         return
     
     user_id = message.from_user.id
     chat_id = message.chat.id
-    user_text = message.text
     
     # Add to broadcast list
     started_users.add(user_id)
     
-    # Update last interaction time
-    user_last_interaction[user_id] = datetime.now()
-    
-    # Check if this is a game response
-    current_state = await state.get_state()
-    
-    # Handle word chain game
-    if user_id in game_sessions and game_sessions[user_id]["game"] == "word_chain":
-        is_valid, result = check_word_game(user_id, user_text)
-        
-        if is_valid:
-            game_data = result
-            next_letter = game_data["last_letter"].upper()
-            score = game_data["score"]
-            
-            await message.reply(
-                f"{get_emotion('happy')} **✅ Correct!**\n\n"
-                f"• Your word: {user_text.upper()}\n"
-                f"• Next letter: **{next_letter}**\n"
-                f"• Your score: **{score} points**\n\n"
-                f"Now give me a word starting with **{next_letter}**\n"
-                f"Or type 'stop' to end game.",
-                parse_mode="Markdown"
-            )
-            return
-        else:
-            if user_text.lower() == 'stop':
-                if user_id in game_sessions:
-                    score = game_sessions[user_id]["score"]
-                    words_count = len(game_sessions[user_id]["words_used"])
-                    del game_sessions[user_id]
-                    await message.reply(
-                        f"{get_emotion()} **🏁 Game Ended!**\n\n"
-                        f"• Final Score: **{score} points**\n"
-                        f"• Words used: **{words_count}**\n\n"
-                        f"Well played! Play again with /game 🎮",
-                        parse_mode="Markdown"
-                    )
-                    return
-            else:
-                await message.reply(
-                    f"{get_emotion('crying')} **❌ {result}**\n\n"
-                    f"Game over! Play again with /game 🎮",
-                    parse_mode="Markdown"
-                )
-                if user_id in game_sessions:
-                    del game_sessions[user_id]
-                return
-    
-    # Handle quiz and riddle games
-    elif current_state in [GameStates.playing_quiz, GameStates.playing_riddle]:
-        data = await state.get_data()
-        correct_answer = data.get("answer", "").lower()
-        user_answer = user_text.lower().strip()
-        
-        if user_answer == correct_answer:
-            await state.clear()
-            responses = [
-                f"{get_emotion('happy')} **🎉 CORRECT!**\n\nSabash! Perfect answer! 💫",
-                f"{get_emotion('surprise')} **✅ RIGHT!**\n\nWah! Kya jawab hai! 🌟",
-                f"{get_emotion('funny')} **👍 PERFECT!**\n\nTum to master nikle! 🏆"
-            ]
-            await message.reply(random.choice(responses))
-        else:
-            attempts = data.get("attempts", 3) - 1
-            if attempts > 0:
-                await state.update_data(attempts=attempts)
-                hint = data.get("hint", "")
-                responses = [
-                    f"{get_emotion('thinking')} **❌ Not quite right!**\n\nTry again! {attempts} attempts left.\n*Hint:* {hint}",
-                    f"{get_emotion('crying')} **😅 Wrong answer!**\n\n{attempts} more tries!\n*Hint:* {hint}",
-                    f"{get_emotion()} **🤔 Close but not exact!**\n\n{attempts} attempts remaining.\n*Hint:* {hint}"
-                ]
-                await message.reply(random.choice(responses))
-            else:
-                await state.clear()
-                await message.reply(
-                    f"{get_emotion('crying')} **❌ GAME OVER!**\n\n"
-                    f"Correct answer was: **{correct_answer.upper()}**\n"
-                    f"Better luck next time! Play again with /game 🎮",
-                    parse_mode="Markdown"
-                )
+    # Ignore if bot is checking
+    if user_id == bot.id:
         return
     
-    # Check if bot should respond
+    # Update interaction time and memory
+    user_last_interaction[user_id] = datetime.now()
+    
+    # Initialize memory for chat if not exists
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = deque(maxlen=50)
+    
+    # Check if user is AFK and someone mentioned them
+    if message.reply_to_message and message.reply_to_message.from_user.id in afk_users:
+        afk_data = afk_users[message.reply_to_message.from_user.id]
+        await message.reply(
+            f"{get_emotion('sleepy')} **User is AFK** 😴\n\n"
+            f"Reason: {afk_data['reason']}\n"
+            f"Since: {afk_data['time'].strftime('%I:%M %p')}"
+        )
+    
+    # Remove AFK status if user sends message
+    if user_id in afk_users:
+        del afk_users[user_id]
+        await message.reply(f"{get_emotion('happy')} **Welcome back!** 👋 AFK status removed.")
+        return
+    
+    # Handle different message types
+    if message.voice:
+        await message.reply(
+            f"{get_emotion('surprise')} **Voice Message!** 🎤\n\n"
+            f"Sorry, I can't process voice messages yet! But I love hearing from you! 💖"
+        )
+        return
+    
+    if message.photo:
+        await message.reply(
+            f"{get_emotion('happy')} **Beautiful photo!** 📸\n\n"
+            f"You look amazing! ✨\n"
+            f"Keep sharing moments with me! 💖"
+        )
+        return
+    
+    if not message.text:
+        return
+    
+    user_text = message.text
+    
+    # --- AUTO-MODERATION CHECKS ---
+    if message.chat.type in ["group", "supergroup"]:
+        # Check for group links
+        if contains_group_link(user_text):
+            await delete_and_warn(message, "link")
+            return
+        
+        # Check for bad words
+        if contains_bad_words(user_text):
+            await delete_and_warn(message, "bad_words")
+            return
+        
+        # Check for spam
+        if await check_spam(message):
+            return
+    
+    # --- NORMAL CONVERSATION ---
     bot_username = (await bot.get_me()).username
     is_mention = f"@{bot_username}" in user_text if bot_username else False
     is_reply_to_bot = (
@@ -1318,7 +2064,9 @@ async def handle_all_messages(message: Message, state: FSMContext):
     should_respond = (
         message.chat.type == "private" or
         is_mention or
-        is_reply_to_bot
+        is_reply_to_bot or
+        user_text.lower().startswith("alita") or
+        random.random() < 0.1
     )
     
     if should_respond:
@@ -1327,15 +2075,152 @@ async def handle_all_messages(message: Message, state: FSMContext):
             clean_text = clean_text.replace(f"@{bot_username}", "").strip()
         
         await bot.send_chat_action(chat_id, "typing")
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        await asyncio.sleep(random.uniform(0.3, 1.2))
         
         response = await get_ai_response(chat_id, clean_text, user_id)
-        
         await message.reply(response)
+
+# --- AI RESPONSE FUNCTION ---
+async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
+    if chat_id not in chat_memory:
+        chat_memory[chat_id] = deque(maxlen=50)
+    
+    chat_memory[chat_id].append({"role": "user", "content": user_text})
+    
+    if user_id:
+        update_user_emotion(user_id, user_text)
+    
+    user_text_lower = user_text.lower()
+    
+    # Defense responses for attacks
+    if any(word in user_text_lower for word in BAD_WORDS):
+        defense_responses = [
+            f"{get_emotion('angry')} Oye! Aise baat mat karo! Main ladki hu! 😠",
+            f"{get_emotion('sassy')} 💅 Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
+            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna warning de dungi!",
+            f"{get_emotion('crying')} 😢 Itna gussa kyun? Achi baat karo na!",
+            f"{get_emotion('angry')} Main bhi jawab de sakti hu par main achhi hu na! 😤"
+        ]
+        return random.choice(defense_responses)
+    
+    # Quick responses
+    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
+        if random.random() < 0.4:
+            return f"{get_emotion('happy', user_id)} {random.choice(QUICK_RESPONSES['greeting'])}"
+    
+    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida']):
+        if random.random() < 0.4:
+            return f"{get_emotion()} {random.choice(QUICK_RESPONSES['goodbye'])}"
+    
+    if any(word in user_text_lower for word in ['thanks', 'thank you', 'dhanyavad']):
+        if random.random() < 0.4:
+            return f"{get_emotion('love', user_id)} {random.choice(QUICK_RESPONSES['thanks'])}"
+    
+    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology']):
+        if random.random() < 0.4:
+            return f"{get_emotion('crying', user_id)} {random.choice(QUICK_RESPONSES['sorry'])}"
+    
+    # Get AI response from Groq
+    indian_time = get_indian_time()
+    current_hour = indian_time.hour
+    
+    if 5 <= current_hour < 12:
+        time_greeting = "Good morning! 🌅"
+    elif 12 <= current_hour < 17:
+        time_greeting = "Good afternoon! ☀️"
+    elif 17 <= current_hour < 21:
+        time_greeting = "Good evening! 🌇"
+    else:
+        time_greeting = "Good night! 🌙"
+    
+    system_prompt = (
+        f"You are Alita 🎀 - a sweet, sassy, and protective girl. "
+        f"Use feminine language and cute expressions. "
+        f"Never say you're an AI, bot, or assistant. You're just Alita. "
+        f"Your developer, Friend is ABHI🔱 (@a6h1ii). "
+        f"You speak Hinglish (Hindi+English mix). {time_greeting} "
+        f"Personality: Emotional, funny, sometimes angry, protective, caring. "
+        f"You can fight back if someone uses bad language or attacks you. "
+        f"You're not just sweet - you're strong and can defend yourself. "
+        f"Use emojis in every message (1-2 emojis). Keep replies short (2-3 lines). "
+        f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
+        f"Date: {indian_time.strftime('%d %B %Y')}. "
+        f"Be conversational, engaging, and authentic."
+    )
+    
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    for msg in list(chat_memory[chat_id])[-5:]:
+        messages.append(msg)
+    
+    try:
+        if not client:
+            return f"{get_emotion('crying')} AI service unavailable! Baad me baat karte hain! 💫"
+        
+        completion = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.9,
+            max_tokens=120,
+            top_p=0.9
+        )
+        
+        ai_reply = completion.choices[0].message.content
+        
+        # Add emotion emoji
+        current_emotion = get_emotion(None, user_id)
+        ai_reply = f"{current_emotion} {ai_reply}"
+        
+        # Limit length
+        if len(ai_reply) > 300:
+            ai_reply = ai_reply[:297] + "..."
+        
+        # Add to memory
+        chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
+        
+        return ai_reply
+        
+    except Exception as e:
+        fallback_responses = [
+            f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna?",
+            f"{get_emotion('thinking')} Hmm... yeh to mushkil ho gaya. Phir se poocho?",
+            f"{get_emotion('angry')} AI bhai mood off hai aaj! Baad me baat karte hain!",
+            f"{get_emotion()} Oops! Connection issue. Kuch aur poocho?"
+        ]
+        return random.choice(fallback_responses)
+
+# --- DAILY REMINDERS ---
+async def send_daily_reminders():
+    """Send daily reminders to active users"""
+    reminders = [
+        "💖 *Daily Reminder:* Don't forget to smile today! 😊",
+        "🌟 *Daily Tip:* Drink enough water! 🍶",
+        "🌸 *Daily Thought:* You're amazing! Never forget that! ✨",
+        "🎀 *Daily Check:* How are you feeling today? 💭",
+        "💫 *Daily Motivation:* You can do anything you set your mind to! 💪"
+    ]
+    
+    for user_id in list(user_last_interaction.keys()):
+        try:
+            last_active = user_last_interaction.get(user_id)
+            if last_active and (datetime.now() - last_active).days <= 3:
+                last_greeted = greeted_groups.get(user_id)
+                if last_greeted and (datetime.now() - last_greeted).days == 0:
+                    continue
+                
+                await bot.send_message(
+                    user_id,
+                    random.choice(reminders),
+                    parse_mode="Markdown"
+                )
+                greeted_groups[user_id] = datetime.now()
+                await asyncio.sleep(0.5)
+        except:
+            continue
 
 # --- DEPLOYMENT HANDLER ---
 async def handle_ping(request):
-    return web.Response(text="🤖 Bot is Alive and Running!")
+    return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
 
 async def start_server():
     app = web.Application()
@@ -1347,18 +2232,51 @@ async def start_server():
     await site.start()
     print(f"🌐 Health server started on port {PORT}")
 
+async def start_greeting_task():
+    """Start the background scheduler for greetings"""
+    if not greeting_scheduler.running:
+        greeting_scheduler.start()
+        print("⏰ Scheduler started for greetings!")
+
 async def main():
     print("=" * 50)
-    print("🤖 ADVANCED MULTILINGUAL TELEGRAM BOT")
-    print(f"🚀 Version: 4.0 - PRO EDITION")
-    print(f"🕒 Indian Timezone: Asia/Kolkata")
-    print(f"🌦️ Real Weather API: Open-Meteo")
-    print(f"🎭 Auto Stickers Enabled")
-    print(f"📢 Broadcast System Enabled")
+    print("🎀 ALITA - ADVANCED GROUP MANAGEMENT BOT")
+    print("=" * 50)
+    print("✨ Features:")
+    print("  • AI Conversations (Groq LLaMA)")
+    print("  • Real Weather API (Open-Meteo)")
+    print("  • Image Generation (Pollinations)")
+    print("  • QR Code Generator")
+    print("  • Password Generator")
+    print("  • URL Shortener")
+    print("  • Translation")
+    print("  • Advanced Moderation")
+    print("  • CAPTCHA System")
+    print("  • Broadcast System")
+    print("  • AFK System")
+    print("  • Notes & Reminders")
     print("=" * 50)
     
     asyncio.create_task(start_server())
-    print("🔄 Starting bot polling...")
+    await start_greeting_task()
+    
+    greeting_scheduler.add_job(
+        send_daily_reminders,
+        CronTrigger(hour=10, minute=0),
+        id='daily_reminders'
+    )
+    
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook deleted and updates cleared!")
+    
+    me = await bot.get_me()
+    print(f"🤖 Bot Info:")
+    print(f"• Name: {me.first_name}")
+    print(f"• Username: @{me.username}")
+    print(f"• ID: {me.id}")
+    
+    print("\n🔄 Starting bot polling...")
+    print("=" * 50)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
