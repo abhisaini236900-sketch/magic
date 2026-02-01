@@ -269,11 +269,11 @@ TIME_GREETINGS = {
 # --- QUICK RESPONSES ---
 QUICK_RESPONSES = {
     "greeting": [
-        "Hii! Kaise ho? 😊",
-        "Hello cutie! 💖",
-        "Namaste! 🙏 Kya haal hain?",
+        "Hello jii {name}😊",
+        "Hiiiii {name}! 💖",
+        "Hyee {name}",
         "Hey there! 🌟",
-        "Hola! Kya chal raha hai? 💫"
+        "Hellooo {name}💫"
     ],
     "goodbye": [
         "Bye! Take care! 💕",
@@ -1676,7 +1676,7 @@ async def cmd_sendall(message: Message):
     for user_id in started_users:
         try:
             if target_msg.text:
-                await bot.send_message(user_id, f"📢 **Message from Admin:**\n\n{target_msg.text}")
+                await bot.send_message(user_id, f"Hye😊\n\n{target_msg.text}")
             elif target_msg.photo:
                 await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.video:
@@ -2154,14 +2154,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"{get_emotion('protective')} 🛡️ Respect karo warna mute kar dungi! ⚔️"
         ])
     
-    # Greetings
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        return random.choice([
-            f"{get_emotion('happy')} Hii jaan! Kaise ho? 😊💖",
-            f"{get_emotion('love')} Hello meri jaan! 💕 Kya haal hai?",
-            f"{get_emotion('happy')} Hey there! Bohot time baad mile! 🌟",
-            f"{get_emotion('love')} Hii cutie! 💖 Tumhari yaad aa rahi thi!"
-        ])
     
     # Goodbye
     if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
@@ -2182,7 +2174,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         ])
     
     # Good morning
-    if any(word in user_text_lower for word in ['gm', 'good morning', 'subah']):
+    if any(word in user_text_lower for word in ['gm', 'good morning', 'Goodmorning', 'subah']):
         return random.choice([
             f"{get_emotion('happy')} Good Morning jaan! 🌅 Uth gaye? ☕",
             f"{get_emotion('love')} 🌸 GM! Aaj ka din mast ho! 💖",
