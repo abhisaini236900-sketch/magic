@@ -112,9 +112,9 @@ group_settings: Dict[int, GroupSettings] = defaultdict(GroupSettings)
 # --- CONSTANTS ---
 SPAM_LIMIT = 6
 WARNING_MESSAGES = [
-    "⚠️ **Warning {count}/3**\\n👤 {name}\\n🚫 Reason: {action}\\n📢 Please follow group rules!",
-    "⚠️ **Warning {count}/3**\\n👤 {name}\\n❌ {action} not allowed!\\n⚡ Next time = Mute!",
-    "⚠️ **Warning {count}/3**\\n👤 {name}\\n🚷 Stop {action}!\\n🔇 Mute incoming!"
+    "⚠️ **Warning {count}/3**\n👤 {name}\n🚫 Reason: {action}\n📢 Please follow group rules!",
+    "⚠️ **Warning {count}/3**\n👤 {name}\n❌ {action} not allowed!\n⚡ Next time = Mute!",
+    "⚠️ **Warning {count}/3**\n👤 {name}\n🚷 Stop {action}!\n🔇 Mute incoming!"
 ]
 
 MUTE_DURATIONS = [
@@ -397,11 +397,11 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
                 else:
                     duration_str = f"{minutes} minute{'s' if minutes > 1 else ''}"
             
-            warning_msg += f"\\n\\n🚫 **MUTED for {duration_str}!**\\nToo many warnings!"
+            warning_msg += f"\n\n🚫 **MUTED for {duration_str}!**\nToo many warnings!"
             return True, warning_msg
             
         except Exception as e:
-            warning_msg += f"\\n\\n⚠️ Failed to mute user: {str(e)[:50]}"
+            warning_msg += f"\n\n⚠️ Failed to mute user: {str(e)[:50]}"
             return False, warning_msg
     
     return False, warning_msg
@@ -443,10 +443,10 @@ async def ban_user_for_adult(chat_id: int, user_id: int, message: Message):
     try:
         await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
         await message.answer(
-            f"{get_emotion('angry')} **USER BANNED!** 🚫\\n\\n"
-            f"👤 User ID: `{user_id}`\\n"
-            f"🚷 Reason: Adult/NSFW content\\n"
-            f"⚡ Action: Permanent Ban\\n\\n"
+            f"{get_emotion('angry')} **USER BANNED!** 🚫\n\n"
+            f"👤 User ID: `{user_id}`\n"
+            f"🚷 Reason: Adult/NSFW content\n"
+            f"⚡ Action: Permanent Ban\n\n"
             f"🛡️ Group protected by Alita!",
             parse_mode="Markdown"
         )
@@ -513,14 +513,14 @@ async def get_weather_real(city: str) -> str:
                         is_day = "☀️ Day" if current['is_day'] else "🌙 Night"
                         
                         return (
-                            f"🌤️ **Weather in {city_name}, {country}**\\n\\n"
-                            f"🌡️ **Temperature:** {current['temperature_2m']}°C\\n"
-                            f"🌡️ **Feels Like:** {current['apparent_temperature']}°C\\n"
-                            f"☁️ **Condition:** {condition}\\n"
-                            f"💧 **Humidity:** {current['relative_humidity_2m']}%\\n"
-                            f"💨 **Wind Speed:** {current['wind_speed_10m']} km/h\\n"
-                            f"🌧️ **Precipitation:** {current['precipitation']} mm\\n"
-                            f"🕐 **Time:** {is_day}\\n\\n"
+                            f"🌤️ **Weather in {city_name}, {country}**\n\n"
+                            f"🌡️ **Temperature:** {current['temperature_2m']}°C\n"
+                            f"🌡️ **Feels Like:** {current['apparent_temperature']}°C\n"
+                            f"☁️ **Condition:** {condition}\n"
+                            f"💧 **Humidity:** {current['relative_humidity_2m']}%\n"
+                            f"💨 **Wind Speed:** {current['wind_speed_10m']} km/h\n"
+                            f"🌧️ **Precipitation:** {current['precipitation']} mm\n"
+                            f"🕐 **Time:** {is_day}\n\n"
                             f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
                         )
         else:
@@ -530,20 +530,20 @@ async def get_weather_real(city: str) -> str:
                     data = await response.json()
                     if response.status == 200:
                         return (
-                            f"🌤️ **Weather in {data['name']}, {data['sys']['country']}**\\n\\n"
-                            f"🌡️ **Temperature:** {data['main']['temp']}°C\\n"
-                            f"🌡️ **Feels Like:** {data['main']['feels_like']}°C\\n"
-                            f"☁️ **Condition:** {data['weather'][0]['description'].title()}\\n"
-                            f"💧 **Humidity:** {data['main']['humidity']}%\\n"
-                            f"💨 **Wind:** {data['wind']['speed']} m/s\\n"
-                            f"👁️ **Visibility:** {data.get('visibility', 0) / 1000:.1f} km\\n"
-                            f"🔽 **Pressure:** {data['main']['pressure']} hPa\\n\\n"
+                            f"🌤️ **Weather in {data['name']}, {data['sys']['country']}**\n\n"
+                            f"🌡️ **Temperature:** {data['main']['temp']}°C\n"
+                            f"🌡️ **Feels Like:** {data['main']['feels_like']}°C\n"
+                            f"☁️ **Condition:** {data['weather'][0]['description'].title()}\n"
+                            f"💧 **Humidity:** {data['main']['humidity']}%\n"
+                            f"💨 **Wind:** {data['wind']['speed']} m/s\n"
+                            f"👁️ **Visibility:** {data.get('visibility', 0) / 1000:.1f} km\n"
+                            f"🔽 **Pressure:** {data['main']['pressure']} hPa\n\n"
                             f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
                         )
                     else:
                         return f"❌ City not found! Try: Mumbai, Delhi, Bangalore, Chennai, Kolkata"
     except Exception as e:
-        return f"⚠️ Weather service error: {str(e)[:100]}\\nTry again later!"
+        return f"⚠️ Weather service error: {str(e)[:100]}\nTry again later!"
 
 async def get_horoscope(sign: str) -> str:
     horoscopes = {
@@ -562,14 +562,14 @@ async def get_horoscope(sign: str) -> str:
     }
     emoji = HOROSCOPE_SIGNS.get(sign.lower(), "🌟")
     reading = horoscopes.get(sign.lower(), "Stars align for new beginnings! ✨")
-    return f"{emoji} **{sign.title()} Horoscope**\\n\\n{reading}\\n\\n🌟 *Have a wonderful day ahead!*"
+    return f"{emoji} **{sign.title()} Horoscope**\n\n{reading}\n\n🌟 *Have a wonderful day ahead!*"
 
 def generate_meme() -> str:
     template = random.choice(MEME_TEMPLATES)
     return f"{template['emoji']} {template['text']}"
 
 def get_daily_fact() -> str:
-    return f"🧠 **Did you know?**\\n\\n{random.choice(DAILY_FACTS)}"
+    return f"🧠 **Did you know?**\n\n{random.choice(DAILY_FACTS)}"
 
 
 # --- AI RESPONSE FUNCTION ---
@@ -599,7 +599,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     # Check for creator questions
     creator_keywords = ["kisne banaya", "who made", "who created", "creator", "kon banaya", "tumhe kisne"]
     if any(keyword in user_text_lower for keyword in creator_keywords):
-        return f"{get_emotion('love')} Mujhe mere bhagwan ne banaya hai Abhi ne ({OWNER_USERNAME}) 🙏✨\\n\\nWoh mere creator hain, bahut talented developer hain! Unki wajah se main yahan hoon tumse baat karne ke liye! 💖🎀"
+        return f"{get_emotion('love')} Mujhe mere bhagwan ne banaya hai Abhi ne ({OWNER_USERNAME}) 🙏✨\n\nWoh mere creator hain, bahut talented developer hain! Unki wajah se main yahan hoon tumse baat karne ke liye! 💖🎀"
     
     # Get time-based greeting
     indian_time = get_indian_time()
@@ -759,9 +759,9 @@ async def cmd_sendall(message: Message, command: CommandObject):
             failed_count += 1
     
     await status_msg.edit_text(
-        f"📢 **Broadcast Complete!**\\n\\n"
-        f"✅ Sent: {sent_count}\\n"
-        f"❌ Failed: {failed_count}\\n"
+        f"📢 **Broadcast Complete!**\n\n"
+        f"✅ Sent: {sent_count}\n"
+        f"❌ Failed: {failed_count}\n"
         f"📊 Total: {len(all_users)}"
     )
 
@@ -787,22 +787,22 @@ async def cmd_start(message: Message):
     ])
     
     welcome_text = (
-        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\\n\\n"
-        "✨ **Welcome to my magical world!** ✨\\n\\n"
-        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\\n"
-        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\\n\\n"
-        "🌟 **My Superpowers:**\\n"
-        "• Advanced AI Conversations 🧠\\n"
-        "• Voice & Photo Recognition 📸🎤\\n"
-        "• Weather & Horoscope Updates 🌤️♈\\n"
-        "• Reminders & Notes 📝\\n"
-        "• Meme Generator 😂\\n"
-        "• Auto-moderation enabled 👮\\n"
-        "• Daily Facts & Motivation 📚\\n\\n"
-        "📢 **Made with 💖 by:**\\n"
-        "• **Developer:** ABHI🔱 (@a6h1ii)\\n"
-        "• **Channel:** @abhi0w0\\n\\n"
-        "Type /help for all commands! 💕\\n"
+        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
+        "✨ **Welcome to my magical world!** ✨\n\n"
+        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
+        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        "🌟 **My Superpowers:**\n"
+        "• Advanced AI Conversations 🧠\n"
+        "• Voice & Photo Recognition 📸🎤\n"
+        "• Weather & Horoscope Updates 🌤️♈\n"
+        "• Reminders & Notes 📝\n"
+        "• Meme Generator 😂\n"
+        "• Auto-moderation enabled 👮\n"
+        "• Daily Facts & Motivation 📚\n\n"
+        "📢 **Made with 💖 by:**\n"
+        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
+        "• **Channel:** @abhi0w0\n\n"
+        "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
     )
     await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
@@ -810,69 +810,69 @@ async def cmd_start(message: Message):
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     help_text = (
-        f"{get_emotion('happy')} **Hello! I'm Alita 🎀** 👧\\n\\n"
-        "📜 **MAIN COMMANDS:**\\n"
-        "• /start - Welcome message 💖\\n"
-        "• /help - All commands 📚\\n"
-        "• /rules - Group rules ⚖️\\n"
-        "• /joke - Funny jokes 😂\\n"
-        "• /meme - Generate meme 😆\\n"
-        "• /fact - Daily facts 🧠\\n"
-        "• /horoscope [sign] - Horoscope ♈\\n"
-        "• /roast - Playful roast 🔥\\n"
-        "• /clear - Clear memory 🧹\\n\\n"
-        "🕒 **TIME & WEATHER:**\\n"
-        "• /time - Indian time 🕐\\n"
-        "• /date - Today's date 📅\\n"
-        "• /weather [city] - Weather info 🌤️\\n\\n"
-        "📝 **PERSONAL ORGANIZER:**\\n"
-        "• /note [text] - Add note 📝\\n"
-        "• /notes - View notes 📋\\n"
-        "• /remind [time] [text] - Set reminder ⏰\\n"
-        "• /reminders - View reminders 📅\\n"
-        "• /afk [reason] - Set AFK status 😴\\n\\n"
-        "🎨 **IMAGE & CREATIVE:**\\n"
-        "• /imagine [prompt] - AI Image Generation 🎨\\n"
-        "• /qr [text] - Generate QR Code 📱\\n\\n"
-        "🔧 **UTILITIES:**\\n"
-        "• /password [length] - Generate password 🔐\\n"
-        "• /short [url] - Shorten URL 🔗\\n"
-        "• /translate [lang] [text] - Translate 🌍\\n"
-        "• /calc [expression] - Calculator 🧮\\n"
-        "• /id - Get your ID 🆔\\n\\n"
-        "🛡️ **ADMIN/MODERATION:**\\n"
-        "• /warn [reason] - Warn user ⚠️\\n"
-        "• /kick - Remove user 🚪\\n"
-        "• /ban - Ban user 🚫\\n"
-        "• /mute - Mute user 🔇\\n"
-        "• /unmute - Unmute user 🔊\\n"
-        "• /unban - Remove ban ✅\\n"
-        "• /purge [number] - Delete messages 🗑️\\n"
-        "• /pin - Pin message 📌\\n"
-        "• /unpin - Unpin message 📍\\n"
-        "• /slowmode [seconds] - Enable slow mode ⏱️\\n"
-        "• /lock - Lock chat 🔒\\n"
-        "• /unlock - Unlock chat 🔓\\n"
-        "• /setwelcome [text] - Custom welcome message 👋\\n"
-        "• /setgoodbye [text] - Custom goodbye message 👋\\n"
-        "• /sendall [message] - Broadcast (Admin only) 📢\\n\\n"
-        "🔧 **SAFETY FEATURES:**\\n"
-        "• Auto-spam detection 🔍\\n"
-        "• Group link blocker 🚫\\n"
-        "• Bad word filter ⚔️\\n"
-        "• Adult content detection 🔞\\n"
-        "• Auto-warning system ⚠️\\n"
-        "• Auto-mute after 3 warns 🔇\\n"
-        "• Auto-ban for adult content 🚫\\n\\n"
-        "🎀 **GREETING SYSTEM:**\\n"
-        "• Auto morning greetings 🌅\\n"
-        "• Auto afternoon greetings ☀️\\n"
-        "• Auto evening greetings 🌇\\n"
-        "• Auto night greetings 🌙\\n"
-        "• Works in groups & private 💌\\n\\n"
-        "---\\n"
-        "**Developer:** ABHI🔱 (@a6h1ii)\\n"
-        "**Channel:** @abhi0w0 💫\\n"
+        f"{get_emotion('happy')} **Hello! I'm Alita 🎀** 👧\n\n"
+        "📜 **MAIN COMMANDS:**\n"
+        "• /start - Welcome message 💖\n"
+        "• /help - All commands 📚\n"
+        "• /rules - Group rules ⚖️\n"
+        "• /joke - Funny jokes 😂\n"
+        "• /meme - Generate meme 😆\n"
+        "• /fact - Daily facts 🧠\n"
+        "• /horoscope [sign] - Horoscope ♈\n"
+        "• /roast - Playful roast 🔥\n"
+        "• /clear - Clear memory 🧹\n\n"
+        "🕒 **TIME & WEATHER:**\n"
+        "• /time - Indian time 🕐\n"
+        "• /date - Today's date 📅\n"
+        "• /weather [city] - Weather info 🌤️\n\n"
+        "📝 **PERSONAL ORGANIZER:**\n"
+        "• /note [text] - Add note 📝\n"
+        "• /notes - View notes 📋\n"
+        "• /remind [time] [text] - Set reminder ⏰\n"
+        "• /reminders - View reminders 📅\n"
+        "• /afk [reason] - Set AFK status 😴\n\n"
+        "🎨 **IMAGE & CREATIVE:**\n"
+        "• /imagine [prompt] - AI Image Generation 🎨\n"
+        "• /qr [text] - Generate QR Code 📱\n\n"
+        "🔧 **UTILITIES:**\n"
+        "• /password [length] - Generate password 🔐\n"
+        "• /short [url] - Shorten URL 🔗\n"
+        "• /translate [lang] [text] - Translate 🌍\n"
+        "• /calc [expression] - Calculator 🧮\n"
+        "• /id - Get your ID 🆔\n\n"
+        "🛡️ **ADMIN/MODERATION:**\n"
+        "• /warn [reason] - Warn user ⚠️\n"
+        "• /kick - Remove user 🚪\n"
+        "• /ban - Ban user 🚫\n"
+        "• /mute - Mute user 🔇\n"
+        "• /unmute - Unmute user 🔊\n"
+        "• /unban - Remove ban ✅\n"
+        "• /purge [number] - Delete messages 🗑️\n"
+        "• /pin - Pin message 📌\n"
+        "• /unpin - Unpin message 📍\n"
+        "• /slowmode [seconds] - Enable slow mode ⏱️\n"
+        "• /lock - Lock chat 🔒\n"
+        "• /unlock - Unlock chat 🔓\n"
+        "• /setwelcome [text] - Custom welcome message 👋\n"
+        "• /setgoodbye [text] - Custom goodbye message 👋\n"
+        "• /sendall [message] - Broadcast (Admin only) 📢\n\n"
+        "🔧 **SAFETY FEATURES:**\n"
+        "• Auto-spam detection 🔍\n"
+        "• Group link blocker 🚫\n"
+        "• Bad word filter ⚔️\n"
+        "• Adult content detection 🔞\n"
+        "• Auto-warning system ⚠️\n"
+        "• Auto-mute after 3 warns 🔇\n"
+        "• Auto-ban for adult content 🚫\n\n"
+        "🎀 **GREETING SYSTEM:**\n"
+        "• Auto morning greetings 🌅\n"
+        "• Auto afternoon greetings ☀️\n"
+        "• Auto evening greetings 🌇\n"
+        "• Auto night greetings 🌙\n"
+        "• Works in groups & private 💌\n\n"
+        "---\n"
+        "**Developer:** ABHI🔱 (@a6h1ii)\n"
+        "**Channel:** @abhi0w0 💫\n"
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown")
@@ -880,26 +880,26 @@ async def cmd_help(message: Message):
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
     rules_text = (
-        f"{get_emotion('protective')} **📜 GROUP RULES & SAFETY 🛡️**\\n\\n"
-        "✅ **DOs:**\\n"
-        "1. Be respectful to everyone 🤝\\n"
-        "2. Keep chat friendly and positive 🌟\\n"
-        "3. Help each other grow 📚\\n"
-        "4. Follow admin instructions 👮\\n"
-        "5. Have fun and enjoy! 🎉\\n\\n"
-        "🚫 **DON'Ts:**\\n"
-        "1. No spam or flooding ⚠️\\n"
-        "2. No group links sharing 🔗\\n"
-        "3. No bad language 🚫\\n"
-        "4. No personal fights ⚔️\\n"
-        "5. No adult/NSFW content 🚷\\n"
-        "6. No self-promotion without permission 📢\\n\\n"
-        "⚡ **AUTO-MODERATION:**\\n"
-        "• Spam → Warning → Mute 🔇\\n"
-        "• Group links → Auto-delete 🗑️\\n"
-        "• Bad words → Warning + Response ⚔️\\n"
-        "• 3 warnings → Auto-mute ⏰\\n"
-        "• Adult content → Auto-ban 🚫\\n\\n"
+        f"{get_emotion('protective')} **📜 GROUP RULES & SAFETY 🛡️**\n\n"
+        "✅ **DOs:**\n"
+        "1. Be respectful to everyone 🤝\n"
+        "2. Keep chat friendly and positive 🌟\n"
+        "3. Help each other grow 📚\n"
+        "4. Follow admin instructions 👮\n"
+        "5. Have fun and enjoy! 🎉\n\n"
+        "🚫 **DON'Ts:**\n"
+        "1. No spam or flooding ⚠️\n"
+        "2. No group links sharing 🔗\n"
+        "3. No bad language 🚫\n"
+        "4. No personal fights ⚔️\n"
+        "5. No adult/NSFW content 🚷\n"
+        "6. No self-promotion without permission 📢\n\n"
+        "⚡ **AUTO-MODERATION:**\n"
+        "• Spam → Warning → Mute 🔇\n"
+        "• Group links → Auto-delete 🗑️\n"
+        "• Bad words → Warning + Response ⚔️\n"
+        "• 3 warnings → Auto-mute ⏰\n"
+        "• Adult content → Auto-ban 🚫\n\n"
         f"{get_emotion('love')} *I'm here to keep everyone safe!* 💖"
     )
     await message.reply(rules_text, parse_mode="Markdown")
@@ -911,7 +911,7 @@ async def cmd_joke(message: Message):
 @dp.message(Command("meme"))
 async def cmd_meme(message: Message):
     meme_text = generate_meme()
-    await message.reply(f"{get_emotion('funny')} **Random Meme:**\\n\\n{meme_text}")
+    await message.reply(f"{get_emotion('funny')} **Random Meme:**\n\n{meme_text}")
 
 @dp.message(Command("fact"))
 async def cmd_fact(message: Message):
@@ -925,7 +925,7 @@ async def cmd_horoscope(message: Message, command: CommandObject):
             for sign, emoji in HOROSCOPE_SIGNS.items()
         ])
         await message.reply(
-            f"{get_emotion('surprise')} **Choose your zodiac sign:** ♈\\n\\n"
+            f"{get_emotion('surprise')} **Choose your zodiac sign:** ♈\n\n"
             f"Click below or use `/horoscope [sign]`",
             reply_markup=keyboard,
             parse_mode="Markdown"
@@ -941,11 +941,11 @@ async def cmd_roast(message: Message):
     if message.reply_to_message:
         target = message.reply_to_message.from_user.first_name
         roast = random.choice(ROAST_RESPONSES)
-        await message.reply(f"{get_emotion('sassy')} **Roasting {target}!** 🔥\\n\\n{roast}")
+        await message.reply(f"{get_emotion('sassy')} **Roasting {target}!** 🔥\n\n{roast}")
     else:
         await message.reply(
-            f"{get_emotion('sassy')} **Self-roast mode!** 😂\\n\\n"
-            f"Reply to someone's message to roast them!\\n"
+            f"{get_emotion('sassy')} **Self-roast mode!** 😂\n\n"
+            f"Reply to someone's message to roast them!\n"
             f"Or I'll roast you: {random.choice(ROAST_RESPONSES)}"
         )
 
@@ -966,11 +966,11 @@ async def cmd_time(message: Message):
         greeting = "Good Night! 🌙"
     
     time_info = (
-        f"🕒 **Indian Standard Time (IST)**\\n"
-        f"• Time: {time_str}\\n"
-        f"• Date: {date_str}\\n"
-        f"• {greeting}\\n"
-        f"• Timezone: Asia/Kolkata 🇮🇳\\n\\n"
+        f"🕒 **Indian Standard Time (IST)**\n"
+        f"• Time: {time_str}\n"
+        f"• Date: {date_str}\n"
+        f"• {greeting}\n"
+        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
         f"*Time is precious! Make the most of it!* ⏳"
     )
     await message.reply(time_info, parse_mode="Markdown")
@@ -982,10 +982,10 @@ async def cmd_date(message: Message):
     day = indian_time.strftime("%A")
     
     await message.reply(
-        f"📅 **Today's Date**\\n\\n"
-        f"• Date: {date_str}\\n"
-        f"• Day: {day}\\n"
-        f"• Calendar: Gregorian\\n"
+        f"📅 **Today's Date**\n\n"
+        f"• Date: {date_str}\n"
+        f"• Day: {day}\n"
+        f"• Calendar: Gregorian\n"
         f"• Timezone: IST (UTC+5:30) 🇮🇳"
     )
 
@@ -1000,7 +1000,7 @@ async def cmd_weather(message: Message, command: CommandObject):
 async def cmd_note(message: Message, command: CommandObject):
     if not command.args:
         await message.reply(
-            f"{get_emotion('thinking')} **Usage:** `/note [your note text]`\\n\\n"
+            f"{get_emotion('thinking')} **Usage:** `/note [your note text]`\n\n"
             f"Example: `/note Buy groceries tomorrow`"
         )
         return
@@ -1015,9 +1015,9 @@ async def cmd_note(message: Message, command: CommandObject):
     user_notes[message.from_user.id].append(note_data)
     
     await message.reply(
-        f"{get_emotion('happy')} **Note Saved!** 📝\\n\\n"
-        f"• Note: {note_text}\\n"
-        f"• Total notes: {len(user_notes[message.from_user.id])}\\n\\n"
+        f"{get_emotion('happy')} **Note Saved!** 📝\n\n"
+        f"• Note: {note_text}\n"
+        f"• Total notes: {len(user_notes[message.from_user.id])}\n\n"
         f"View all notes with /notes"
     )
 
@@ -1028,26 +1028,26 @@ async def cmd_notes(message: Message):
     
     if not notes:
         await message.reply(
-            f"{get_emotion('crying')} **No notes found!** 😢\\n\\n"
+            f"{get_emotion('crying')} **No notes found!** 😢\n\n"
             f"Add your first note with /note [text]"
         )
         return
     
-    notes_text = f"{get_emotion('thinking')} **Your Notes:** 📋\\n\\n"
+    notes_text = f"{get_emotion('thinking')} **Your Notes:** 📋\n\n"
     for i, note in enumerate(notes[-10:], 1):
-        notes_text += f"{i}. {note['text']}\\n"
+        notes_text += f"{i}. {note['text']}\n"
     
-    notes_text += f"\\n*Total: {len(notes)} notes*"
+    notes_text += f"\n*Total: {len(notes)} notes*"
     await message.reply(notes_text, parse_mode="Markdown")
 
 @dp.message(Command("remind"))
 async def cmd_remind(message: Message, command: CommandObject):
     if not command.args:
         await message.reply(
-            f"{get_emotion('thinking')} **Usage:** `/remind [time] [reminder text]`\\n\\n"
-            f"Examples:\\n"
-            f"`/remind 1h Call mom`\\n"
-            f"`/remind 30m Take medicine`\\n"
+            f"{get_emotion('thinking')} **Usage:** `/remind [time] [reminder text]`\n\n"
+            f"Examples:\n"
+            f"`/remind 1h Call mom`\n"
+            f"`/remind 30m Take medicine`\n"
             f"`/remind 2h Study for exam`"
         )
         return
@@ -1085,10 +1085,10 @@ async def cmd_remind(message: Message, command: CommandObject):
         user_reminders[message.from_user.id].append(reminder_data)
         
         await message.reply(
-            f"{get_emotion('happy')} **Reminder Set!** ⏰\\n\\n"
-            f"• Reminder: {reminder_text}\\n"
-            f"• Time: {reminder_time.strftime('%I:%M %p')}\\n"
-            f"• In: {time_str}\\n\\n"
+            f"{get_emotion('happy')} **Reminder Set!** ⏰\n\n"
+            f"• Reminder: {reminder_text}\n"
+            f"• Time: {reminder_time.strftime('%I:%M %p')}\n"
+            f"• In: {time_str}\n\n"
             f"I'll remind you! 💫"
         )
         
@@ -1108,7 +1108,7 @@ async def send_reminder(user_id: int, reminder_text: str, chat_id: int):
     try:
         await bot.send_message(
             chat_id,
-            f"{get_emotion('surprise')} **Reminder!** ⏰\\n\\n{reminder_text}\\n\\n*Don't forget!* 💫",
+            f"{get_emotion('surprise')} **Reminder!** ⏰\n\n{reminder_text}\n\n*Don't forget!* 💫",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -1121,18 +1121,18 @@ async def cmd_reminders(message: Message):
     
     if not reminders:
         await message.reply(
-            f"{get_emotion('crying')} **No reminders set!** 😢\\n\\n"
+            f"{get_emotion('crying')} **No reminders set!** 😢\n\n"
             f"Set your first reminder with /remind [time] [text]"
         )
         return
     
-    reminders_text = f"{get_emotion('thinking')} **Your Reminders:** 📅\\n\\n"
+    reminders_text = f"{get_emotion('thinking')} **Your Reminders:** 📅\n\n"
     for i, reminder in enumerate(reminders[-5:], 1):
         time_left = reminder['time'] - datetime.now()
         if time_left.total_seconds() > 0:
             hours = int(time_left.total_seconds() // 3600)
             minutes = int((time_left.total_seconds() % 3600) // 60)
-            reminders_text += f"{i}. {reminder['text']} (in {hours}h {minutes}m)\\n"
+            reminders_text += f"{i}. {reminder['text']} (in {hours}h {minutes}m)\n"
     
     await message.reply(reminders_text, parse_mode="Markdown")
 
@@ -1148,9 +1148,9 @@ async def cmd_afk(message: Message, command: CommandObject):
     }
     
     await message.reply(
-        f"{get_emotion('sleepy')} **AFK Mode Enabled** 😴\\n\\n"
-        f"• Reason: {reason}\\n"
-        f"• Time: {datetime.now().strftime('%I:%M %p')}\\n\\n"
+        f"{get_emotion('sleepy')} **AFK Mode Enabled** 😴\n\n"
+        f"• Reason: {reason}\n"
+        f"• Time: {datetime.now().strftime('%I:%M %p')}\n\n"
         f"I'll notify others when they mention you! 💤"
     )
 
@@ -1163,17 +1163,17 @@ async def cmd_id(message: Message):
     if message.reply_to_message:
         target = message.reply_to_message.from_user
         await message.reply(
-            f"🆔 **User ID Info**\\n\\n"
-            f"• Name: {target.first_name}\\n"
-            f"• User ID: `{target.id}`\\n"
-            f"• Username: @{target.username if target.username else 'N/A'}\\n"
+            f"🆔 **User ID Info**\n\n"
+            f"• Name: {target.first_name}\n"
+            f"• User ID: `{target.id}`\n"
+            f"• Username: @{target.username if target.username else 'N/A'}\n"
             f"• Is Bot: {'Yes' if target.is_bot else 'No'}"
         )
     else:
         await message.reply(
-            f"🆔 **Your ID Info**\\n\\n"
-            f"• Your ID: `{user_id}`\\n"
-            f"• Chat ID: `{chat_id}`\\n"
+            f"🆔 **Your ID Info**\n\n"
+            f"• Your ID: `{user_id}`\n"
+            f"• Chat ID: `{chat_id}`\n"
             f"• Chat Type: {message.chat.type}"
         )
 
@@ -1189,9 +1189,9 @@ async def cmd_password(message: Message, command: CommandObject):
         password = ''.join(random.choice(chars) for _ in range(length))
         
         await message.reply(
-            f"🔐 **Generated Password**\\n\\n"
-            f"`{password}`\\n\\n"
-            f"• Length: {length} characters\\n"
+            f"🔐 **Generated Password**\n\n"
+            f"`{password}`\n\n"
+            f"• Length: {length} characters\n"
             f"• Save it securely! 🛡️",
             parse_mode="Markdown"
         )
@@ -1213,8 +1213,8 @@ async def cmd_calc(message: Message, command: CommandObject):
         
         result = eval(expression)
         await message.reply(
-            f"🧮 **Calculation**\\n\\n"
-            f"• Expression: `{expression}`\\n"
+            f"🧮 **Calculation**\n\n"
+            f"• Expression: `{expression}`\n"
             f"• Result: **{result}** ✅"
         )
     except Exception as e:
@@ -1239,7 +1239,7 @@ async def cmd_qr(message: Message, command: CommandObject):
         
         await message.reply_photo(
             bio,
-            caption=f"📱 **QR Code Generated**\\n\\nContent: `{text[:50]}{'...' if len(text) > 50 else ''}`"
+            caption=f"📱 **QR Code Generated**\n\nContent: `{text[:50]}{'...' if len(text) > 50 else ''}`"
         )
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
@@ -1251,7 +1251,7 @@ async def cmd_short(message: Message, command: CommandObject):
         return
     
     url = command.args.strip()
-    await message.reply(f"🔗 **URL:** {url}\\n\\n(Note: Install pyshorteners for full functionality)")
+    await message.reply(f"🔗 **URL:** {url}\n\n(Note: Install pyshorteners for full functionality)")
 
 @dp.message(Command("translate"))
 async def cmd_translate(message: Message, command: CommandObject):
@@ -1275,8 +1275,8 @@ async def cmd_translate(message: Message, command: CommandObject):
                 if data['responseStatus'] == 200:
                     translated = data['responseData']['translatedText']
                     await message.reply(
-                        f"🌍 **Translation**\\n\\n"
-                        f"• From: {text}\\n"
+                        f"🌍 **Translation**\n\n"
+                        f"• From: {text}\n"
                         f"• To ({lang_code}): **{translated}**"
                     )
                 else:
@@ -1343,7 +1343,7 @@ async def cmd_ban(message: Message, command: CommandObject):
     try:
         await bot.ban_chat_member(message.chat.id, target.id)
         await message.reply(
-            f"🚫 **{target.first_name}** has been banned!\\n"
+            f"🚫 **{target.first_name}** has been banned!\n"
             f"📋 Reason: {reason}"
         )
     except Exception as e:
@@ -1610,53 +1610,53 @@ async def menu_callback(callback: types.CallbackQuery):
     
     if menu_type == "utilities":
         await callback.message.edit_text(
-            f"{get_emotion('happy')} **📱 Utilities Menu**\\n\\n"
-            f"Available utilities:\\n"
-            f"• /time - Current time\\n"
-            f"• /date - Today's date\\n"
-            f"• /weather [city] - Weather info\\n"
-            f"• /note [text] - Add note\\n"
-            f"• /notes - View notes\\n"
-            f"• /remind [time] [text] - Set reminder\\n"
-            f"• /reminders - View reminders\\n"
-            f"• /password [length] - Generate password\\n"
-            f"• /calc [expression] - Calculator\\n"
-            f"• /qr [text] - Generate QR code\\n\\n"
+            f"{get_emotion('happy')} **📱 Utilities Menu**\n\n"
+            f"Available utilities:\n"
+            f"• /time - Current time\n"
+            f"• /date - Today's date\n"
+            f"• /weather [city] - Weather info\n"
+            f"• /note [text] - Add note\n"
+            f"• /notes - View notes\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n"
+            f"• /password [length] - Generate password\n"
+            f"• /calc [expression] - Calculator\n"
+            f"• /qr [text] - Generate QR code\n\n"
             f"More utilities coming soon! ✨"
         )
     elif menu_type == "fun":
         await callback.message.edit_text(
-            f"{get_emotion('funny')} **🎭 Fun Menu**\\n\\n"
-            f"Fun commands:\\n"
-            f"• /joke - Random joke\\n"
-            f"• /meme - Generate meme\\n"
-            f"• /fact - Daily fact\\n"
-            f"• /horoscope [sign] - Horoscope\\n"
-            f"• /roast - Playful roast\\n\\n"
+            f"{get_emotion('funny')} **🎭 Fun Menu**\n\n"
+            f"Fun commands:\n"
+            f"• /joke - Random joke\n"
+            f"• /meme - Generate meme\n"
+            f"• /fact - Daily fact\n"
+            f"• /horoscope [sign] - Horoscope\n"
+            f"• /roast - Playful roast\n\n"
             f"Let the fun begin! 🎉"
         )
     elif menu_type == "safety":
         await callback.message.edit_text(
-            f"{get_emotion('protective')} **🛡️ Safety Features**\\n\\n"
-            f"Auto-moderation:\\n"
-            f"• Spam detection 🔍\\n"
-            f"• Group link blocking 🚫\\n"
-            f"• Bad word filtering ⚔️\\n"
-            f"• Adult content detection 🔞\\n"
-            f"• Auto-warnings ⚠️\\n"
-            f"• Auto-mute system 🔇\\n"
-            f"• Auto-ban for adult content 🚫\\n\\n"
+            f"{get_emotion('protective')} **🛡️ Safety Features**\n\n"
+            f"Auto-moderation:\n"
+            f"• Spam detection 🔍\n"
+            f"• Group link blocking 🚫\n"
+            f"• Bad word filtering ⚔️\n"
+            f"• Adult content detection 🔞\n"
+            f"• Auto-warnings ⚠️\n"
+            f"• Auto-mute system 🔇\n"
+            f"• Auto-ban for adult content 🚫\n\n"
             f"I'm here to protect! 💪"
         )
     elif menu_type == "settings":
         await callback.message.edit_text(
-            f"{get_emotion('thinking')} **⚙️ Settings**\\n\\n"
-            f"Available settings:\\n"
-            f"• /setwelcome [text] - Set welcome message\\n"
-            f"• /setgoodbye [text] - Set goodbye message\\n"
-            f"• /slowmode [seconds] - Set slow mode\\n"
-            f"• /lock - Lock chat\\n"
-            f"• /unlock - Unlock chat\\n\\n"
+            f"{get_emotion('thinking')} **⚙️ Settings**\n\n"
+            f"Available settings:\n"
+            f"• /setwelcome [text] - Set welcome message\n"
+            f"• /setgoodbye [text] - Set goodbye message\n"
+            f"• /slowmode [seconds] - Set slow mode\n"
+            f"• /lock - Lock chat\n"
+            f"• /unlock - Unlock chat\n\n"
             f"Stay tuned! 🌟"
         )
     
@@ -1683,11 +1683,11 @@ async def on_chat_member_update(event: ChatMemberUpdated):
             welcome_text = welcome_messages.get(chat_id)
             if not welcome_text:
                 welcome_text = (
-                    f"🎀 **Welcome to the group, {user.first_name}!** 🎀\\n\\n"
-                    f"Hey {user.first_name}! 🤗💖\\n\\n"
-                    f"Main hoon **Alita** - is group ki AI dost!\\n\\n"
-                    f"💬 **Chat:** Sirf message karo, main jawab dungi!\\n"
-                    f"📸 **Photo:** Photo bhejo, main analyze karungi!\\n\\n"
+                    f"🎀 **Welcome to the group, {user.first_name}!** 🎀\n\n"
+                    f"Hey {user.first_name}! 🤗💖\n\n"
+                    f"Main hoon **Alita** - is group ki AI dost!\n\n"
+                    f"💬 **Chat:** Sirf message karo, main jawab dungi!\n"
+                    f"📸 **Photo:** Photo bhejo, main analyze karungi!\n\n"
                     f"Enjoy karo aur masti karo! 🎀✨"
                 )
             else:
@@ -1772,8 +1772,8 @@ async def handle_all_messages(message: Message):
                         if member.user.username and f"@{member.user.username}" == mentioned_username:
                             time_ago = datetime.now() - afk_data['time']
                             await message.reply(
-                                f"😴 **{member.user.first_name} is AFK!**\\n\\n"
-                                f"💤 Reason: {afk_data['reason']}\\n"
+                                f"😴 **{member.user.first_name} is AFK!**\n\n"
+                                f"💤 Reason: {afk_data['reason']}\n"
                                 f"⏰ Since: {time_ago.seconds // 60} minutes ago"
                             )
                             break
@@ -1854,9 +1854,9 @@ async def handle_photo_message(message: Message):
     """Handle photo messages"""
     try:
         await message.reply(
-            f"{get_emotion('happy')} **Beautiful photo!** 📸\\n\\n"
-            f"You look amazing! ✨\\n"
-            f"Keep sharing moments with me! 💖\\n\\n"
+            f"{get_emotion('happy')} **Beautiful photo!** 📸\n\n"
+            f"You look amazing! ✨\n"
+            f"Keep sharing moments with me! 💖\n\n"
             f"*Photo analysis coming soon!* 🌟",
             parse_mode="Markdown"
         )
@@ -1867,9 +1867,9 @@ async def handle_voice_message(message: Message):
     """Handle voice messages"""
     try:
         await message.reply(
-            f"{get_emotion('surprise')} **Voice Message Received!** 🎤\\n\\n"
-            f"Sorry, voice recognition is still learning! 🧠\\n"
-            f"But I love hearing your voice! 💖\\n\\n"
+            f"{get_emotion('surprise')} **Voice Message Received!** 🎤\n\n"
+            f"Sorry, voice recognition is still learning! 🧠\n"
+            f"But I love hearing your voice! 💖\n\n"
             f"Try texting me instead! 💬",
             parse_mode="Markdown"
         )
@@ -1896,29 +1896,29 @@ async def send_time_based_greetings():
     
     greetings = {
         "morning": [
-            "🌅 **Good Morning everyone!** ☀️\\nUtho aur muskurao! Have a wonderful day! 😊",
-            "🌸 **Shubh Prabhat!** 🌸\\nAaj ka din aapke liye khoobsurat ho! ✨",
-            "☕ **Morning Coffee Time!** 🍵\\nChai piyo, fresh ho jao! 💫"
+            "🌅 **Good Morning everyone!** ☀️\nUtho aur muskurao! Have a wonderful day! 😊",
+            "🌸 **Shubh Prabhat!** 🌸\nAaj ka din aapke liye khoobsurat ho! ✨",
+            "☕ **Morning Coffee Time!** 🍵\nChai piyo, fresh ho jao! 💫"
         ],
         "afternoon": [
-            "☀️ **Good Afternoon!** 🌤️\\nLunch ho gaya? Energy maintain rakho! 🍲",
-            "🌞 **Dopahar ki Dhoop mein!** 🌞\\nThoda aaraam karo! 😌",
-            "🍛 **Afternoon Siesta Time!** 💤\\nKhaana kha ke neend aa rahi hai? Hehe! 😴"
+            "☀️ **Good Afternoon!** 🌤️\nLunch ho gaya? Energy maintain rakho! 🍲",
+            "🌞 **Dopahar ki Dhoop mein!** 🌞\nThoda aaraam karo! 😌",
+            "🍛 **Afternoon Siesta Time!** 💤\nKhaana kha ke neend aa rahi hai? Hehe! 😴"
         ],
         "evening": [
-            "🌇 **Good Evening Beautiful!** 🌆\\nShaam ho gayi, thoda relax karo! 🌹",
-            "🌆 **Evening Tea Time!** 🍵\\nChai aur baatein - perfect combination! 💖",
-            "✨ **Shubh Sandhya!** ✨\\nDin bhar ki thakaan door karo! 🎶"
+            "🌇 **Good Evening Beautiful!** 🌆\nShaam ho gayi, thoda relax karo! 🌹",
+            "🌆 **Evening Tea Time!** 🍵\nChai aur baatein - perfect combination! 💖",
+            "✨ **Shubh Sandhya!** ✨\nDin bhar ki thakaan door karo! 🎶"
         ],
         "night": [
-            "🌙 **Good Night Sweet Dreams!** 🌟\\nAankhein band karo aur accha sapna dekho! 💤",
-            "🌌 **Shubh Ratri!** 🌌\\nThaka hua dimaag ko aaraam do! 😴",
-            "💤 **Sleep Time!** 💤\\nKal phir nayi energy ke saath uthna! 🌅"
+            "🌙 **Good Night Sweet Dreams!** 🌟\nAankhein band karo aur accha sapna dekho! 💤",
+            "🌌 **Shubh Ratri!** 🌌\nThaka hua dimaag ko aaraam do! 😴",
+            "💤 **Sleep Time!** 💤\nKal phir nayi energy ke saath uthna! 🌅"
         ],
         "late_night": [
-            "🌃 **Late Night Owls!** 🦉\\nSone ka time hai, par chat karna hai? 😄",
-            "🌚 **Midnight Chats!** 🌚\\nRaat ke 12 baje bhi jag rahe ho? 😲",
-            "💫 **Late Night Vibes!** 💫\\nSab so rahe hain, hum chat kar rahe hain! 🤫"
+            "🌃 **Late Night Owls!** 🦉\nSone ka time hai, par chat karna hai? 😄",
+            "🌚 **Midnight Chats!** 🌚\nRaat ke 12 baje bhi jag rahe ho? 😲",
+            "💫 **Late Night Vibes!** 💫\nSab so rahe hain, hum chat kar rahe hain! 🤫"
         ]
     }
     
@@ -1995,7 +1995,7 @@ async def main():
     print(f"• G4F Fallback: {'✅ Available' if G4F_AVAILABLE else '❌ Not Available'}")
     
     # Start bot polling
-    print("\\n🔄 Starting bot polling...")
+    print("\n🔄 Starting bot polling...")
     print("=" * 60)
     await dp.start_polling(bot)
 
