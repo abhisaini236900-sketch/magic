@@ -29,6 +29,19 @@ import qrcode
 from io import BytesIO
 import string
 
+# --- G4F FALLBACK PROVIDERS (Optional) ---
+G4F_AVAILABLE = False
+g4f_client = None
+
+# Try to import g4f, but don't fail if it's not available
+try:
+    from g4f.client import Client as G4FClient
+    from g4f.Provider import Blackbox
+    G4F_AVAILABLE = True
+    g4f_client = G4FClient()
+except ImportError:
+    pass  # g4f not installed, will use Groq only
+
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -646,34 +659,33 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             return ai_reply
     except Exception as e:
         print(f"Groq error: {e}")
-    
-    # G4F Fallback
-    try:
-        from g4f.client import Client
-        from g4f.Provider import Blackbox
-        
-        g4f_client = Client()
-        response = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: g4f_client.chat.completions.create(
-                model="gpt-4o",
-                messages=messages,
-                provider=Blackbox
+
+# G4F Fallback (only if available)
+    if G4F_AVAILABLE and g4f_client:
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: g4f_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    provider=Blackbox
+                )
             )
-        )
-        
-        if response and response.choices:
-            ai_reply = response.choices[0].message.content
-            current_emotion = get_emotion(None, user_id)
-            ai_reply = f"{current_emotion} {ai_reply}"
             
-            if len(ai_reply) > 400:
-                ai_reply = ai_reply[:397] + "..."
-            
-            chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-            return ai_reply
-    except Exception as e:
-        print(f"G4F error: {e}")
+            if response and response.choices:
+                ai_reply = response.choices[0].message.content
+                current_emotion = get_emotion(None, user_id)
+                ai_reply = f"{current_emotion} {ai_reply}"
+                
+                if len(ai_reply) > 400:
+                    ai_reply = ai_reply[:397] + "..."
+                
+                chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
+                return ai_reply
+        except Exception as e:
+            print(f"G4F error: {e}")
+    
+
     
     # Final fallback
     fallback_responses = [
