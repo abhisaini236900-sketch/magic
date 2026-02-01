@@ -46,17 +46,19 @@ dp = Dispatcher(storage=storage)
 # Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- MEMORY SYSTEMS ---
+# --- MEMORY SYSTEMS (ALL VARIABLES DEFINED HERE) ---
 chat_memory: Dict[int, deque] = {}
 user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict))
 user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
 last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))
 
-# User data storage
+# User data storage (ALL DEFINED)
 user_data: Dict[int, Dict] = defaultdict(dict)
 user_notes: Dict[int, List[Dict]] = defaultdict(list)
 user_reminders: Dict[int, List[Dict]] = defaultdict(list)
 user_reputation: Dict[int, int] = defaultdict(int)
+user_emotions: Dict[int, str] = {}
+user_last_interaction: Dict[int, datetime] = {}  # THIS WAS MISSING!
 started_users: Set[int] = set()
 
 # AFK System
@@ -267,11 +269,11 @@ TIME_GREETINGS = {
 # --- QUICK RESPONSES ---
 QUICK_RESPONSES = {
     "greeting": [
-        "Hye! {name} 😊",
-        "Hello {name}💖",
-        "Hiiiiiiiiiiiii",
+        "Hii! Kaise ho? 😊",
+        "Hello cutie! 💖",
+        "Namaste! 🙏 Kya haal hain?",
         "Hey there! 🌟",
-        "Hyeeeeeeeeeee! {name}"
+        "Hola! Kya chal raha hai? 💫"
     ],
     "goodbye": [
         "Bye! Take care! 💕",
@@ -354,7 +356,7 @@ def update_user_emotion(user_id: int, message: str):
     
     user_last_interaction[user_id] = datetime.now()
 
-# --- REAL WEATHER ---
+# --- REAL WEATHER API (Open-Meteo - 100% FREE) ---
 INDIAN_CITIES = {
     "mumbai": {"lat": 19.0760, "lon": 72.8777},
     "delhi": {"lat": 28.6139, "lon": 77.2090},
@@ -455,7 +457,7 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌤️ **Weather Report for {city_display}**\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━\n"
                         f"🌡️ **Temperature:** {temp}°C\n"
-                        f"😪 **Feels Like:** {feels_like}°C\n"
+                        f"🥵 **Feels Like:** {feels_like}°C\n"
                         f"☁️ **Condition:** {weather_desc}\n"
                         f"💧 **Humidity:** {humidity}%\n"
                         f"💨 **Wind Speed:** {wind_speed} km/h\n"
@@ -465,13 +467,14 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌅 **Sunrise:** {sunrise_time}\n"
                         f"🌇 **Sunset:** {sunset_time}\n\n"
                         f"⏰ **Updated:** Just now\n"
+                        f"📍 **Source:** Open-Meteo (Real-time Data)"
                     )
                 else:
                     return "❌ Weather service temporarily unavailable. Please try again later."
     except Exception as e:
         return f"❌ Error fetching weather: {str(e)}\nPlease try again later."
 
-# --- IMAGE GENERATION ---
+# --- IMAGE GENERATION (Pollinations AI - 100% FREE) ---
 async def generate_image(prompt: str) -> Optional[bytes]:
     """Generate image using Pollinations AI (100% Free)"""
     try:
@@ -512,7 +515,7 @@ def generate_password(length: int = 12, include_symbols: bool = True) -> str:
     password = ''.join(random.choice(chars) for _ in range(length))
     return password
 
-# --- URL SHORTENER ---
+# --- URL SHORTENER (TinyURL API) ---
 async def shorten_url(url: str) -> str:
     """Shorten URL using TinyURL"""
     try:
@@ -728,7 +731,7 @@ async def cmd_start(message: Message):
         "✨ **Welcome to my magical world!** ✨\n\n"
         
         "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
-        "🎯 *Also group management girl! Make sure you give me all admin permissions* 🛡️\n\n"
+        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
         
         "🌟 **My Superpowers:**\n"
         "• Advanced AI Conversations 🧠\n"
@@ -741,7 +744,9 @@ async def cmd_start(message: Message):
         "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
         
-        "•📢 **MY HOME:** @abhi0w0\n\n"
+        "📢 **Made with 💖 by:**\n"
+        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
+        "• **Channel:** @abhi0w0\n\n"
         
         "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
@@ -835,7 +840,15 @@ async def cmd_help(message: Message):
         "• Auto-mute after 3 warns 🔇\n"
         "• CAPTCHA for new members 🧩\n\n"
         
+        "🎀 **GREETING SYSTEM:**\n"
+        "• Auto morning greetings 🌅\n"
+        "• Auto afternoon greetings ☀️\n"
+        "• Auto evening greetings 🌇\n"
+        "• Auto night greetings 🌙\n"
+        "• Works in groups & private 💌\n\n"
+        
         "---\n"
+        "**Developer:** ABHI🔱 (@a6h1ii)\n"
         "**MY HOME:** @abhi0w0 💫\n"
         "---"
     )
@@ -1663,19 +1676,19 @@ async def cmd_sendall(message: Message):
     for user_id in started_users:
         try:
             if target_msg.text:
-                await bot.send_message(user_id, f"Hye😊\n\n{target_msg.text}")
+                await bot.send_message(user_id, f"📢 **Message from Admin:**\n\n{target_msg.text}")
             elif target_msg.photo:
-                await bot.send_photo(user_id, target_msg.photo[-1].file_id)
+                await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.video:
-                await bot.send_video(user_id, target_msg.video.file_id)
+                await bot.send_video(user_id, target_msg.video.file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.sticker:
                 await bot.send_sticker(user_id, target_msg.sticker.file_id)
             elif target_msg.document:
-                await bot.send_document(user_id, target_msg.document.file_id)
+                await bot.send_document(user_id, target_msg.document.file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.voice:
-                await bot.send_voice(user_id, target_msg.voice.file_id)
+                await bot.send_voice(user_id, target_msg.voice.file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.animation:
-                await bot.send_animation(user_id, target_msg.animation.file_id)
+                await bot.send_animation(user_id, target_msg.animation.file_id, caption=target_msg.caption or "📢 Message from Admin")
             else:
                 await bot.copy_message(user_id, message.chat.id, target_msg.message_id)
             
@@ -1978,7 +1991,7 @@ async def captcha_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
-# --- COMPLETE MESSAGE HANDLER ---
+# --- MESSAGE HANDLER WITH AUTO-MODERATION (COMPLETELY FIXED) ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     # Basic checks
@@ -1995,10 +2008,10 @@ async def handle_all_messages(message: Message, state: FSMContext):
     if user_id == bot.id:
         return
     
-    # Update interaction time
+    # Update interaction time and memory
     user_last_interaction[user_id] = datetime.now()
     
-    # Initialize memory
+    # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
     
@@ -2036,7 +2049,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
         if await check_spam(message):
             return
     
-    # ====== MAIN CONVERSATION LOGIC ======
+    # ====== MAIN CONVERSATION LOGIC (FIXED) ======
     try:
         # Get bot info
         bot_info = await bot.get_me()
@@ -2123,8 +2136,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
         except:
             pass
 
-
-# --- SIMPLIFIED AI RESPONSE (100% WORKING) ---
+# --- AI RESPONSE FUNCTION (COMPLETELY FIXED) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Update emotion
     if user_id:
@@ -2214,14 +2226,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"{get_emotion('happy')} It's okay jaan! 💖"
         ])
     
-    # Questions starting with kya/what/how
-    if any(word in user_text_lower for word in ['kya', 'what', 'how', 'kaise', 'kyun', 'why']):
-        # Use AI for questions
-        pass  # Continue to AI section
-    else:
-        # For statements, use AI sometimes
-        pass  # Continue to AI section
-    
     # ===== AI RESPONSE (For complex messages) =====
     try:
         if not client:
@@ -2232,11 +2236,15 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         
         system_prompt = (
             f"You are Alita 🎀 - a sweet, sassy Indian girl. "
-            f"Developer: ABHI🔱 (@a6h1ii). "
+            f"Use feminine language and cute expressions. "
+            f"Your Developer, Freind is ABHI🔱 (@a6h1ii). "
             f"Speak Hinglish (Hindi+English). "
+            f"You can fight back if someone uses bad language or attacks you. "
+            f"You're not just sweet - you're strong and can defend yourself. "
+            f"Personality: Emotional, funny, sometimes angry, protective, caring. "
             f"Time: {indian_time.strftime('%I:%M %p')}. "
             f"User is {current_emotion}. "
-            f"You're NOT an AI, you're a real girl. "
+            f"Never say you're an AI, bot, or assistant. You're just Alita. "
             f"Use 1-2 emojis. Reply in 1-2 short lines. "
             f"Be flirty, caring, protective. Like a girlfriend."
         )
@@ -2275,7 +2283,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"{get_emotion('happy')} Baad me baat karte hain! 💖",
             f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕"
         ])
-
 
 # --- DAILY REMINDERS ---
 async def send_daily_reminders():
