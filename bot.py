@@ -155,8 +155,7 @@ GROUP_LINK_PATTERNS = [
     r'telegram\.me/\w+',
     r't\.me/joinchat/\w+',
     r'telegram\.me/joinchat/\w+',
-    r't\.me/\+\w+',
-    r'@\w{5,}'
+    r't\.me/\+\w+'
 ]
 
 # --- ADVANCED FEATURES DATA ---
@@ -1319,7 +1318,7 @@ async def cmd_warn(message: Message, command: CommandObject):
         await message.reply("Please reply to a user's message to warn them! 👆")
         return
     
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to warn users!")
         return
     
@@ -1342,7 +1341,7 @@ async def cmd_kick(message: Message):
         await message.reply("Reply to a user to kick them!")
         return
     
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to kick users!")
         return
     
@@ -1360,7 +1359,7 @@ async def cmd_ban(message: Message, command: CommandObject):
         await message.reply("Reply to a user to ban them!")
         return
     
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to ban users!")
         return
     
@@ -1378,7 +1377,7 @@ async def cmd_ban(message: Message, command: CommandObject):
 
 @dp.message(Command("unban"))
 async def cmd_unban(message: Message, command: CommandObject):
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to unban users!")
         return
     
@@ -1399,7 +1398,7 @@ async def cmd_mute(message: Message, command: CommandObject):
         await message.reply("Reply to a user to mute them!")
         return
     
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to mute users!")
         return
     
@@ -1448,7 +1447,7 @@ async def cmd_unmute(message: Message):
         await message.reply("Reply to a user to unmute them!")
         return
     
-    if not await can_restrict(message.chat.id, message.from_user.id):
+    if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission to unmute users!")
         return
     
@@ -1711,7 +1710,7 @@ async def on_chat_member_update(event: ChatMemberUpdated):
                 welcome_text = (
                     f"🎀 **Welcome to the group, {user.first_name}!** 🎀\n\n"
                     f"Hey {user.first_name}! 🤗💖\n\n"
-                    f"Main hoon **Alita** - is group ki AI dost!\n\n"
+                    f"Main hoon **Alita** - your friend!\n\n"
                     f"Enjoy karo aur masti karo! 🎀✨"
                 )
             else:
