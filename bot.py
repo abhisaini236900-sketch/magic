@@ -174,7 +174,7 @@ HOROSCOPE_SIGNS = {
     "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
     "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
     "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
-]
+}
 
 DAILY_FACTS = [
     "Honey never spoils! 🍯 Archaeologists found 3000-year-old honey still edible!",
@@ -210,7 +210,7 @@ JOKES = [
     "Why did the bicycle fall over? It was two-tired! 🚲",
     "What do you call a bear with no teeth? A gummy bear! 🐻"
 ]
-}
+
 
 # --- TIME-BASED GREETING SYSTEM ---
 greeting_scheduler = AsyncIOScheduler()
