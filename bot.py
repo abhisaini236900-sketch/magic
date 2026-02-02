@@ -1206,17 +1206,17 @@ async def cmd_calc(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
         
- #---------------IMAGE GENERATE--------------
+ #--------------- IMAGE GENERATE --------------
+
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message):
 
-    # 🔐 Token check (SABSE PEHLE)
     if not HF_TOKEN:
         await message.reply("❌ HF_TOKEN missing. Please set HuggingFace API token.")
         return
 
-    # 📝 Prompt check
     if not message.text or len(message.text.split()) < 2:
         await message.reply(
             "❌ Use like:\n`/imagine a cinematic boy standing in rain at night`",
@@ -1225,25 +1225,34 @@ async def cmd_imagine(message: Message):
         return
 
     prompt = message.text.replace("/imagine", "", 1).strip()
-
-    await message.reply("🎨 Generating image... please wait ⏳")
+    status = await message.reply("🎨 Generating image... please wait ⏳")
 
     API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}"
-    }
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
     response = requests.post(
         API_URL,
         headers=headers,
         json={"inputs": prompt},
-        timeout=60
+        timeout=120
     )
 
-    if response.status_code != 200:
-        await message.reply("❌ Image generation failed. Try again later.")
+    # 🔴 Model loading / busy case
+    if response.status_code == 503:
+        await status.edit_text(
+            "⏳ Model is loading on HuggingFace.\n"
+            "Please wait 30–60 seconds and try again."
+        )
         return
 
+    # 🔴 Any other failure
+    if response.status_code != 200:
+        await status.edit_text(
+            f"❌ Image generation failed.\nStatus: {response.status_code}"
+        )
+        return
+
+    # ✅ Success
     image_bytes = response.content
     photo = BufferedInputFile(image_bytes, filename="ai_image.png")
 
@@ -1252,6 +1261,7 @@ async def cmd_imagine(message: Message):
         caption=f"🖼️ *AI Generated Image*\n\nPrompt:\n`{prompt}`",
         parse_mode="Markdown"
     )
+
 #-------------##############------------
 
 @dp.message(Command("qr"))
