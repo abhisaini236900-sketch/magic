@@ -51,6 +51,7 @@ except ImportError:
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
@@ -1209,11 +1210,11 @@ async def cmd_calc(message: Message, command: CommandObject):
  #--------------- IMAGE GENERATE --------------
 
 @dp.message(Command("imagine"))
-async def cmd_imagine(message: Message):
+async def imagine_cmd(message: Message):
 
-    if not message.text or len(message.text.split()) < 2:
+    if len(message.text.split()) < 2:
         await message.reply(
-            "❌ Use like:\n`/imagine a cinematic boy standing in rain at night`",
+            "❌ Use like:\n`/imagine cinematic boy standing in rain at night`",
             parse_mode="Markdown"
         )
         return
@@ -1221,20 +1222,27 @@ async def cmd_imagine(message: Message):
     prompt = message.text.replace("/imagine", "", 1).strip()
     await message.reply("🎨 Generating image... please wait ⏳")
 
-    # 🔥 Pollinations AI (NO API KEY NEEDED)
-    encoded_prompt = urllib.parse.quote(prompt)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-
-    response = requests.get(image_url, timeout=60)
+    response = requests.post(
+        "https://api.stability.ai/v2beta/stable-image/generate/sdxl",
+        headers={
+            "Authorization": f"Bearer {STABILITY_API_KEY}",
+            "Accept": "image/png"
+        },
+        files={
+            "none": ""
+        },
+        data={
+            "prompt": prompt,
+            "output_format": "png"
+        },
+        timeout=60
+    )
 
     if response.status_code != 200:
-        await message.reply("❌ Image generation failed. Try again.")
+        await message.reply(f"❌ Failed ({response.status_code})")
         return
 
-    photo = BufferedInputFile(
-        response.content,
-        filename="ai_image.png"
-    )
+    photo = BufferedInputFile(response.content, "ai.png")
 
     await message.reply_photo(
         photo,
