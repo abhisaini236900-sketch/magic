@@ -14,7 +14,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from aiogram.types import (
+    Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, 
+    ChatPermissions, BufferedInputFile, InputFile
+)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -29,18 +32,19 @@ import qrcode
 from io import BytesIO
 import string
 
-# --- G4F FALLBACK PROVIDERS (Optional) ---
+# --- G4F FALLBACK (Optional) ---
 G4F_AVAILABLE = False
 g4f_client = None
+Blackbox = None
 
-# Try to import g4f, but don't fail if it's not available
 try:
     from g4f.client import Client as G4FClient
-    from g4f.Provider import Blackbox
+    from g4f.Provider import Blackbox as BlackboxProvider
     G4F_AVAILABLE = True
     g4f_client = G4FClient()
+    Blackbox = BlackboxProvider
 except ImportError:
-    pass  # g4f not installed, will use Groq only
+    pass  # g4f not installed
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
@@ -152,7 +156,6 @@ GROUP_LINK_PATTERNS = [
     r't\\.me/\\+\\w+',
     r'@\\w{5,}'
 ]
-
 
 # --- ADVANCED FEATURES DATA ---
 MEME_TEMPLATES = [
@@ -428,10 +431,10 @@ async def delete_and_warn(message: Message, reason: str, delete: bool = True):
     if reason == "bad_words":
         sassy_responses = [
             f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
-            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
-            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+            f"{get_emotion('sassy')}  Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} ️ Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')}  Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')}  Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
         try:
             await message.answer(random.choice(sassy_responses))
@@ -475,73 +478,55 @@ async def check_spam(message: Message) -> bool:
     
     return False
 
-# --- WEATHER FUNCTION ---
+# --- WEATHER FUNCTION (FIXED) ---
 async def get_weather_real(city: str) -> str:
-    """Get REAL weather data from API"""
+    """Get REAL weather data from API - FIXED VERSION"""
     try:
-        if not WEATHER_API_KEY:
-            async with aiohttp.ClientSession() as session:
-                geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
-                async with session.get(geo_url) as geo_response:
-                    geo_data = await geo_response.json()
+        async with aiohttp.ClientSession() as session:
+            # First get coordinates
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
+            async with session.get(geo_url) as geo_response:
+                geo_data = await geo_response.json()
+                
+                if not geo_data.get('results'):
+                    return f"❌ City '{city}' not found! Try: Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad"
+                
+                lat = geo_data['results'][0]['latitude']
+                lon = geo_data['results'][0]['longitude']
+                city_name = geo_data['results'][0]['name']
+                country = geo_data['results'][0].get('country', 'Unknown')
+                
+                # Get weather data
+                weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FKolkata"
+                
+                async with session.get(weather_url) as weather_response:
+                    data = await weather_response.json()
+                    current = data['current']
                     
-                    if not geo_data.get('results'):
-                        return f"❌ City '{city}' not found! Try: Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad"
+                    weather_codes = {
+                        0: "☀️ Clear Sky",
+                        1: "🌤️ Mainly Clear", 2: "⛅ Partly Cloudy", 3: "☁️ Overcast",
+                        45: "🌫️ Foggy", 48: "🌫️ Depositing Rime Fog",
+                        51: "🌦️ Light Drizzle", 53: "🌦️ Moderate Drizzle", 55: "🌧️ Dense Drizzle",
+                        61: "🌧️ Slight Rain", 63: "🌧️ Moderate Rain", 65: "🌧️ Heavy Rain",
+                        71: "🌨️ Slight Snow", 73: "🌨️ Moderate Snow", 75: "🌨️ Heavy Snow",
+                        95: "⛈️ Thunderstorm", 96: "⛈️ Thunderstorm with Hail"
+                    }
                     
-                    lat = geo_data['results'][0]['latitude']
-                    lon = geo_data['results'][0]['longitude']
-                    city_name = geo_data['results'][0]['name']
-                    country = geo_data['results'][0].get('country', '')
+                    condition = weather_codes.get(current['weather_code'], "🌡️ Unknown")
+                    is_day = "☀️ Day" if current['is_day'] else "🌙 Night"
                     
-                    weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FKolkata"
-                    
-                    async with session.get(weather_url) as weather_response:
-                        data = await weather_response.json()
-                        current = data['current']
-                        
-                        weather_codes = {
-                            0: "☀️ Clear Sky",
-                            1: "🌤️ Mainly Clear", 2: "⛅ Partly Cloudy", 3: "☁️ Overcast",
-                            45: "🌫️ Foggy", 48: "🌫️ Depositing Rime Fog",
-                            51: "🌦️ Light Drizzle", 53: "🌦️ Moderate Drizzle", 55: "🌧️ Dense Drizzle",
-                            61: "🌧️ Slight Rain", 63: "🌧️ Moderate Rain", 65: "🌧️ Heavy Rain",
-                            71: "🌨️ Slight Snow", 73: "🌨️ Moderate Snow", 75: "🌨️ Heavy Snow",
-                            95: "⛈️ Thunderstorm", 96: "⛈️ Thunderstorm with Hail"
-                        }
-                        
-                        condition = weather_codes.get(current['weather_code'], "🌡️ Unknown")
-                        is_day = "☀️ Day" if current['is_day'] else "🌙 Night"
-                        
-                        return (
-                            f"🌤️ **Weather in {city_name}, {country}**\n\n"
-                            f"🌡️ **Temperature:** {current['temperature_2m']}°C\n"
-                            f"🌡️ **Feels Like:** {current['apparent_temperature']}°C\n"
-                            f"☁️ **Condition:** {condition}\n"
-                            f"💧 **Humidity:** {current['relative_humidity_2m']}%\n"
-                            f"💨 **Wind Speed:** {current['wind_speed_10m']} km/h\n"
-                            f"🌧️ **Precipitation:** {current['precipitation']} mm\n"
-                            f"🕐 **Time:** {is_day}\n\n"
-                            f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
-                        )
-        else:
-            async with aiohttp.ClientSession() as session:
-                url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
-                async with session.get(url) as response:
-                    data = await response.json()
-                    if response.status == 200:
-                        return (
-                            f"🌤️ **Weather in {data['name']}, {data['sys']['country']}**\n\n"
-                            f"🌡️ **Temperature:** {data['main']['temp']}°C\n"
-                            f"🌡️ **Feels Like:** {data['main']['feels_like']}°C\n"
-                            f"☁️ **Condition:** {data['weather'][0]['description'].title()}\n"
-                            f"💧 **Humidity:** {data['main']['humidity']}%\n"
-                            f"💨 **Wind:** {data['wind']['speed']} m/s\n"
-                            f"👁️ **Visibility:** {data.get('visibility', 0) / 1000:.1f} km\n"
-                            f"🔽 **Pressure:** {data['main']['pressure']} hPa\n\n"
-                            f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
-                        )
-                    else:
-                        return f"❌ City not found! Try: Mumbai, Delhi, Bangalore, Chennai, Kolkata"
+                    return (
+                        f"🌤️ **Weather in {city_name}, {country}**\n\n"
+                        f"🌡️ **Temperature:** {current['temperature_2m']}°C\n"
+                        f"🌡️ **Feels Like:** {current['apparent_temperature']}°C\n"
+                        f"☁️ **Condition:** {condition}\n"
+                        f"💧 **Humidity:** {current['relative_humidity_2m']}%\n"
+                        f"💨 **Wind Speed:** {current['wind_speed_10m']} km/h\n"
+                        f"🌧️ **Precipitation:** {current['precipitation']} mm\n"
+                        f"🕐 **Time:** {is_day}\n\n"
+                        f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
+                    )
     except Exception as e:
         return f"⚠️ Weather service error: {str(e)[:100]}\nTry again later!"
 
@@ -571,8 +556,7 @@ def generate_meme() -> str:
 def get_daily_fact() -> str:
     return f"🧠 **Did you know?**\n\n{random.choice(DAILY_FACTS)}"
 
-
-# --- AI RESPONSE FUNCTION ---
+# --- AI RESPONSE FUNCTION (FIXED) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     """Get AI response using Groq API with G4F fallback"""
     if chat_id not in chat_memory:
@@ -589,9 +573,9 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     if any(word in user_text_lower for word in BAD_WORDS):
         defense_responses = [
             f"{get_emotion('angry')} Oye! Aise baat mat karo! Main ladki hu! 😠",
-            f"{get_emotion('sassy')} 💅 Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna warning de dungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun? Achi baat karo na!",
+            f"{get_emotion('sassy')}  Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
+            f"{get_emotion('protective')} ️ Apni language thik rakho warna warning de dungi!",
+            f"{get_emotion('crying')}  Itna gussa kyun? Achi baat karo na!",
             f"{get_emotion('angry')} Main bhi jawab de sakti hu par main achhi hu na! 😤"
         ]
         return random.choice(defense_responses)
@@ -599,7 +583,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     # Check for creator questions
     creator_keywords = ["kisne banaya", "who made", "who created", "creator", "kon banaya", "tumhe kisne"]
     if any(keyword in user_text_lower for keyword in creator_keywords):
-        return f"{get_emotion('love')} Mujhe mere bhagwan ne banaya hai Abhi ne ({OWNER_USERNAME}) 🙏✨\n\nWoh mere creator hain, bahut talented developer hain! Unki wajah se main yahan hoon tumse baat karne ke liye! 💖🎀"
+        return f"{get_emotion('love')} Mujhe mere friend ne banaya hai Abhi ne ({OWNER_USERNAME}) 🙏✨\n\nWoh mere creator hain, bahut talented developer hain! Unki wajah se main yahan hoon tumse baat karne ke liye! 💖🎀"
     
     # Get time-based greeting
     indian_time = get_indian_time()
@@ -626,7 +610,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
         f"Date: {indian_time.strftime('%d %B %Y')}. "
         f"{time_greeting} "
-        f"Be conversational, authentic, and engaging. Avoid generic greetings like 'kya haal hai' repeatedly."
+        f"Be conversational, authentic, and engaging. Avoid generic greetings like 'kya haal hai' repeatedly. and har baat me Abhi ka name mt lena, jab need ho tab lena. "
     )
     
     messages = [{"role": "system", "content": system_prompt}]
@@ -659,9 +643,9 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             return ai_reply
     except Exception as e:
         print(f"Groq error: {e}")
-
-# G4F Fallback (only if available)
-    if G4F_AVAILABLE and g4f_client:
+    
+    # G4F Fallback (only if available)
+    if G4F_AVAILABLE and g4f_client and Blackbox:
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -685,8 +669,6 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         except Exception as e:
             print(f"G4F error: {e}")
     
-
-    
     # Final fallback
     fallback_responses = [
         f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna?",
@@ -697,15 +679,18 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     ]
     return random.choice(fallback_responses)
 
-# --- ADMIN CHECK FUNCTIONS ---
+# --- ADMIN CHECK FUNCTIONS (FIXED) ---
 async def is_admin(chat_id: int, user_id: int) -> bool:
+    """Check if user is admin in chat"""
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ['administrator', 'creator']
-    except:
+    except Exception as e:
+        print(f"is_admin error: {e}")
         return False
 
 async def can_restrict(chat_id: int, user_id: int) -> bool:
+    """Check if user can restrict members"""
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         if member.status == 'creator':
@@ -713,10 +698,12 @@ async def can_restrict(chat_id: int, user_id: int) -> bool:
         if member.status == 'administrator':
             return member.can_restrict_members
         return False
-    except:
+    except Exception as e:
+        print(f"can_restrict error: {e}")
         return False
 
 async def can_delete(chat_id: int, user_id: int) -> bool:
+    """Check if user can delete messages"""
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         if member.status == 'creator':
@@ -724,7 +711,8 @@ async def can_delete(chat_id: int, user_id: int) -> bool:
         if member.status == 'administrator':
             return member.can_delete_messages
         return False
-    except:
+    except Exception as e:
+        print(f"can_delete error: {e}")
         return False
 
 # --- BROADCAST COMMAND ---
@@ -754,7 +742,7 @@ async def cmd_sendall(message: Message, command: CommandObject):
         try:
             await bot.send_message(user_id, broadcast_msg, parse_mode="Markdown")
             sent_count += 1
-            await asyncio.sleep(0.1)  # Rate limiting
+            await asyncio.sleep(0.1)
         except:
             failed_count += 1
     
@@ -765,13 +753,14 @@ async def cmd_sendall(message: Message, command: CommandObject):
         f"📊 Total: {len(all_users)}"
     )
 
+# Part 4: Basic Commands
+
 # --- ALL COMMANDS ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌟 My Channel", url=f"https://t.me/abhi0w0"),
-            InlineKeyboardButton(text="💝 Developer", url=f"https://t.me/a6h1ii")
+            InlineKeyboardButton(text="🌟 My Home", url=f"https://t.me/abhi0w0"),
         ],
         [
             InlineKeyboardButton(text="📱 Utilities", callback_data="menu_utilities"),
@@ -789,8 +778,7 @@ async def cmd_start(message: Message):
     welcome_text = (
         f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
         "✨ **Welcome to my magical world!** ✨\n\n"
-        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
-        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n\n"
         "🌟 **My Superpowers:**\n"
         "• Advanced AI Conversations 🧠\n"
         "• Voice & Photo Recognition 📸🎤\n"
@@ -800,8 +788,7 @@ async def cmd_start(message: Message):
         "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
         "📢 **Made with 💖 by:**\n"
-        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
-        "• **Channel:** @abhi0w0\n\n"
+        "• **My Home:** @abhi0w0\n\n"
         "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
     )
@@ -994,6 +981,8 @@ async def cmd_weather(message: Message, command: CommandObject):
     city = command.args or "Mumbai"
     weather_info = await get_weather_real(city)
     await message.reply(weather_info, parse_mode="Markdown")
+
+# Part 5: Notes, Reminders, AFK, Utilities
 
 # --- NOTES & REMINDERS COMMANDS ---
 @dp.message(Command("note"))
@@ -1237,8 +1226,11 @@ async def cmd_qr(message: Message, command: CommandObject):
         img.save(bio, 'PNG')
         bio.seek(0)
         
+        # FIXED: Use BufferedInputFile for aiogram 3.x
+        photo_file = BufferedInputFile(bio.getvalue(), filename="qrcode.png")
+        
         await message.reply_photo(
-            bio,
+            photo_file,
             caption=f"📱 **QR Code Generated**\n\nContent: `{text[:50]}{'...' if len(text) > 50 else ''}`"
         )
     except Exception as e:
@@ -1284,8 +1276,8 @@ async def cmd_translate(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
 
-
-# --- ADMIN/MODERATION COMMANDS ---
+# Part 6: Admin Commands
+# --- ADMIN/MODERATION COMMANDS (FIXED) ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
     if not message.reply_to_message:
@@ -1588,7 +1580,6 @@ async def cmd_setgoodbye(message: Message, command: CommandObject):
     goodbye_messages[message.chat.id] = command.args
     await message.reply("✅ Goodbye message set!")
 
-# --- CLEAR MEMORY COMMAND ---
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
     user_id = message.from_user.id
@@ -1597,12 +1588,13 @@ async def cmd_clear(message: Message):
     if chat_id in chat_memory:
         chat_memory[chat_id].clear()
     
-    # Clear user emotion
     if user_id in user_emotions:
         del user_emotions[user_id]
     
     await message.reply(f"{get_emotion('happy')} Memory cleared! Starting fresh! 🧹✨")
 
+# Part 7:
+	
 # --- CALLBACK HANDLERS ---
 @dp.callback_query(F.data.startswith("menu_"))
 async def menu_callback(callback: types.CallbackQuery):
@@ -1679,7 +1671,6 @@ async def on_chat_member_update(event: ChatMemberUpdated):
         if event.old_chat_member is None or event.old_chat_member.status == "left":
             user = event.new_chat_member.user
             
-            # Custom or default welcome message
             welcome_text = welcome_messages.get(chat_id)
             if not welcome_text:
                 welcome_text = (
@@ -1696,8 +1687,8 @@ async def on_chat_member_update(event: ChatMemberUpdated):
             
             try:
                 await bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
-            except:
-                pass
+            except Exception as e:
+                print(f"Welcome message error: {e}")
     
     # Member left
     if event.new_chat_member and event.new_chat_member.status in ["left", "kicked", "banned"]:
@@ -1713,8 +1704,8 @@ async def on_chat_member_update(event: ChatMemberUpdated):
             
             try:
                 await bot.send_message(chat_id, goodbye_text, parse_mode="Markdown")
-            except:
-                pass
+            except Exception as e:
+                print(f"Goodbye message error: {e}")
 
 # --- MAIN MESSAGE HANDLER ---
 @dp.message()
@@ -1765,7 +1756,6 @@ async def handle_all_messages(message: Message):
         for entity in message.entities:
             if entity.type == "mention":
                 mentioned_username = user_text[entity.offset:entity.offset + entity.length]
-                # Check all AFK users in this chat
                 for afk_user_id, afk_data in afk_users.get(chat_id, {}).items():
                     try:
                         member = await bot.get_chat_member(chat_id, afk_user_id)
@@ -1833,21 +1823,15 @@ async def handle_all_messages(message: Message):
     )
     
     if should_respond:
-        # Clean message text
         clean_text = user_text
         if bot_username and f"@{bot_username}" in clean_text:
             clean_text = clean_text.replace(f"@{bot_username}", "").strip()
         
-        # Show typing action
         await bot.send_chat_action(chat_id, "typing")
-        
-        # Random delay for human-like behavior
         await asyncio.sleep(random.uniform(0.5, 1.5))
         
-        # Get AI response
         response = await get_ai_response(chat_id, clean_text, user_id)
         
-        # Send response
         await message.reply(response)
 
 async def handle_photo_message(message: Message):
@@ -1861,7 +1845,7 @@ async def handle_photo_message(message: Message):
             parse_mode="Markdown"
         )
     except Exception as e:
-        pass
+        print(f"Photo handler error: {e}")
 
 async def handle_voice_message(message: Message):
     """Handle voice messages"""
@@ -1874,7 +1858,9 @@ async def handle_voice_message(message: Message):
             parse_mode="Markdown"
         )
     except Exception as e:
-        pass
+        print(f"Voice handler error: {e}")
+
+# Part 8: Main function
 
 # --- DEPLOYMENT AND MAIN FUNCTION ---
 async def handle_ping(request):
@@ -1889,43 +1875,6 @@ async def start_server():
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     print(f"🌐 Health server started on port {PORT}")
-
-async def send_time_based_greetings():
-    """Send automatic time-based greetings"""
-    current_period = get_current_time_period()
-    
-    greetings = {
-        "morning": [
-            "🌅 **Good Morning everyone!** ☀️\nUtho aur muskurao! Have a wonderful day! 😊",
-            "🌸 **Shubh Prabhat!** 🌸\nAaj ka din aapke liye khoobsurat ho! ✨",
-            "☕ **Morning Coffee Time!** 🍵\nChai piyo, fresh ho jao! 💫"
-        ],
-        "afternoon": [
-            "☀️ **Good Afternoon!** 🌤️\nLunch ho gaya? Energy maintain rakho! 🍲",
-            "🌞 **Dopahar ki Dhoop mein!** 🌞\nThoda aaraam karo! 😌",
-            "🍛 **Afternoon Siesta Time!** 💤\nKhaana kha ke neend aa rahi hai? Hehe! 😴"
-        ],
-        "evening": [
-            "🌇 **Good Evening Beautiful!** 🌆\nShaam ho gayi, thoda relax karo! 🌹",
-            "🌆 **Evening Tea Time!** 🍵\nChai aur baatein - perfect combination! 💖",
-            "✨ **Shubh Sandhya!** ✨\nDin bhar ki thakaan door karo! 🎶"
-        ],
-        "night": [
-            "🌙 **Good Night Sweet Dreams!** 🌟\nAankhein band karo aur accha sapna dekho! 💤",
-            "🌌 **Shubh Ratri!** 🌌\nThaka hua dimaag ko aaraam do! 😴",
-            "💤 **Sleep Time!** 💤\nKal phir nayi energy ke saath uthna! 🌅"
-        ],
-        "late_night": [
-            "🌃 **Late Night Owls!** 🦉\nSone ka time hai, par chat karna hai? 😄",
-            "🌚 **Midnight Chats!** 🌚\nRaat ke 12 baje bhi jag rahe ho? 😲",
-            "💫 **Late Night Vibes!** 💫\nSab so rahe hain, hum chat kar rahe hain! 🤫"
-        ]
-    }
-    
-    greeting_text = random.choice(greetings.get(current_period, greetings["morning"]))
-    
-    # Send to active groups (placeholder - would need actual group list)
-    # This is a simplified version
 
 async def start_greeting_task():
     """Start the background scheduler for greetings"""
@@ -1945,10 +1894,8 @@ async def send_daily_reminders():
     
     for user_id in list(user_last_interaction.keys()):
         try:
-            # Only send to active users (last 3 days)
             last_active = user_last_interaction.get(user_id)
             if last_active and (datetime.now() - last_active).days <= 3:
-                # Check if we already sent reminder today
                 last_greeted = greeted_groups.get(user_id)
                 if last_greeted and (datetime.now() - last_greeted).days == 0:
                     continue
@@ -1959,7 +1906,7 @@ async def send_daily_reminders():
                     parse_mode="Markdown"
                 )
                 greeted_groups[user_id] = datetime.now()
-                await asyncio.sleep(0.5)  # Rate limiting
+                await asyncio.sleep(0.5)
         except:
             continue
 
