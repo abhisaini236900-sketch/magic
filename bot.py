@@ -1214,7 +1214,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 async def cmd_imagine(message: Message):
 
     if not HF_TOKEN:
-        await message.reply("❌ HF_TOKEN missing. Please set HuggingFace API token.")
+        await message.reply("❌ HF_TOKEN missing.")
         return
 
     if not message.text or len(message.text.split()) < 2:
@@ -1228,7 +1228,11 @@ async def cmd_imagine(message: Message):
     status = await message.reply("🎨 Generating image... please wait ⏳")
 
     API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Accept": "image/png"   # ✅ CRITICAL
+    }
 
     response = requests.post(
         API_URL,
@@ -1237,28 +1241,15 @@ async def cmd_imagine(message: Message):
         timeout=120
     )
 
-    # 🔴 Model loading / busy case
-    if response.status_code == 503:
-        await status.edit_text(
-            "⏳ Model is loading on HuggingFace.\n"
-            "Please wait 30–60 seconds and try again."
-        )
-        return
-
-    # 🔴 Any other failure
     if response.status_code != 200:
-        await status.edit_text(
-            f"❌ Image generation failed.\nStatus: {response.status_code}"
-        )
+        await status.edit_text(f"❌ HF Error {response.status_code}")
         return
 
-    # ✅ Success
-    image_bytes = response.content
-    photo = BufferedInputFile(image_bytes, filename="ai_image.png")
+    photo = BufferedInputFile(response.content, filename="ai.png")
 
     await message.reply_photo(
         photo,
-        caption=f"🖼️ *AI Generated Image*\n\nPrompt:\n`{prompt}`",
+        caption=f"🖼️ *AI Generated Image*\n\n`{prompt}`",
         parse_mode="Markdown"
     )
 
