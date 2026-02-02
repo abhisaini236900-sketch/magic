@@ -9,6 +9,7 @@ import hashlib
 import subprocess
 import traceback
 import platform
+import requests
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -49,6 +50,7 @@ except ImportError:
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
@@ -149,12 +151,12 @@ ADULT_KEYWORDS = [
 ]
 
 GROUP_LINK_PATTERNS = [
-    r't\\.me/\\w+',
-    r'telegram\\.me/\\w+',
-    r't\\.me/joinchat/\\w+',
-    r'telegram\\.me/joinchat/\\w+',
-    r't\\.me/\\+\\w+',
-    r'@\\w{5,}'
+    r't\.me/\w+',
+    r'telegram\.me/\w+',
+    r't\.me/joinchat/\w+',
+    r'telegram\.me/joinchat/\w+',
+    r't\.me/\+\w+',
+    r'@\w{5,}'
 ]
 
 # --- ADVANCED FEATURES DATA ---
@@ -480,7 +482,7 @@ async def check_spam(message: Message) -> bool:
 
 # --- WEATHER FUNCTION (FIXED) ---
 async def get_weather_real(city: str) -> str:
-    """Get REAL weather data from API - FIXED VERSION"""
+    """Get REAL weather data from"""
     try:
         async with aiohttp.ClientSession() as session:
             # First get coordinates
@@ -583,7 +585,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     # Check for creator questions
     creator_keywords = ["kisne banaya", "who made", "who created", "creator", "kon banaya", "tumhe kisne"]
     if any(keyword in user_text_lower for keyword in creator_keywords):
-        return f"{get_emotion('love')} Mujhe mere friend ne banaya hai Abhi ne ({OWNER_USERNAME}) 🙏✨\n\nWoh mere creator hain, bahut talented developer hain! Unki wajah se main yahan hoon tumse baat karne ke liye! 💖🎀"
+        return f"{get_emotion('love')} Mujhe mere friend ne banaya hai Abhi ne ({OWNER_USERNAME}) yeh mere developer h bohot ache h😊❤️"
     
     # Get time-based greeting
     indian_time = get_indian_time()
@@ -679,14 +681,12 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     ]
     return random.choice(fallback_responses)
 
-# --- ADMIN CHECK FUNCTIONS (FIXED) ---
+# --- ADMIN CHECK FUNCTIONS ---
 async def is_admin(chat_id: int, user_id: int) -> bool:
-    """Check if user is admin in chat"""
     try:
         member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in ['administrator', 'creator']
-    except Exception as e:
-        print(f"is_admin error: {e}")
+        return member.status in ("administrator", "creator")
+    except:
         return False
 
 async def can_restrict(chat_id: int, user_id: int) -> bool:
@@ -714,43 +714,45 @@ async def can_delete(chat_id: int, user_id: int) -> bool:
     except Exception as e:
         print(f"can_delete error: {e}")
         return False
-
-# --- BROADCAST COMMAND ---
+#---BROADCAST MESSAGE---
 @dp.message(Command("sendall"))
-async def cmd_sendall(message: Message, command: CommandObject):
-    """Broadcast message to all users (Admin only)"""
+async def cmd_sendall(message: Message):
     if message.from_user.id != ADMIN_ID:
         await message.reply("⛔ This command is only for the bot owner!")
         return
-    
-    if not command.args:
-        await message.reply("Usage: `/sendall Your message here`")
+
+    if not message.reply_to_message:
+        await message.reply(
+            "❌ Kisi message ka reply karo aur uspar `/sendall` likho.\n\n"
+            "✅ Text, Photo, Video, Sticker, Voice, Document — sab chalega."
+        )
         return
-    
-    broadcast_msg = command.args
-    sent_count = 0
-    failed_count = 0
-    
-    # Get unique users from chat_memory
-    all_users = set()
-    for chat_id in chat_memory.keys():
-        all_users.add(chat_id)
-    
-    status_msg = await message.reply(f"📢 Broadcasting to {len(all_users)} users...")
-    
-    for user_id in all_users:
+
+    sent = 0
+    failed = 0
+
+    all_chats = set(chat_memory.keys())  # users + groups ids
+
+    status = await message.reply(f"📢 Broadcasting to {len(all_chats)} chats...")
+
+    for chat_id in all_chats:
         try:
-            await bot.send_message(user_id, broadcast_msg, parse_mode="Markdown")
-            sent_count += 1
+            await bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=message.chat.id,
+                message_id=message.reply_to_message.message_id
+            )
+            sent += 1
             await asyncio.sleep(0.1)
         except:
-            failed_count += 1
-    
-    await status_msg.edit_text(
-        f"📢 **Broadcast Complete!**\n\n"
-        f"✅ Sent: {sent_count}\n"
-        f"❌ Failed: {failed_count}\n"
-        f"📊 Total: {len(all_users)}"
+            failed += 1
+
+    await status.edit_text(
+        f"📢 *Broadcast Complete!*\n\n"
+        f"✅ Sent: `{sent}`\n"
+        f"❌ Failed: `{failed}`\n"
+        f"📊 Total: `{len(all_chats)}`",
+        parse_mode="Markdown"
     )
 
 # Part 4: Basic Commands
@@ -787,8 +789,8 @@ async def cmd_start(message: Message):
         "• Meme Generator 😂\n"
         "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
-        "📢 **Made with 💖 by:**\n"
-        "• **My Home:** @abhi0w0\n\n"
+        "📢 **MY HOME 💖**\n"
+        "•  @abhi0w0\n\n"
         "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
     )
@@ -851,15 +853,7 @@ async def cmd_help(message: Message):
         "• Auto-warning system ⚠️\n"
         "• Auto-mute after 3 warns 🔇\n"
         "• Auto-ban for adult content 🚫\n\n"
-        "🎀 **GREETING SYSTEM:**\n"
-        "• Auto morning greetings 🌅\n"
-        "• Auto afternoon greetings ☀️\n"
-        "• Auto evening greetings 🌇\n"
-        "• Auto night greetings 🌙\n"
-        "• Works in groups & private 💌\n\n"
-        "---\n"
-        "**Developer:** ABHI🔱 (@a6h1ii)\n"
-        "**Channel:** @abhi0w0 💫\n"
+        "**MY HOME:** @abhi0w0 💫\n"
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown")
@@ -1152,20 +1146,23 @@ async def cmd_id(message: Message):
     if message.reply_to_message:
         target = message.reply_to_message.from_user
         await message.reply(
-            f"🆔 **User ID Info**\n\n"
+            f"🆔 *User ID Info*\n\n"
             f"• Name: {target.first_name}\n"
             f"• User ID: `{target.id}`\n"
             f"• Username: @{target.username if target.username else 'N/A'}\n"
-            f"• Is Bot: {'Yes' if target.is_bot else 'No'}"
+            f"• Is Bot: {'Yes' if target.is_bot else 'No'}",
+            parse_mode="Markdown"
         )
     else:
         await message.reply(
-            f"🆔 **Your ID Info**\n\n"
+            f"🆔 *Your ID Info*\n\n"
             f"• Your ID: `{user_id}`\n"
             f"• Chat ID: `{chat_id}`\n"
-            f"• Chat Type: {message.chat.type}"
+            f"• Chat Type: `{message.chat.type}`",
+            parse_mode="Markdown"
         )
-
+        
+        
 @dp.message(Command("password"))
 async def cmd_password(message: Message, command: CommandObject):
     try:
@@ -1208,6 +1205,54 @@ async def cmd_calc(message: Message, command: CommandObject):
         )
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
+        
+ #---------------IMAGE GENERATE--------------
+
+@dp.message(Command("imagine"))
+async def cmd_imagine(message: Message):
+
+    # 🔐 Token check (SABSE PEHLE)
+    if not HF_TOKEN:
+        await message.reply("❌ HF_TOKEN missing. Please set HuggingFace API token.")
+        return
+
+    # 📝 Prompt check
+    if not message.text or len(message.text.split()) < 2:
+        await message.reply(
+            "❌ Use like:\n`/imagine a cinematic boy standing in rain at night`",
+            parse_mode="Markdown"
+        )
+        return
+
+    prompt = message.text.replace("/imagine", "", 1).strip()
+
+    await message.reply("🎨 Generating image... please wait ⏳")
+
+    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}"
+    }
+
+    response = requests.post(
+        API_URL,
+        headers=headers,
+        json={"inputs": prompt},
+        timeout=60
+    )
+
+    if response.status_code != 200:
+        await message.reply("❌ Image generation failed. Try again later.")
+        return
+
+    image_bytes = response.content
+    photo = BufferedInputFile(image_bytes, filename="ai_image.png")
+
+    await message.reply_photo(
+        photo,
+        caption=f"🖼️ *AI Generated Image*\n\nPrompt:\n`{prompt}`",
+        parse_mode="Markdown"
+    )
+#-------------##############------------
 
 @dp.message(Command("qr"))
 async def cmd_qr(message: Message, command: CommandObject):
@@ -1277,7 +1322,7 @@ async def cmd_translate(message: Message, command: CommandObject):
         await message.reply(f"❌ Error: {str(e)[:100]}")
 
 # Part 6: Admin Commands
-# --- ADMIN/MODERATION COMMANDS (FIXED) ---
+# --- ADMIN/MODERATION COMMANDS ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
     if not message.reply_to_message:
@@ -1677,8 +1722,6 @@ async def on_chat_member_update(event: ChatMemberUpdated):
                     f"🎀 **Welcome to the group, {user.first_name}!** 🎀\n\n"
                     f"Hey {user.first_name}! 🤗💖\n\n"
                     f"Main hoon **Alita** - is group ki AI dost!\n\n"
-                    f"💬 **Chat:** Sirf message karo, main jawab dungi!\n"
-                    f"📸 **Photo:** Photo bhejo, main analyze karungi!\n\n"
                     f"Enjoy karo aur masti karo! 🎀✨"
                 )
             else:
