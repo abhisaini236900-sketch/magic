@@ -210,6 +210,7 @@ JOKES = [
     "Why did the bicycle fall over? It was two-tired! 🚲",
     "What do you call a bear with no teeth? A gummy bear! 🐻"
 ]
+}
 
 # --- TIME-BASED GREETING SYSTEM ---
 greeting_scheduler = AsyncIOScheduler()
