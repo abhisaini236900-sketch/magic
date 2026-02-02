@@ -10,6 +10,7 @@ import subprocess
 import traceback
 import platform
 import requests
+import urllib.parse
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -50,7 +51,6 @@ except ImportError:
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
@@ -1208,14 +1208,8 @@ async def cmd_calc(message: Message, command: CommandObject):
         
  #--------------- IMAGE GENERATE --------------
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message):
-
-    if not HF_TOKEN:
-        await message.reply("❌ HF_TOKEN missing.")
-        return
 
     if not message.text or len(message.text.split()) < 2:
         await message.reply(
@@ -1225,27 +1219,22 @@ async def cmd_imagine(message: Message):
         return
 
     prompt = message.text.replace("/imagine", "", 1).strip()
-    status = await message.reply("🎨 Generating image... please wait ⏳")
+    await message.reply("🎨 Generating image... please wait ⏳")
 
-    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+    # 🔥 Pollinations AI (NO API KEY NEEDED)
+    encoded_prompt = urllib.parse.quote(prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
 
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "Accept": "image/png"   # ✅ CRITICAL
-    }
-
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={"inputs": prompt},
-        timeout=120
-    )
+    response = requests.get(image_url, timeout=60)
 
     if response.status_code != 200:
-        await status.edit_text(f"❌ HF Error {response.status_code}")
+        await message.reply("❌ Image generation failed. Try again.")
         return
 
-    photo = BufferedInputFile(response.content, filename="ai.png")
+    photo = BufferedInputFile(
+        response.content,
+        filename="ai_image.png"
+    )
 
     await message.reply_photo(
         photo,
