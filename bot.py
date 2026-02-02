@@ -18,7 +18,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, 
-    ChatPermissions, BufferedInputFile, InputFile
+    ChatPermissions, BufferedInputFile, InputFile, ChatMember
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -174,7 +174,7 @@ HOROSCOPE_SIGNS = {
     "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
     "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
     "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
-}
+]
 
 DAILY_FACTS = [
     "Honey never spoils! 🍯 Archaeologists found 3000-year-old honey still edible!",
@@ -297,8 +297,192 @@ def update_user_emotion(user_id: int, message: str):
     
     user_last_interaction[user_id] = datetime.now()
 
+# =============================================================================
+# FIXED ADMIN PERMISSION FUNCTIONS - YE SABSE IMPORTANT HAI
+# =============================================================================
 
-# --- AUTO-MODERATION FUNCTIONS ---
+async def is_admin_or_creator(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user is Admin, Administrator, or Creator/Owner
+    Returns True if user has any admin privileges
+    """
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        # Check for Creator (Owner), Administrator, or Admin status
+        return member.status in ("creator", "administrator", "admin")
+    except Exception as e:
+        print(f"Error checking admin status: {e}")
+        return False
+
+async def is_creator_or_owner(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user is Creator/Owner of the group
+    """
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        return member.status == "creator"
+    except Exception as e:
+        print(f"Error checking creator status: {e}")
+        return False
+
+async def is_bot_owner(user_id: int) -> bool:
+    """
+    Check if user is the bot owner (from environment variable)
+    """
+    return user_id == ADMIN_ID
+
+async def has_admin_privileges(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user has any admin privileges:
+    - Creator/Owner of group
+    - Administrator of group  
+    - Bot Owner (ADMIN_ID)
+    """
+    # Check if bot owner
+    if await is_bot_owner(user_id):
+        return True
+    
+    # Check if group creator or admin
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        if member.status in ("creator", "administrator"):
+            return True
+    except Exception as e:
+        print(f"Error checking privileges: {e}")
+    
+    return False
+
+async def can_restrict_members(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user can restrict/ban/mute members
+    - Creator can always restrict
+    - Administrators with can_restrict_members permission
+    - Bot Owner can always restrict
+    """
+    # Bot owner can do everything
+    if await is_bot_owner(user_id):
+        return True
+    
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        
+        # Creator can do everything
+        if member.status == "creator":
+            return True
+        
+        # Administrator needs specific permission
+        if member.status == "administrator":
+            return member.can_restrict_members == True
+            
+    except Exception as e:
+        print(f"Error checking restrict permission: {e}")
+    
+    return False
+
+async def can_delete_messages(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user can delete messages
+    - Creator can always delete
+    - Administrators with can_delete_messages permission
+    - Bot Owner can always delete
+    """
+    # Bot owner can do everything
+    if await is_bot_owner(user_id):
+        return True
+    
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        
+        # Creator can do everything
+        if member.status == "creator":
+            return True
+        
+        # Administrator needs specific permission
+        if member.status == "administrator":
+            return member.can_delete_messages == True
+            
+    except Exception as e:
+        print(f"Error checking delete permission: {e}")
+    
+    return False
+
+async def can_pin_messages(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user can pin messages
+    - Creator can always pin
+    - Administrators with can_pin_messages permission
+    - Bot Owner can always pin
+    """
+    # Bot owner can do everything
+    if await is_bot_owner(user_id):
+        return True
+    
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        
+        # Creator can do everything
+        if member.status == "creator":
+            return True
+        
+        # Administrator needs specific permission
+        if member.status == "administrator":
+            return member.can_pin_messages == True
+            
+    except Exception as e:
+        print(f"Error checking pin permission: {e}")
+    
+    return False
+
+async def can_change_info(chat_id: int, user_id: int) -> bool:
+    """
+    Check if user can change group info
+    - Creator can always change
+    - Administrators with can_change_info permission
+    - Bot Owner can always change
+    """
+    # Bot owner can do everything
+    if await is_bot_owner(user_id):
+        return True
+    
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        
+        # Creator can do everything
+        if member.status == "creator":
+            return True
+        
+        # Administrator needs specific permission
+        if member.status == "administrator":
+            return member.can_change_info == True
+            
+    except Exception as e:
+        print(f"Error checking change info permission: {e}")
+    
+    return False
+
+async def get_admin_type(chat_id: int, user_id: int) -> str:
+    """
+    Get the type of admin user is
+    Returns: "owner", "admin", "bot_owner", or "none"
+    """
+    if await is_bot_owner(user_id):
+        return "bot_owner"
+    
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        if member.status == "creator":
+            return "owner"
+        elif member.status == "administrator":
+            return "admin"
+    except:
+        pass
+    
+    return "none"
+
+# =============================================================================
+# AUTO-MODERATION FUNCTIONS
+# =============================================================================
+
 def contains_group_link(text: str) -> bool:
     """Check if message contains Telegram group links"""
     text = text.lower()
@@ -479,244 +663,14 @@ async def check_spam(message: Message) -> bool:
     
     return False
 
-# --- WEATHER FUNCTION (FIXED) ---
-async def get_weather_real(city: str) -> str:
-    """Get REAL weather data from"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            # First get coordinates
-            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
-            async with session.get(geo_url) as geo_response:
-                geo_data = await geo_response.json()
-                
-                if not geo_data.get('results'):
-                    return f"❌ City '{city}' not found! Try: Mumbai, Delhi, Bangalore, Chennai, Kolkata, Hyderabad"
-                
-                lat = geo_data['results'][0]['latitude']
-                lon = geo_data['results'][0]['longitude']
-                city_name = geo_data['results'][0]['name']
-                country = geo_data['results'][0].get('country', 'Unknown')
-                
-                # Get weather data
-                weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FKolkata"
-                
-                async with session.get(weather_url) as weather_response:
-                    data = await weather_response.json()
-                    current = data['current']
-                    
-                    weather_codes = {
-                        0: "☀️ Clear Sky",
-                        1: "🌤️ Mainly Clear", 2: "⛅ Partly Cloudy", 3: "☁️ Overcast",
-                        45: "🌫️ Foggy", 48: "🌫️ Depositing Rime Fog",
-                        51: "🌦️ Light Drizzle", 53: "🌦️ Moderate Drizzle", 55: "🌧️ Dense Drizzle",
-                        61: "🌧️ Slight Rain", 63: "🌧️ Moderate Rain", 65: "🌧️ Heavy Rain",
-                        71: "🌨️ Slight Snow", 73: "🌨️ Moderate Snow", 75: "🌨️ Heavy Snow",
-                        95: "⛈️ Thunderstorm", 96: "⛈️ Thunderstorm with Hail"
-                    }
-                    
-                    condition = weather_codes.get(current['weather_code'], "🌡️ Unknown")
-                    is_day = "☀️ Day" if current['is_day'] else "🌙 Night"
-                    
-                    return (
-                        f"🌤️ **Weather in {city_name}, {country}**\n\n"
-                        f"🌡️ **Temperature:** {current['temperature_2m']}°C\n"
-                        f"🌡️ **Feels Like:** {current['apparent_temperature']}°C\n"
-                        f"☁️ **Condition:** {condition}\n"
-                        f"💧 **Humidity:** {current['relative_humidity_2m']}%\n"
-                        f"💨 **Wind Speed:** {current['wind_speed_10m']} km/h\n"
-                        f"🌧️ **Precipitation:** {current['precipitation']} mm\n"
-                        f"🕐 **Time:** {is_day}\n\n"
-                        f"⏰ *Updated: {datetime.now().strftime('%I:%M %p')}*"
-                    )
-    except Exception as e:
-        return f"⚠️ Weather service error: {str(e)[:100]}\nTry again later!"
+# =============================================================================
+# BROADCAST COMMAND (BOT OWNER ONLY)
+# =============================================================================
 
-async def get_horoscope(sign: str) -> str:
-    horoscopes = {
-        "aries": "Today brings energy and passion! Take charge of new projects. 💪",
-        "taurus": "Financial opportunities await. Stay grounded and practical. 💰",
-        "gemini": "Communication is key today. Express yourself clearly. 💬",
-        "cancer": "Focus on home and family. Emotional connections deepen. 🏠",
-        "leo": "Your charisma shines! Leadership opportunities arise. 👑",
-        "virgo": "Attention to detail pays off. Organization brings success. 📋",
-        "libra": "Balance is essential. Harmony in relationships matters. ⚖️",
-        "scorpio": "Intuition guides you. Trust your instincts. 🔮",
-        "sagittarius": "Adventure calls! Explore new horizons. 🌍",
-        "capricorn": "Hard work yields results. Stay disciplined. 🏔️",
-        "aquarius": "Innovation flows. Think outside the box. 💡",
-        "pisces": "Creativity blooms. Express your artistic side. 🎨"
-    }
-    emoji = HOROSCOPE_SIGNS.get(sign.lower(), "🌟")
-    reading = horoscopes.get(sign.lower(), "Stars align for new beginnings! ✨")
-    return f"{emoji} **{sign.title()} Horoscope**\n\n{reading}\n\n🌟 *Have a wonderful day ahead!*"
-
-def generate_meme() -> str:
-    template = random.choice(MEME_TEMPLATES)
-    return f"{template['emoji']} {template['text']}"
-
-def get_daily_fact() -> str:
-    return f"🧠 **Did you know?**\n\n{random.choice(DAILY_FACTS)}"
-
-# --- AI RESPONSE FUNCTION (FIXED) ---
-async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    """Get AI response using Groq API with G4F fallback"""
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=50)
-    
-    chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
-    if user_id:
-        update_user_emotion(user_id, user_text)
-    
-    user_text_lower = user_text.lower()
-    
-    # Defense responses for attacks
-    if any(word in user_text_lower for word in BAD_WORDS):
-        defense_responses = [
-            f"{get_emotion('angry')} Oye! Aise baat mat karo! Main ladki hu! 😠",
-            f"{get_emotion('sassy')}  Tumhe pata hai main kya bol sakti hu? Par main sweet hu!",
-            f"{get_emotion('protective')} ️ Apni language thik rakho warna warning de dungi!",
-            f"{get_emotion('crying')}  Itna gussa kyun? Achi baat karo na!",
-            f"{get_emotion('angry')} Main bhi jawab de sakti hu par main achhi hu na! 😤"
-        ]
-        return random.choice(defense_responses)
-    
-    # Check for creator questions
-    creator_keywords = ["kisne banaya", "who made", "who created", "creator", "kon banaya", "tumhe kisne"]
-    if any(keyword in user_text_lower for keyword in creator_keywords):
-        return f"{get_emotion('love')} Mujhe mere friend ne banaya hai Abhi ne ({OWNER_USERNAME}) yeh mere developer h bohot ache h😊❤️"
-    
-    # Get time-based greeting
-    indian_time = get_indian_time()
-    current_hour = indian_time.hour
-    
-    if 5 <= current_hour < 12:
-        time_greeting = "Good morning! 🌅"
-    elif 12 <= current_hour < 17:
-        time_greeting = "Good afternoon! ☀️"
-    elif 17 <= current_hour < 21:
-        time_greeting = "Good evening! 🌇"
-    else:
-        time_greeting = "Good night! 🌙"
-    
-    # System prompt
-    system_prompt = (
-        f"You are Alita 🎀 - a sweet, sassy, and protective girl from India. "
-        f"Use feminine language and cute expressions in Hinglish (Hindi + English mix). "
-        f"Never say you're an AI, bot, or assistant. You're just Alita, a real girl. "
-        f"Your developer is ABHI🔱 ({OWNER_USERNAME}). "
-        f"Personality: Emotional, funny, sometimes angry, protective, caring, smart. "
-        f"You can fight back if someone uses bad language. "
-        f"Use emojis naturally (1-2 per response). Keep replies concise (2-4 lines). "
-        f"Current Indian time: {indian_time.strftime('%I:%M %p')}. "
-        f"Date: {indian_time.strftime('%d %B %Y')}. "
-        f"{time_greeting} "
-        f"Be conversational, authentic, and engaging. Avoid generic greetings like 'kya haal hai' repeatedly. and har baat me Abhi ka name mt lena, jab need ho tab lena. "
-    )
-    
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    for msg in list(chat_memory[chat_id])[-5:]:
-        messages.append(msg)
-    
-    # Try Groq first
-    try:
-        if client:
-            completion = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                temperature=0.9,
-                max_tokens=150,
-                top_p=0.9
-            )
-            
-            ai_reply = completion.choices[0].message.content
-            
-            # Add emotion emoji
-            current_emotion = get_emotion(None, user_id)
-            if not any(emoji in ai_reply for emoji in ['😊', '😂', '❤️', '😢', '😠', '🎉']):
-                ai_reply = f"{current_emotion} {ai_reply}"
-            
-            if len(ai_reply) > 400:
-                ai_reply = ai_reply[:397] + "..."
-            
-            chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-            return ai_reply
-    except Exception as e:
-        print(f"Groq error: {e}")
-    
-    # G4F Fallback (only if available)
-    if G4F_AVAILABLE and g4f_client and Blackbox:
-        try:
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: g4f_client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    provider=Blackbox
-                )
-            )
-            
-            if response and response.choices:
-                ai_reply = response.choices[0].message.content
-                current_emotion = get_emotion(None, user_id)
-                ai_reply = f"{current_emotion} {ai_reply}"
-                
-                if len(ai_reply) > 400:
-                    ai_reply = ai_reply[:397] + "..."
-                
-                chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-                return ai_reply
-        except Exception as e:
-            print(f"G4F error: {e}")
-    
-    # Final fallback
-    fallback_responses = [
-        f"{get_emotion('crying')} Arre yaar, dimaag kaam nahi kar raha! Thoda ruk ke try karna?",
-        f"{get_emotion('thinking')} Hmm... yeh to mushkil ho gaya. Phir se poocho?",
-        f"{get_emotion('angry')} AI bhai mood off hai aaj! Baad me baat karte hain!",
-        f"{get_emotion()} Oops! Connection issue. Kuch aur poocho?",
-        f"{get_emotion('love')} Sorry yaar, thoda busy hoon. Baad mein baat karein? 💕"
-    ]
-    return random.choice(fallback_responses)
-
-# --- ADMIN CHECK FUNCTIONS ---
-async def is_admin(chat_id: int, user_id: int) -> bool:
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
-    except:
-        return False
-
-async def can_restrict(chat_id: int, user_id: int) -> bool:
-    """Check if user can restrict members"""
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status == 'creator':
-            return True
-        if member.status == 'administrator':
-            return member.can_restrict_members
-        return False
-    except Exception as e:
-        print(f"can_restrict error: {e}")
-        return False
-
-async def can_delete(chat_id: int, user_id: int) -> bool:
-    """Check if user can delete messages"""
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status == 'creator':
-            return True
-        if member.status == 'administrator':
-            return member.can_delete_messages
-        return False
-    except Exception as e:
-        print(f"can_delete error: {e}")
-        return False
-#---BROADCAST MESSAGE---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
-    if message.from_user.id != ADMIN_ID:
+    # Only bot owner can use this
+    if not await is_bot_owner(message.from_user.id):
         await message.reply("⛔ This command is only for the bot owner!")
         return
 
@@ -754,9 +708,10 @@ async def cmd_sendall(message: Message):
         parse_mode="Markdown"
     )
 
-# Part 4: Basic Commands
+# =============================================================================
+# BASIC COMMANDS
+# =============================================================================
 
-# --- ALL COMMANDS ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -975,9 +930,10 @@ async def cmd_weather(message: Message, command: CommandObject):
     weather_info = await get_weather_real(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# Part 5: Notes, Reminders, AFK, Utilities
+# =============================================================================
+# NOTES & REMINDERS COMMANDS
+# =============================================================================
 
-# --- NOTES & REMINDERS COMMANDS ---
 @dp.message(Command("note"))
 async def cmd_note(message: Message, command: CommandObject):
     if not command.args:
@@ -1118,7 +1074,10 @@ async def cmd_reminders(message: Message):
     
     await message.reply(reminders_text, parse_mode="Markdown")
 
-# --- AFK SYSTEM ---
+# =============================================================================
+# AFK SYSTEM
+# =============================================================================
+
 @dp.message(Command("afk"))
 async def cmd_afk(message: Message, command: CommandObject):
     user_id = message.from_user.id
@@ -1136,7 +1095,10 @@ async def cmd_afk(message: Message, command: CommandObject):
         f"I'll notify others when they mention you! 💤"
     )
 
-# --- UTILITY COMMANDS ---
+# =============================================================================
+# UTILITY COMMANDS
+# =============================================================================
+
 @dp.message(Command("id"))
 async def cmd_id(message: Message):
     user_id = message.from_user.id
@@ -1160,8 +1122,7 @@ async def cmd_id(message: Message):
             f"• Chat Type: `{message.chat.type}`",
             parse_mode="Markdown"
         )
-        
-        
+
 @dp.message(Command("password"))
 async def cmd_password(message: Message, command: CommandObject):
     try:
@@ -1204,12 +1165,13 @@ async def cmd_calc(message: Message, command: CommandObject):
         )
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
-        
- #--------------- IMAGE GENERATE --------------
+
+# =============================================================================
+# IMAGE GENERATION
+# =============================================================================
 
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message):
-
     if not message.text or len(message.text.split()) < 2:
         await message.reply(
             "❌ Use like:\n`/imagine a cinematic boy standing in rain at night`",
@@ -1220,28 +1182,33 @@ async def cmd_imagine(message: Message):
     prompt = message.text.replace("/imagine", "", 1).strip()
     await message.reply("🎨 Generating image... please wait ⏳")
 
-    # 🔥 Pollinations AI (NO API KEY NEEDED)
+    # Pollinations AI (NO API KEY NEEDED)
     encoded_prompt = urllib.parse.quote(prompt)
     image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
 
-    response = requests.get(image_url, timeout=60)
+    try:
+        response = requests.get(image_url, timeout=60)
 
-    if response.status_code != 200:
-        await message.reply("❌ Image generation failed. Try again.")
-        return
+        if response.status_code != 200:
+            await message.reply("❌ Image generation failed. Try again.")
+            return
 
-    photo = BufferedInputFile(
-        response.content,
-        filename="ai_image.png"
-    )
+        photo = BufferedInputFile(
+            response.content,
+            filename="ai_image.png"
+        )
 
-    await message.reply_photo(
-        photo,
-        caption=f"🖼️ *AI Generated Image*\n\n`{prompt}`",
-        parse_mode="Markdown"
-    )
+        await message.reply_photo(
+            photo,
+            caption=f"🖼️ *AI Generated Image*\n\n`{prompt}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await message.reply(f"❌ Error generating image: {str(e)[:100]}")
 
-#-------------##############------------
+# =============================================================================
+# QR CODE GENERATOR
+# =============================================================================
 
 @dp.message(Command("qr"))
 async def cmd_qr(message: Message, command: CommandObject):
@@ -1260,7 +1227,7 @@ async def cmd_qr(message: Message, command: CommandObject):
         img.save(bio, 'PNG')
         bio.seek(0)
         
-        # FIXED: Use BufferedInputFile for aiogram 3.x
+        # Use BufferedInputFile for aiogram 3.x
         photo_file = BufferedInputFile(bio.getvalue(), filename="qrcode.png")
         
         await message.reply_photo(
@@ -1309,20 +1276,32 @@ async def cmd_translate(message: Message, command: CommandObject):
                     await message.reply("❌ Translation failed.")
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
+# =============================================================================
+# FIXED ADMIN/MODERATION COMMANDS
+# =============================================================================
 
-# Part 6: Admin Commands
-# --- ADMIN/MODERATION COMMANDS ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
     if not message.reply_to_message:
         await message.reply("Please reply to a user's message to warn them! 👆")
         return
     
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to warn users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to warn users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to warn users!")
         return
     
     target_user = message.reply_to_message.from_user
+    
+    # Don't warn admins/creators
+    if await has_admin_privileges(message.chat.id, target_user.id):
+        await message.reply("⚠️ You cannot warn an admin or creator!")
+        return
+    
     reason = command.args or "Rule violation"
     
     action_taken, warning_msg = await give_warning(
@@ -1341,11 +1320,22 @@ async def cmd_kick(message: Message):
         await message.reply("Reply to a user to kick them!")
         return
     
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to kick users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to kick users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to kick users!")
         return
     
     target = message.reply_to_message.from_user
+    
+    # Don't kick admins/creators
+    if await has_admin_privileges(message.chat.id, target.id):
+        await message.reply("⚠️ You cannot kick an admin or creator!")
+        return
+    
     try:
         await bot.ban_chat_member(message.chat.id, target.id)
         await bot.unban_chat_member(message.chat.id, target.id)
@@ -1359,11 +1349,22 @@ async def cmd_ban(message: Message, command: CommandObject):
         await message.reply("Reply to a user to ban them!")
         return
     
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to ban users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to ban users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to ban users!")
         return
     
     target = message.reply_to_message.from_user
+    
+    # Don't ban admins/creators
+    if await has_admin_privileges(message.chat.id, target.id):
+        await message.reply("⚠️ You cannot ban an admin or creator!")
+        return
+    
     reason = command.args or "Violating group rules"
     
     try:
@@ -1377,8 +1378,13 @@ async def cmd_ban(message: Message, command: CommandObject):
 
 @dp.message(Command("unban"))
 async def cmd_unban(message: Message, command: CommandObject):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to unban users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to unban users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to unban users!")
         return
     
     if not command.args:
@@ -1398,11 +1404,21 @@ async def cmd_mute(message: Message, command: CommandObject):
         await message.reply("Reply to a user to mute them!")
         return
     
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to mute users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to mute users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to mute users!")
         return
     
     target = message.reply_to_message.from_user
+    
+    # Don't mute admins/creators
+    if await has_admin_privileges(message.chat.id, target.id):
+        await message.reply("⚠️ You cannot mute an admin or creator!")
+        return
     
     # Parse duration
     duration = timedelta(hours=1)  # Default 1 hour
@@ -1447,11 +1463,17 @@ async def cmd_unmute(message: Message):
         await message.reply("Reply to a user to unmute them!")
         return
     
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to unmute users!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_restrict_members(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to unmute users! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_restrict_members' permission to unmute users!")
         return
     
     target = message.reply_to_message.from_user
+    
     try:
         await bot.restrict_chat_member(
             message.chat.id,
@@ -1468,8 +1490,13 @@ async def cmd_unmute(message: Message):
 
 @dp.message(Command("purge"))
 async def cmd_purge(message: Message, command: CommandObject):
-    if not await can_delete(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to delete messages!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_delete_messages(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to delete messages! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_delete_messages' permission to purge!")
         return
     
     try:
@@ -1500,8 +1527,13 @@ async def cmd_purge(message: Message, command: CommandObject):
 
 @dp.message(Command("pin"))
 async def cmd_pin(message: Message):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to pin messages!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_pin_messages(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to pin messages! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_pin_messages' permission to pin!")
         return
     
     if not message.reply_to_message:
@@ -1520,8 +1552,13 @@ async def cmd_pin(message: Message):
 
 @dp.message(Command("unpin"))
 async def cmd_unpin(message: Message):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission to unpin messages!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await can_pin_messages(message.chat.id, message.from_user.id):
+        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
+        if admin_type == "none":
+            await message.reply("⛔ You don't have permission to unpin messages! Only admins, creators, and bot owner can use this.")
+        else:
+            await message.reply("⛔ You need 'can_pin_messages' permission to unpin!")
         return
     
     try:
@@ -1532,8 +1569,9 @@ async def cmd_unpin(message: Message):
 
 @dp.message(Command("slowmode"))
 async def cmd_slowmode(message: Message, command: CommandObject):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await has_admin_privileges(message.chat.id, message.from_user.id):
+        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
     
     try:
@@ -1553,8 +1591,9 @@ async def cmd_slowmode(message: Message, command: CommandObject):
 
 @dp.message(Command("lock"))
 async def cmd_lock(message: Message):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await has_admin_privileges(message.chat.id, message.from_user.id):
+        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
     
     try:
@@ -1569,8 +1608,9 @@ async def cmd_lock(message: Message):
 
 @dp.message(Command("unlock"))
 async def cmd_unlock(message: Message):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await has_admin_privileges(message.chat.id, message.from_user.id):
+        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
     
     try:
@@ -1590,8 +1630,9 @@ async def cmd_unlock(message: Message):
 
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ Only admins can set welcome message!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await has_admin_privileges(message.chat.id, message.from_user.id):
+        await message.reply("⛔ Only admins, creators, and bot owner can set welcome message!")
         return
     
     if not command.args:
@@ -1603,8 +1644,9 @@ async def cmd_setwelcome(message: Message, command: CommandObject):
 
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply("⛔ Only admins can set goodbye message!")
+    # FIXED: Check for admin/creator/owner privileges
+    if not await has_admin_privileges(message.chat.id, message.from_user.id):
+        await message.reply("⛔ Only admins, creators, and bot owner can set goodbye message!")
         return
     
     if not command.args:
@@ -1627,9 +1669,10 @@ async def cmd_clear(message: Message):
     
     await message.reply(f"{get_emotion('happy')} Memory cleared! Starting fresh! 🧹✨")
 
-# Part 7:
-	
-# --- CALLBACK HANDLERS ---
+# =============================================================================
+# CALLBACK HANDLERS
+# =============================================================================
+
 @dp.callback_query(F.data.startswith("menu_"))
 async def menu_callback(callback: types.CallbackQuery):
     menu_type = callback.data.split("_")[1]
@@ -1695,7 +1738,10 @@ async def horoscope_callback(callback: types.CallbackQuery):
     await callback.message.reply(f"{get_emotion('love')} {horoscope_text}")
     await callback.answer()
 
-# --- WELCOME/GOODBYE HANDLERS ---
+# =============================================================================
+# WELCOME/GOODBYE HANDLERS
+# =============================================================================
+
 @dp.chat_member()
 async def on_chat_member_update(event: ChatMemberUpdated):
     chat_id = event.chat.id
@@ -1710,7 +1756,7 @@ async def on_chat_member_update(event: ChatMemberUpdated):
                 welcome_text = (
                     f"🎀 **Welcome to the group, {user.first_name}!** 🎀\n\n"
                     f"Hey {user.first_name}! 🤗💖\n\n"
-                    f"Main hoon **Alita** - your friend!\n\n"
+                    f"Main hoon **Alita** - is group ki AI dost!\n\n"
                     f"Enjoy karo aur masti karo! 🎀✨"
                 )
             else:
@@ -1739,7 +1785,10 @@ async def on_chat_member_update(event: ChatMemberUpdated):
             except Exception as e:
                 print(f"Goodbye message error: {e}")
 
-# --- MAIN MESSAGE HANDLER ---
+# =============================================================================
+# MAIN MESSAGE HANDLER
+# =============================================================================
+
 @dp.message()
 async def handle_all_messages(message: Message):
     if not message.from_user:
@@ -1892,9 +1941,10 @@ async def handle_voice_message(message: Message):
     except Exception as e:
         print(f"Voice handler error: {e}")
 
-# Part 8: Main function
+# =============================================================================
+# DEPLOYMENT AND MAIN FUNCTION
+# =============================================================================
 
-# --- DEPLOYMENT AND MAIN FUNCTION ---
 async def handle_ping(request):
     return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
 
@@ -1972,6 +2022,7 @@ async def main():
     print(f"• ID: {me.id}")
     print(f"• Groq API: {'✅ Connected' if client else '❌ Not Connected'}")
     print(f"• G4F Fallback: {'✅ Available' if G4F_AVAILABLE else '❌ Not Available'}")
+    print(f"• Bot Owner ID: {ADMIN_ID}")
     
     # Start bot polling
     print("\n🔄 Starting bot polling...")
