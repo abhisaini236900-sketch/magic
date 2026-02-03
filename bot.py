@@ -1278,7 +1278,7 @@ async def cmd_translate(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)[:100]}")
 # =============================================================================
-# FIXED ADMIN/MODERATION COMMANDS
+# ADMIN/MODERATION COMMANDS
 # =============================================================================
 
 @dp.message(Command("warn"))
@@ -1287,7 +1287,7 @@ async def cmd_warn(message: Message, command: CommandObject):
         await message.reply("Please reply to a user's message to warn them! 👆")
         return
     
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1321,7 +1321,7 @@ async def cmd_kick(message: Message):
         await message.reply("Reply to a user to kick them!")
         return
     
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1350,7 +1350,7 @@ async def cmd_ban(message: Message, command: CommandObject):
         await message.reply("Reply to a user to ban them!")
         return
     
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1379,7 +1379,7 @@ async def cmd_ban(message: Message, command: CommandObject):
 
 @dp.message(Command("unban"))
 async def cmd_unban(message: Message, command: CommandObject):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1405,7 +1405,7 @@ async def cmd_mute(message: Message, command: CommandObject):
         await message.reply("Reply to a user to mute them!")
         return
     
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1464,7 +1464,7 @@ async def cmd_unmute(message: Message):
         await message.reply("Reply to a user to unmute them!")
         return
     
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_restrict_members(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1491,7 +1491,7 @@ async def cmd_unmute(message: Message):
 
 @dp.message(Command("purge"))
 async def cmd_purge(message: Message, command: CommandObject):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_delete_messages(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1528,7 +1528,7 @@ async def cmd_purge(message: Message, command: CommandObject):
 
 @dp.message(Command("pin"))
 async def cmd_pin(message: Message):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_pin_messages(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1553,7 +1553,7 @@ async def cmd_pin(message: Message):
 
 @dp.message(Command("unpin"))
 async def cmd_unpin(message: Message):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await can_pin_messages(message.chat.id, message.from_user.id):
         admin_type = await get_admin_type(message.chat.id, message.from_user.id)
         if admin_type == "none":
@@ -1570,7 +1570,7 @@ async def cmd_unpin(message: Message):
 
 @dp.message(Command("slowmode"))
 async def cmd_slowmode(message: Message, command: CommandObject):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await has_admin_privileges(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
@@ -1592,7 +1592,7 @@ async def cmd_slowmode(message: Message, command: CommandObject):
 
 @dp.message(Command("lock"))
 async def cmd_lock(message: Message):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await has_admin_privileges(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
@@ -1609,7 +1609,7 @@ async def cmd_lock(message: Message):
 
 @dp.message(Command("unlock"))
 async def cmd_unlock(message: Message):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await has_admin_privileges(message.chat.id, message.from_user.id):
         await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
         return
@@ -1631,7 +1631,7 @@ async def cmd_unlock(message: Message):
 
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await has_admin_privileges(message.chat.id, message.from_user.id):
         await message.reply("⛔ Only admins, creators, and bot owner can set welcome message!")
         return
@@ -1645,7 +1645,7 @@ async def cmd_setwelcome(message: Message, command: CommandObject):
 
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
-    # FIXED: Check for admin/creator/owner privileges
+    # Check for admin/creator/owner privileges
     if not await has_admin_privileges(message.chat.id, message.from_user.id):
         await message.reply("⛔ Only admins, creators, and bot owner can set goodbye message!")
         return
