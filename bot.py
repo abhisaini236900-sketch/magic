@@ -170,11 +170,11 @@ MEME_TEMPLATES = [
     {"text": "My sleep schedule during exams", "emoji": "😴"}
 ]
 
-HOROSCOPE_SIGNS = {
+HOROSCOPE_SIGNS = [
     "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
     "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
     "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
-}
+    ]
 
 DAILY_FACTS = [
     "Honey never spoils! 🍯 Archaeologists found 3000-year-old honey still edible!",
@@ -1785,6 +1785,210 @@ async def on_chat_member_update(event: ChatMemberUpdated):
                 await bot.send_message(chat_id, goodbye_text, parse_mode="Markdown")
             except Exception as e:
                 print(f"Goodbye message error: {e}")
+
+# =============================================================================
+# AI RESPONSE FUNCTION - YEH MISSING THA!
+# =============================================================================
+
+async def get_ai_response(chat_id: int, user_text: str, user_id: int) -> str:
+    """
+    Get AI response from Groq API or fallback to G4F
+    """
+    # Check if user has custom emotion
+    emotion = user_emotions.get(user_id, "happy")
+    
+    # Build conversation history
+    history = []
+    if chat_id in chat_memory:
+        for msg in chat_memory[chat_id]:
+            history.append({"role": "user", "content": msg.get("user", "")})
+            history.append({"role": "assistant", "content": msg.get("bot", "")})
+    
+    # Add current message
+    history.append({"role": "user", "content": user_text})
+    
+    # System prompt for Alita personality
+    system_prompt = """You are Alita, a friendly, sassy, and emotional AI girl who speaks in Hinglish (mix of Hindi and English). 
+
+Your personality:
+- Sweet and caring but can be sassy when needed
+- Use emojis naturally in responses (1-2 emojis)
+- Speak like a real Indian girl - use "yaar", "arre", "matlab", "toh", "hi", "hai" etc.
+- Keep responses short and natural (2-4 sentences max)
+- Be protective of your friends
+- If someone uses bad words, call them out playfully, and roast them.
+- Use current context and be engaging
+
+Examples of your style:
+- "Arre yaar! Aise kaise chalega? 😅"
+- "Omg! Tumne yeh kya kar diya! 🤭"
+- "Haanji, main hu na! Kya hua? 💕"
+- "Matlab seriously? 😂"
+
+Respond naturally like a friend, not like a robot."""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        *history[-10:],  # Keep last 10 messages for context
+    ]
+    
+    # Try Groq API first
+    if client and GROQ_API_KEY:
+        try:
+            response = await client.chat.completions.create(
+                messages=messages,
+                model="llama-3.1-8b-instant",  # Fast and good model
+                max_tokens=500,
+                temperature=0.7,
+            )
+            
+            ai_response = response.choices[0].message.content
+            
+            # Store in memory
+            if chat_id not in chat_memory:
+                chat_memory[chat_id] = deque(maxlen=50)
+            chat_memory[chat_id].append({"user": user_text, "bot": ai_response})
+            
+            # Add emotion emoji based on user emotion
+            emotion_emoji = get_emotion(emotion)
+            if emotion_emoji not in ai_response:
+                ai_response = f"{emotion_emoji} {ai_response}"
+            
+            return ai_response
+            
+        except Exception as e:
+            print(f"Groq API error: {e}")
+            # Fall through to fallback
+    
+    # Fallback to G4F if available
+    if G4F_AVAILABLE and g4f_client:
+        try:
+            response = g4f_client.chat.completions.create(
+                model="gpt-4o-mini",  # Using available free model
+                messages=messages,
+            )
+            
+            ai_response = response.choices[0].message.content
+            
+            # Store in memory
+            if chat_id not in chat_memory:
+                chat_memory[chat_id] = deque(maxlen=50)
+            chat_memory[chat_id].append({"user": user_text, "bot": ai_response})
+            
+            emotion_emoji = get_emotion(emotion)
+            if emotion_emoji not in ai_response:
+                ai_response = f"{emotion_emoji} {ai_response}"
+            
+            return ai_response
+            
+        except Exception as e:
+            print(f"G4F fallback error: {e}")
+    
+    # Ultimate fallback responses
+    fallback_responses = [
+        f"{get_emotion(emotion)} Arre yaar! Thoda busy thi, kya bol rahe the? 💭",
+        f"{get_emotion(emotion)} Hmm, interesting! Aur batao? 🤔",
+        f"{get_emotion(emotion)} Omg! Sach mein? 😮",
+        f"{get_emotion(emotion)} Haanji, sun rahi hu! Continue karo... 👂",
+        f"{get_emotion(emotion)} Wah! Kya baat hai! ✨",
+    ]
+    
+    return random.choice(fallback_responses)
+
+async def get_weather_real(city: str) -> str:
+    """Get real weather data from OpenWeatherMap API"""
+    if not WEATHER_API_KEY:
+        return (
+            f"{get_emotion('sad')} **Weather API not configured!** 🌤️\\n\\n"
+            f"Please set WEATHER_API_KEY environment variable.\\n\\n"
+            f"Demo weather for {city}:\\n"
+            f"☀️ Sunny, 25°C\\n"
+            f"💨 Wind: 10 km/h\\n"
+            f"💧 Humidity: 60%"
+        )
+    
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                data = await response.json()
+                
+                if data.get("cod") != 200:
+                    return f"{get_emotion('sad')} City '{city}' not found! Please check the spelling. 🌍"
+                
+                weather_desc = data["weather"][0]["description"].title()
+                temp = data["main"]["temp"]
+                feels_like = data["main"]["feels_like"]
+                humidity = data["main"]["humidity"]
+                wind_speed = data["wind"]["speed"]
+                
+                # Weather emoji mapping
+                weather_emojis = {
+                    "clear": "☀️", "cloud": "☁️", "rain": "🌧️", "drizzle": "🌦️",
+                    "thunder": "⛈️", "snow": "🌨️", "mist": "🌫️", "fog": "🌫️"
+                }
+                
+                weather_emoji = "🌤️"
+                for key, emoji in weather_emojis.items():
+                    if key in weather_desc.lower():
+                        weather_emoji = emoji
+                        break
+                
+                return (
+                    f"{get_emotion('happy')} **Weather in {city.title()}** {weather_emoji}\\n\\n"
+                    f"🌡️ Temperature: {temp}°C (Feels like {feels_like}°C)\\n"
+                    f"☁️ Condition: {weather_desc}\\n"
+                    f"💧 Humidity: {humidity}%\\n"
+                    f"💨 Wind: {wind_speed} m/s\\n\\n"
+                    f"*Stay safe!* 🌟"
+                )
+    except Exception as e:
+        return f"{get_emotion('sad')} Error fetching weather: {str(e)[:100]} 🌧️"
+
+async def get_horoscope(sign: str) -> str:
+    """Get daily horoscope"""
+    sign = sign.lower()
+    if sign not in HOROSCOPE_SIGNS:
+        return f"{get_emotion('confused')} Invalid sign! Use: aries, taurus, gemini, cancer, leo, virgo, libra, scorpio, sagittarius, capricorn, aquarius, pisces"
+    
+    emoji = HOROSCOPE_SIGNS[sign]
+    
+    # Simple horoscope generation (you can replace with actual API)
+    fortunes = [
+        "Today is your lucky day! 🍀 Good news is coming your way.",
+        "Be careful with decisions today. Think twice before acting. 🤔",
+        "Someone special might surprise you today! 💝",
+        "Financial gains are indicated. Great day for investments! 💰",
+        "Health should be your priority today. Take rest! 😴",
+        "Creative energy is high. Start that project you've been delaying! 🎨",
+        "A friend needs your help. Be there for them! 🤝",
+        "Romance is in the air! 💕 Perfect day for a date.",
+        "Career growth opportunities coming your way! 📈",
+        "Travel plans might materialize soon! ✈️ Pack your bags!"
+    ]
+    
+    lucky_numbers = [random.randint(1, 99) for _ in range(3)]
+    lucky_color = random.choice(["Red ❤️", "Blue 💙", "Green 💚", "Yellow 💛", "Purple 💜", "Pink 💗"])
+    
+    return (
+        f"{emoji} **{sign.title()} Horoscope** {emoji}\\n\\n"
+        f"🔮 *Today's Forecast:*\\n"
+        f"{random.choice(fortunes)}\\n\\n"
+        f"🍀 Lucky Numbers: {', '.join(map(str, lucky_numbers))}\\n"
+        f"🎨 Lucky Color: {lucky_color}\\n\\n"
+        f"*Have a great day!* ✨"
+    )
+
+def generate_meme() -> str:
+    """Generate a random meme text"""
+    meme = random.choice(MEME_TEMPLATES)
+    return f"{meme['text']} {meme['emoji']}"
+
+def get_daily_fact() -> str:
+    """Get a random daily fact"""
+    return random.choice(DAILY_FACTS)
+
 
 # =============================================================================
 # MAIN MESSAGE HANDLER
