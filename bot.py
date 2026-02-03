@@ -170,11 +170,11 @@ MEME_TEMPLATES = [
     {"text": "My sleep schedule during exams", "emoji": "😴"}
 ]
 
-HOROSCOPE_SIGNS = [
+HOROSCOPE_SIGNS = {
     "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
     "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
     "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
-    ]
+}
 
 DAILY_FACTS = [
     "Honey never spoils! 🍯 Archaeologists found 3000-year-old honey still edible!",
