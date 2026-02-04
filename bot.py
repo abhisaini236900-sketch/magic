@@ -541,18 +541,24 @@ async def generate_image(prompt: str) -> Optional[bytes]:
     try:
         # Clean and encode prompt
         clean_prompt = prompt.replace(" ", "%20")
-        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=512&height=512&nologo=true"
-        
+        url = (
+            f"https://image.pollinations.ai/prompt/{clean_prompt}"
+            f"?width=512&height=512&nologo=true"
+        )
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=30) as response:
                 if response.status == 200:
-    image_bytes = await response.read()
-    if not image_bytes or len(image_bytes) < 1000:
-        return None
-    return image_bytes
+                    image_bytes = await response.read()
+
+                    if not image_bytes or len(image_bytes) < 1000:
+                        return None
+
+                    return image_bytes
                 else:
                     print(f"Image API failed with status: {response.status}")
                     return None
+
     except asyncio.TimeoutError:
         print("Image generation timeout")
         return None
