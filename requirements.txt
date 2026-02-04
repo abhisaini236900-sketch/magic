@@ -7,3 +7,4 @@ Pillow>=10.2.0
 pydub>=0.25.1
 SpeechRecognition>=3.10.0
 python-dotenv>=1.0.0
+qrcode>=7.4.2
