@@ -8,6 +8,7 @@ import io
 import hashlib
 import string
 import qrcode
+import sqlite3
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -28,6 +29,22 @@ from apscheduler.triggers.cron import CronTrigger
 import aiohttp
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
+
+conn = sqlite3.connect("users.db")
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY
+)
+""")
+conn.commit()
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS groups (
+    chat_id INTEGER PRIMARY KEY
+)
+""")
+conn.commit()
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
@@ -529,7 +546,10 @@ async def generate_image(prompt: str) -> Optional[bytes]:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=30) as response:
                 if response.status == 200:
-                    return await response.read()
+    image_bytes = await response.read()
+    if not image_bytes or len(image_bytes) < 1000:
+        return None
+    return image_bytes
                 else:
                     print(f"Image API failed with status: {response.status}")
                     return None
@@ -856,6 +876,14 @@ def get_daily_fact():
 
 # --- COMMANDS ---
 @dp.message(Command("start"))
+async def start_cmd(message: Message):
+    user_id = message.from_user.id
+
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    conn.commit()
+
+    await message.reply("👋 Welcome!")
+
 async def cmd_start(message: Message):
     started_users.add(message.from_user.id)
     
@@ -995,6 +1023,15 @@ async def cmd_help(message: Message):
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+    
+@dp.message(F.chat.type.in_({"group", "supergroup"}))
+async def save_group(message: Message):
+    chat_id = message.chat.id
+    cursor.execute(
+        "INSERT OR IGNORE INTO groups (chat_id) VALUES (?)",
+        (chat_id,)
+    )
+    conn.commit()
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
@@ -1147,7 +1184,7 @@ async def cmd_weather(message: Message, command: CommandObject):
     weather_info = await get_real_weather(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# --- IMAGE GENERATION COMMAND (FIXED) ---
+# --- IMAGE GENERATION COMMAND (STABLE & FIXED) ---
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message, command: CommandObject):
     if not command.args:
@@ -1161,22 +1198,53 @@ async def cmd_imagine(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     prompt = command.args
-    status_msg = await message.reply(f"{get_emotion('happy')} 🎨 Generating image...\nPrompt: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
-    
+
+    # Telegram ko bata do photo aa rahi hai
+    await bot.send_chat_action(message.chat.id, "upload_photo")
+
+    status_msg = await message.reply(
+        f"{get_emotion('happy')} 🎨 Generating image...\n"
+        f"Prompt: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+    )
+
     try:
         image_data = await generate_image(prompt)
-        if image_data:
+
+        # ❗ IMAGE VALIDATION
+        if not image_data or len(image_data) < 1000:
+            await status_msg.edit_text(
+                f"{get_emotion('crying')} Image generate nahi ho paayi 😓\n"
+                f"Prompt thoda change karke try karo."
+            )
+            return
+
+        # ❗ TELEGRAM SEND
+        try:
             await status_msg.delete()
             await message.reply_photo(
                 BufferedInputFile(image_data, filename="generated_image.png"),
-                caption=f"{get_emotion('love')} **Generated Image:**\n📝 Prompt: {prompt}\n\n🎨 Powered by Pollinations AI"
+                caption=(
+                    f"{get_emotion('love')} **Generated Image:**\n"
+                    f"📝 Prompt: {prompt}\n\n"
+                    f"🎨 Powered by Pollinations AI"
+                ),
+                parse_mode="Markdown"
             )
-        else:
-            await status_msg.edit_text(f"{get_emotion('crying')} Failed to generate image. Please try again with a different prompt!")
+
+        except Exception:
+            await status_msg.edit_text(
+                f"{get_emotion('crying')} Telegram image send fail ho gayi 🤕\n"
+                f"Prompt dubara try karo."
+            )
+
     except Exception as e:
-        await status_msg.edit_text(f"{get_emotion('crying')} Error generating image. Try again later!")
+        print("Imagine command error:", e)
+        await status_msg.edit_text(
+            f"{get_emotion('crying')} Image generation error 😢\n"
+            f"Thodi der baad try karo."
+        )
 
 # --- QR CODE COMMAND ---
 @dp.message(Command("qr"))
@@ -1948,31 +2016,39 @@ async def cmd_sendall(message: Message):
     
     status_msg = await message.reply(f"📤 Sending to {len(started_users)} users... Please wait!")
     
-    for user_id in started_users:
-        try:
-            if target_msg.text:
-                await bot.send_message(user_id, f"😊\n\n{target_msg.text}")
-            elif target_msg.photo:
-                await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "📢 Message from Admin")
-            elif target_msg.video:
-                await bot.send_video(user_id, target_msg.video.file_id, caption=target_msg.caption or "📢 Message from Admin")
-            elif target_msg.sticker:
-                await bot.send_sticker(user_id, target_msg.sticker.file_id)
-            elif target_msg.document:
-                await bot.send_document(user_id, target_msg.document.file_id, caption=target_msg.caption or "📢 Message from Admin")
-            elif target_msg.voice:
-                await bot.send_voice(user_id, target_msg.voice.file_id, caption=target_msg.caption or "📢 Message from Admin")
-            elif target_msg.animation:
-                await bot.send_animation(user_id, target_msg.animation.file_id, caption=target_msg.caption or "📢 Message from Admin")
-            else:
-                await bot.copy_message(user_id, message.chat.id, target_msg.message_id)
-            
-            sent_count += 1
-            await asyncio.sleep(0.1)
-            
-        except Exception as e:
-            failed_count += 1
-            continue
+cursor.execute("SELECT user_id FROM users")
+all_users = cursor.fetchall()
+
+cursor.execute("SELECT chat_id FROM groups")
+all_groups = cursor.fetchall()
+for (user_id,) in all_users:
+    try:
+        await bot.copy_message(
+            chat_id=user_id,
+            from_chat_id=message.chat.id,
+            message_id=target_msg.message_id
+        )
+        sent_count += 1
+        await asyncio.sleep(0.05)
+    except:
+        failed_count += 1
+        cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        conn.commit()
+        
+for (group_id,) in all_groups:
+    try:
+        await bot.copy_message(
+            chat_id=group_id,
+            from_chat_id=message.chat.id,
+            message_id=target_msg.message_id
+        )
+        sent_count += 1
+        await asyncio.sleep(0.05)
+    except:
+        failed_count += 1
+        cursor.execute("DELETE FROM groups WHERE chat_id = ?", (group_id,))
+        conn.commit()
+    continue
     
     await status_msg.edit_text(
         f"✅ **Broadcast Complete!**\n\n"
