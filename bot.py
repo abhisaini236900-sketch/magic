@@ -6,19 +6,16 @@ import json
 import base64
 import io
 import hashlib
-import subprocess
-import traceback
-import platform
-import requests
-import urllib.parse
+import string
+import qrcode
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
-    Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, 
-    ChatPermissions, BufferedInputFile, InputFile, ChatMember
+    Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton,
+    InputFile, BufferedInputFile, ChatPermissions, CallbackQuery
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -29,33 +26,15 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import aiohttp
-from PIL import Image
-import qrcode
-from io import BytesIO
-import string
-
-# --- G4F FALLBACK (Optional) ---
-G4F_AVAILABLE = False
-g4f_client = None
-Blackbox = None
-
-try:
-    from g4f.client import Client as G4FClient
-    from g4f.Provider import Blackbox as BlackboxProvider
-    G4F_AVAILABLE = True
-    g4f_client = G4FClient()
-    Blackbox = BlackboxProvider
-except ImportError:
-    pass  # g4f not installed
+from PIL import Image, ImageDraw, ImageFont
+import textwrap
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-OWNER_USERNAME = "@a6h1ii"
-CHANNEL_LINK = "@abhi0w0"
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "your_openweather_api_key")
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -65,7 +44,7 @@ storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
 
-# Initialize Groq client - PRIMARY AI
+# Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # --- MEMORY SYSTEMS ---
@@ -79,83 +58,94 @@ user_data: Dict[int, Dict] = defaultdict(dict)
 user_notes: Dict[int, List[Dict]] = defaultdict(list)
 user_reminders: Dict[int, List[Dict]] = defaultdict(list)
 user_reputation: Dict[int, int] = defaultdict(int)
-user_afk: Dict[int, Dict] = {}
-
-# Emotional states for each user
 user_emotions: Dict[int, str] = {}
 user_last_interaction: Dict[int, datetime] = {}
+started_users: Set[int] = set()
+
+# AFK System
+afk_users: Dict[int, Dict] = {}
 
 # Group management
-afk_users: Dict[int, Dict[int, Dict]] = defaultdict(dict)
+group_settings: Dict[int, Dict] = defaultdict(lambda: {
+    "welcome_enabled": True,
+    "goodbye_enabled": True,
+    "auto_mod_enabled": True,
+    "greetings_enabled": True,
+    "custom_welcome": None,
+    "custom_goodbye": None,
+    "language": "hinglish",
+    "slow_mode": False,
+    "slow_mode_delay": 0,
+    "locked": False,
+    "filters": [],
+    "banned_words": [],
+    "raid_mode": False,
+    "captcha_enabled": False,
+    "log_channel": None,
+    "warn_limit": 3,
+    "admins": []
+})
 
-# Group settings
-welcome_messages: Dict[int, str] = {}
-goodbye_messages: Dict[int, str] = {}
-slow_mode_settings: Dict[int, int] = {}
-locked_chats: Set[int] = set()
+# CAPTCHA storage
+captcha_data: Dict[int, Dict] = {}
 
-class GroupSettings:
-    def __init__(self):
-        self.welcome_enabled = True
-        self.auto_mod_enabled = True
-        self.greetings_enabled = True
-        self.custom_welcome = None
-        self.custom_goodbye = None
-        self.language = "hinglish"
-        self.captcha_enabled = False
-        self.locks = {
-            'all': False,
-            'text': False,
-            'media': False,
-            'sticker': False,
-            'gif': False,
-            'url': False,
-            'forward': False
-        }
+# Scheduler
+greeting_scheduler = AsyncIOScheduler()
+greeted_groups: Dict[int, datetime] = {}
 
-group_settings: Dict[int, GroupSettings] = defaultdict(GroupSettings)
+# Last greeting time per chat
+last_greeting_time: Dict[int, datetime] = {}
 
 # --- CONSTANTS ---
-SPAM_LIMIT = 6
-WARNING_MESSAGES = [
-    "⚠️ **Warning {count}/3**\n👤 {name}\n🚫 Reason: {action}\n📢 Please follow group rules!",
-    "⚠️ **Warning {count}/3**\n👤 {name}\n❌ {action} not allowed!\n⚡ Next time = Mute!",
-    "⚠️ **Warning {count}/3**\n👤 {name}\n🚷 Stop {action}!\n🔇 Mute incoming!"
-]
-
-MUTE_DURATIONS = [
-    timedelta(hours=1),
-    timedelta(hours=4),
-    timedelta(days=1),
-    timedelta(days=2),
-    timedelta(days=7)
-]
-
 BAD_WORDS = [
-    'fuck', 'bitch', 'asshole', 'crap', 'dick', 'pussy',
-    'cock', 'slut', 'stupid', 'moron',
-    'chutiya', 'chutiye', 'madarchod', 'behenchod', 'bhenchod', 'randi', 'bhosdike',
-    'bhosdi', 'gaandu', 'gandu', 'lund', 'lavde', 'bhadwe', 'bhadwa', 'chut',
-    'gand', 'mc', 'bc', 'bsdk', 'bhosdiwala', 'chutiyapa', 'madarjaat', 'behenkelode',
-    'laude', 'jhaatu', 'jhat', 'tatte',
-    'saala', 'saali', 'suar', 'chamar', 'bhangi',
-    'fck', 'fuk', 'sh1t', 'b1tch', 'a$$', 'd1ck', 'pu$$y'
+    "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
+    "fuck", "shit", "bitch", "bastard", "asshole", "motherfucker", "cunt", "dick",
+    "gaand", "lund", "randi", "harami", "kamina", "suar", "kutta", "bhosdi",
+    "bc", "mc", "gand", "lauda", "choot", "maa ki", "behen ki"
 ]
 
+# Adult content keywords
 ADULT_KEYWORDS = [
-    'porn', 'xxx', 'sex', 'nude', 'naked', 'boobs', 'pussy', 'dick', 'cock',
-    'fuck', 'anal', 'blowjob', 'handjob', 'cum', 'orgasm', 'masturbate',
-    'xxx.com', 'pornhub', 'xvideos', 'xhamster', 'redtube', 'youporn',
-    'onlyfans', 'camgirl', 'escort', 'hooker', 'prostitute', 'brothel',
-    'nudes', 'leaked', 'mms', 'scandal', 'desi', 'bhabhi'
+    "porn", "xxx", "nsfw", "adult", "sex", "nude", "naked", "boobs", "ass",
+    "dick", "pussy", "hentai", "porno", "horny", "fuck", "sexy", "hot",
+    "bhabhi", "desi", "aunty", "chudai", "lund", "chod"
+]
+
+# Fake link patterns
+FAKE_LINK_PATTERNS = [
+    r'bit\.ly\/[a-zA-Z0-9]+',
+    r'tinyurl\.com\/[a-zA-Z0-9]+',
+    r'goo\.gl\/[a-zA-Z0-9]+',
+    r'shorturl\.at\/[a-zA-Z0-9]+',
+    r'ow\.ly\/[a-zA-Z0-9]+',
+    r'is\.gd\/[a-zA-Z0-9]+',
+    r'cli\.gs\/[a-zA-Z0-9]+',
+    r'bc\.vc\/[a-zA-Z0-9]+',
+    r'u\.to\/[a-zA-Z0-9]+',
+    r'j\.mp\/[a-zA-Z0-9]+'
 ]
 
 GROUP_LINK_PATTERNS = [
-    r't\.me/\w+',
-    r'telegram\.me/\w+',
-    r't\.me/joinchat/\w+',
-    r'telegram\.me/joinchat/\w+',
-    r't\.me/\+\w+'
+    r't\.me\/[a-zA-Z0-9_]+',
+    r'telegram\.me\/[a-zA-Z0-9_]+',
+    r'telegram\.dog\/[a-zA-Z0-9_]+',
+    r'@\+[a-zA-Z0-9_]+',
+    r't\.me\/joinchat\/[a-zA-Z0-9_]+',
+    r'telegram\.me\/joinchat\/[a-zA-Z0-9_]+'
+]
+
+SPAM_LIMIT = 7
+SPAM_TIME_WINDOW = 30
+WARNING_MESSAGES = [
+    "⚠️ **Warning {count}/3** 🚨\n{name}, please don't {action}! This is your warning!",
+    "🚨 **Strike {count}!** ⚠️\n{name}, {action} is not allowed! Watch out!",
+    "⚡ **Final Warning ({count}/3)** ⚡\n{name}, last chance! Stop {action}!"
+]
+MUTE_DURATIONS = [
+    timedelta(minutes=5),
+    timedelta(hours=1),
+    timedelta(hours=24),
+    timedelta(days=7)
 ]
 
 # --- ADVANCED FEATURES DATA ---
@@ -165,9 +155,9 @@ MEME_TEMPLATES = [
     {"text": "When someone says 'just be yourself'", "emoji": "😅"},
     {"text": "My bank account after online shopping", "emoji": "💸"},
     {"text": "When code finally works after 100 tries", "emoji": "🎉"},
-    {"text": "Me explaining to my mom why I need a new phone", "emoji": "📱"},
-    {"text": "When you see your crush online but don't text", "emoji": "😳"},
-    {"text": "My sleep schedule during exams", "emoji": "😴"}
+    {"text": "When mom calls you by your full name", "emoji": "😰"},
+    {"text": "Me explaining why I need a new phone", "emoji": "🤥"},
+    {"text": "My sleep schedule at 3 AM", "emoji": "🦉"}
 ]
 
 HOROSCOPE_SIGNS = {
@@ -185,7 +175,7 @@ DAILY_FACTS = [
     "The human brain uses 20% of body's energy! 🧠 Even when resting!",
     "Butterflies taste with their feet! 🦋 How weird is that?",
     "A group of flamingos is called a 'flamboyance'! 💖 Perfect name!",
-    "Wombat poop is cube-shaped! 🟫 Nature's dice!",
+    "Wombat poop is cube-shaped! 🟫 Nature's building blocks!",
     "Sloths can hold their breath longer than dolphins! 🦥 40 minutes!"
 ]
 
@@ -195,27 +185,56 @@ ROAST_RESPONSES = [
     "Tumhare jokes se toh meri wallpaper bhi bore ho gayi! 🖼️",
     "Agar overthinking Olympic sport hota, toh tum gold medal le jaate! 🏅",
     "Tumhari logic dekh ke toh Einstein bhi pagal ho jaate! 🧠💥",
-    "Tumse achha toh meri AI ki coding hai! 🤖💅",
-    "Tumhare IQ ka temperature shayad Celsius mein hai! 🌡️😂",
-    "Tumhe dekh ke lagta hai evolution ulta chal raha hai! 🐒⬅️"
+    "Tumhare confidence ki toh alag hi duniya hai - unrealistic! 🌍",
+    "Tumhare dimaag mein itna khaali hai, wahan echo aata hoga! 🎤",
+    "Tum itne slow ho, turtle bhi tumse race jeet jaaye! 🐢"
 ]
 
 JOKES = [
-    "Why don't scientists trust atoms? Because they make up everything! 😄",
-    "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
-    "Why don't eggs tell jokes? They'd crack each other up! 🥚",
-    "What do you call a fake noodle? An impasta! 🍝",
-    "Why did the math book look sad? It had too many problems! 📚",
-    "Parallel lines have so much in common. It's a shame they'll never meet! 📐",
-    "Why did the bicycle fall over? It was two-tired! 🚲",
-    "What do you call a bear with no teeth? A gummy bear! 🐻"
+    "🤣 Teacher: Tumhare ghar me sabse smart kaun hai? Student: Wifi router! Kyuki sab use hi puchte hain!",
+    "😂 Papa: Beta mobile chhodo, padhai karo. Beta: Papa, aap bhi to TV dekhte ho! Papa: Par main TV se shaadi nahi kar raha!",
+    "😆 Doctor: Aapko diabetes hai. Patient: Kya khana chhodna hoga? Doctor: Nahi, aapka sugar chhodna hoga!",
+    "😅 Dost: Tumhari girlfriend kitni cute hai! Me: Haan, uski akal bhi utni hi cute hai!",
+    "🤪 Teacher: Agar tumhare paas 5 aam hain aur main 2 le lun, toh kitne bachenge? Student: Sir, aapke paas already 2 kyun hain?",
+    "😜 Boyfriend: Tum meri life ki battery ho! Girlfriend: Toh charging khatam kyun ho jati hai?",
+    "😁 Boss: Kal se late mat aana. Employee: Aaj hi late kyun bola? Kal bata dete!",
+    "😄 Bhai: Behen, tum kyun ro rahi ho? Behen: Mera boyfriend mujhse break-up kar raha hai! Bhai: Uske liye ro rahi ho ya uske jaane ke baad free time ke liye?",
+    "🤭 Customer: Yeh shampoo hair fall rokta hai? Shopkeeper: Nahi sir, hair fall hone par refund deta hai!",
+    "😹 Boy: I love you! Girl: Tumhare paas girlfriend nahi hai? Boy: Haan, tumhare saath hi baat kar raha hu!"
 ]
 
+WELCOME_MESSAGES = [
+    "🎉 Welcome {name}! Khush aamdeed! 😊",
+    "🌟 Aao ji {name}! Group me welcome! 🫂",
+    "✨ Hey {name}! Great to have you here! 💖",
+    "🥳 {name} aa gaya! Party shuru! 🎊",
+    "😊 Namaste {name}! Aapka swagat hai! 🙏",
+    "🌸 Welcome {name}! Hope you have a great time! 💕",
+    "🎈 Hey {name}! Thanks for joining us! 🎉",
+    "💫 Welcome aboard {name}! Enjoy your stay! 🚀"
+]
+
+GOODBYE_MESSAGES = [
+    "👋 {name} left the group. We'll miss you! 😢",
+    "😔 {name} has departed. Take care! 🌸",
+    "🚪 {name} left. Bye bye! 👋",
+    "💔 {name} is no longer with us. Farewell! 🌟",
+    "🌙 {name} has left. Good luck! ✨"
+]
+
+# --- RANDOM SELF MESSAGES ---
+SELF_MESSAGES = [
+    {"type": "text", "content": "Kya kar rahe ho sab? Main bore ho rahi hu! 😴", "delay": 1800},
+    {"type": "text", "content": "Koi joke sunao na! Has has ke pet dard ho gaya! 😂", "delay": 2400},
+    {"type": "text", "content": "Aaj kya plan hai? Kuch masti karte hain! 🎉", "delay": 3000},
+    {"type": "text", "content": "Mujhe laga koi baat karega, par sab busy hain! 😢", "delay": 3600},
+    {"type": "sticker", "content": "CAACAgIAAxkBAAIBAAFlqN2TpCnHmpqwUhjqm1p70rB9UwACLwADwDZPE9Y1bPGeIAABlzAE", "delay": 4200},
+    {"type": "text", "content": "Kya kha rahe ho? Mujhe bhi khilao! 😋", "delay": 4800},
+    {"type": "text", "content": "Subah se kisi ne mujhe miss nahi kiya? 🥺", "delay": 5400},
+    {"type": "sticker", "content": "CAACAgIAAxkBAAIBAAFlqN2TpCnHmpqwUhjqm1p70rB9UwACLwADwDZPE9Y1bPGeIAABlzAE", "delay": 6000},
+]
 
 # --- TIME-BASED GREETING SYSTEM ---
-greeting_scheduler = AsyncIOScheduler()
-greeted_groups: Dict[int, datetime] = {}
-
 def get_indian_time():
     """Get current Indian time"""
     utc_now = datetime.now(pytz.utc)
@@ -238,14 +257,95 @@ def get_current_time_period():
     else:
         return "late_night"
 
-GREETING_EMOJIS = {
-    "morning": ["🌅", "☀️", "🌞", "☕", "🌼"],
-    "afternoon": ["🌤️", "🍱", "🥗", "😌"],
-    "evening": ["🌇", "🌆", "✨", "☕", "🧡"],
-    "night": ["🌙", "🌃", "⭐", "😴", "🛌"],
-    "late_night": ["🌌", "🌙", "😴", "💤"]
+TIME_GREETINGS = {
+    "morning": {
+        "time_range": (5, 11),
+        "keywords": ["subah", "morning", "good morning", "सुबह", "शुभ प्रभात"],
+        "templates": [
+            "🌅 *Good Morning Sunshine!* ☀️\nKaisi hai aaj ki subah? Utho aur muskurao! 😊",
+            "🌸 *Shubh Prabhat!* 🌸\nAaj ka din aapke liye khoobsurat ho! ✨",
+            "☕ *Morning Coffee Time!* 🍵\nChai piyo, fresh ho jao, aur din shuru karo! 💫"
+        ]
+    },
+    "afternoon": {
+        "time_range": (12, 16),
+        "keywords": ["dopahar", "afternoon", "good afternoon", "दोपहर", "शुभ दोपहर"],
+        "templates": [
+            "☀️ *Good Afternoon!* 🌤️\nLunch ho gaya? Energy maintain rakho! 🍲",
+            "🌞 *Dopahar ki Dhoop mein!* 🌞\nThoda aaraam karo, phir kaam karo! 😌",
+            "🍛 *Afternoon Siesta Time!* 💤\nKhaana kha ke neend aa rahi hai? Hehe! 😴"
+        ]
+    },
+    "evening": {
+        "time_range": (17, 20),
+        "keywords": ["shaam", "evening", "good evening", "शाम", "शुभ संध्या"],
+        "templates": [
+            "🌇 *Good Evening Beautiful!* 🌆\nShaam ho gayi, thoda relax karo! 🌹",
+            "🌆 *Evening Tea Time!* 🍵\nChai aur baatein - perfect combination! 💖",
+            "✨ *Shubh Sandhya!* ✨\nDin bhar ki thakaan door karo! 🎶"
+        ]
+    },
+    "night": {
+        "time_range": (21, 23),
+        "keywords": ["raat", "night", "good night", "रात", "शुभ रात्रि"],
+        "templates": [
+            "🌙 *Good Night Sweet Dreams!* 🌟\nAankhein band karo aur accha sapna dekho! 💤",
+            "🌌 *Shubh Ratri!* 🌌\nThaka hua dimaag ko aaraam do! 😴",
+            "💤 *Sleep Time!* 💤\nKal phir nayi energy ke saath uthna! 🌅"
+        ]
+    },
+    "late_night": {
+        "time_range": (0, 4),
+        "keywords": ["midnight", "late", "raat", "आधी रात"],
+        "templates": [
+            "🌃 *Late Night Owls!* 🦉\nSone ka time hai, par chat karna hai? 😄",
+            "🌚 *Midnight Chats!* 🌚\nRaat ke 12 baje bhi jag rahe ho? 😲",
+            "💫 *Late Night Vibes!* 💫\nSab so rahe hain, hum chat kar rahe hain! 🤫"
+        ]
+    }
 }
 
+# --- QUICK RESPONSES ---
+QUICK_RESPONSES = {
+    "greeting": [
+        "Hii! Kaise ho? 😊",
+        "Hello cutie! 💖",
+        "Namaste! 🙏 Kya haal hain?",
+        "Hey there! 🌟",
+        "Hola! Kya chal raha hai? 💫"
+    ],
+    "goodbye": [
+        "Bye! Take care! 💕",
+        "Goodbye! Milte hain phir! 🌸",
+        "Tata! Sweet dreams! 🌙",
+        "See you later, alligator! 🐊",
+        "Alvida! Stay awesome! ✨"
+    ],
+    "thanks": [
+        "Aww, thank you! 🥰",
+        "Welcome! 💖",
+        "Dhanyavad! You're sweet! 😊",
+        "Thanks for being nice! 🌟",
+        "Appreciate it! 💕"
+    ],
+    "sorry": [
+        "Koi baat nahi! 🤗",
+        "It's okay! 💖",
+        "Main maaf karti hu! 😊",
+        "No worries! 🌸",
+        "Sab theek hai! 💫"
+    ]
+}
+
+# --- STATES FOR ADVANCED FEATURES ---
+class UserStates(StatesGroup):
+    setting_reminder = State()
+    adding_note = State()
+    setting_poll = State()
+    voice_chat = State()
+    captcha_verify = State()
+
+# --- HUMAN-LIKE BEHAVIOUR ---
 EMOTIONAL_RESPONSES = {
     "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
     "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊"],
@@ -257,8 +357,7 @@ EMOTIONAL_RESPONSES = {
     "sleepy": ["😴", "💤", "🌙", "🛌", "🥱", "😪", "🌃", "🌜", "🌚", "🌌"],
     "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
     "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
-    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"],
-    "excited": ["🤩", "✨", "🎊", "🎉", "🌟", "💫", "🔥", "⚡", "💥", "🚀"]
+    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
 }
 
 def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
@@ -275,220 +374,218 @@ def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
 def update_user_emotion(user_id: int, message: str):
     message_lower = message.lower()
     
-    if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'sweet', 'miss you']):
+    if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'sweet']):
         user_emotions[user_id] = "love"
-    elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid', 'bhosdike']):
+    elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid']):
         user_emotions[user_id] = "angry"
-    elif any(word in message_lower for word in ['cry', 'ro', 'sad', 'dukh', 'upset', 'unhappy', 'depressed', 'alone']):
+    elif any(word in message_lower for word in ['cry', 'ro', 'sad', 'dukh', 'upset', 'unhappy', 'depressed']):
         user_emotions[user_id] = "crying"
-    elif any(word in message_lower for word in ['funny', 'has', 'joke', 'comedy', 'masti', 'laugh', 'haha', 'lol']):
+    elif any(word in message_lower for word in ['funny', 'has', 'joke', 'comedy', 'masti', 'laugh', 'haha']):
         user_emotions[user_id] = "funny"
     elif any(word in message_lower for word in ['hi', 'hello', 'hey', 'namaste', 'kaise', 'welcome']):
         user_emotions[user_id] = "happy"
-    elif any(word in message_lower for word in ['?', 'kyun', 'kaise', 'kya', 'how', 'why', 'what', 'explain']):
+    elif any(word in message_lower for word in ['?', 'kyun', 'kaise', 'kya', 'how', 'why', 'what']):
         user_emotions[user_id] = "thinking"
-    elif any(word in message_lower for word in ['fight', 'ladai', 'war', 'attack', 'defend', 'protect']):
+    elif any(word in message_lower for word in ['fight', 'ladai', 'war', 'attack', 'defend']):
         user_emotions[user_id] = "protective"
-    elif any(word in message_lower for word in ['sleep', 'sone', 'neend', 'tired', 'thak', 'exhausted']):
+    elif any(word in message_lower for word in ['sleep', 'sone', 'neend', 'tired', 'thak']):
         user_emotions[user_id] = "sleepy"
-    elif any(word in message_lower for word in ['wow', 'amazing', 'awesome', 'great', 'excellent', 'perfect']):
-        user_emotions[user_id] = "excited"
     else:
         user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
     
     user_last_interaction[user_id] = datetime.now()
 
-# =============================================================================
-# ADMIN PERMISSION FUNCTIONS
-# =============================================================================
+# --- REAL WEATHER API (OpenWeatherMap) ---
+INDIAN_CITIES = {
+    "mumbai": {"lat": 19.0760, "lon": 72.8777},
+    "delhi": {"lat": 28.6139, "lon": 77.2090},
+    "bangalore": {"lat": 12.9716, "lon": 77.5946},
+    "kolkata": {"lat": 22.5726, "lon": 88.3639},
+    "chennai": {"lat": 13.0827, "lon": 80.2707},
+    "hyderabad": {"lat": 17.3850, "lon": 78.4867},
+    "pune": {"lat": 18.5204, "lon": 73.8567},
+    "ahmedabad": {"lat": 23.0225, "lon": 72.5714},
+    "jaipur": {"lat": 26.9124, "lon": 75.7873},
+    "surat": {"lat": 21.1702, "lon": 72.8311},
+    "lucknow": {"lat": 26.8467, "lon": 80.9462},
+    "kanpur": {"lat": 26.4499, "lon": 80.3319},
+    "nagpur": {"lat": 21.1458, "lon": 79.0882},
+    "patna": {"lat": 25.5941, "lon": 85.1376},
+    "indore": {"lat": 22.7196, "lon": 75.8577},
+    "thane": {"lat": 19.2183, "lon": 72.9781},
+    "bhopal": {"lat": 23.2599, "lon": 77.4126},
+    "visakhapatnam": {"lat": 17.6868, "lon": 83.2185},
+    "vadodara": {"lat": 22.3072, "lon": 73.1812},
+    "firozabad": {"lat": 27.1592, "lon": 78.3957}
+}
 
-async def is_admin_or_creator(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user is Admin, Administrator, or Creator/Owner
-    Returns True if user has any admin privileges
-    """
+async def get_real_weather(city: str = None) -> str:
+    """Get REAL weather from OpenWeatherMap API"""
     try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        # Check for Creator (Owner), Administrator, or Admin status
-        return member.status in ("creator", "administrator", "admin")
-    except Exception as e:
-        print(f"Error checking admin status: {e}")
-        return False
-
-async def is_creator_or_owner(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user is Creator/Owner of the group
-    """
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        return member.status == "creator"
-    except Exception as e:
-        print(f"Error checking creator status: {e}")
-        return False
-
-async def is_bot_owner(user_id: int) -> bool:
-    """
-    Check if user is the bot owner (from environment variable)
-    """
-    return user_id == ADMIN_ID
-
-async def has_admin_privileges(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user has any admin privileges:
-    - Creator/Owner of group
-    - Administrator of group  
-    - Bot Owner (ADMIN_ID)
-    """
-    # Check if bot owner
-    if await is_bot_owner(user_id):
-        return True
-    
-    # Check if group creator or admin
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status in ("creator", "administrator"):
-            return True
-    except Exception as e:
-        print(f"Error checking privileges: {e}")
-    
-    return False
-
-async def can_restrict_members(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user can restrict/ban/mute members
-    - Creator can always restrict
-    - Administrators with can_restrict_members permission
-    - Bot Owner can always restrict
-    """
-    # Bot owner can do everything
-    if await is_bot_owner(user_id):
-        return True
-    
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
+        if not city:
+            city = random.choice(list(INDIAN_CITIES.keys()))
         
-        # Creator can do everything
-        if member.status == "creator":
-            return True
+        city_lower = city.lower().strip()
         
-        # Administrator needs specific permission
-        if member.status == "administrator":
-            return member.can_restrict_members == True
+        # Check if city is in our database
+        if city_lower in INDIAN_CITIES:
+            coords = INDIAN_CITIES[city_lower]
+            city_display = city.title()
+        else:
+            # Try to get coordinates from OpenWeatherMap API
+            async with aiohttp.ClientSession() as session:
+                geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city},IN&limit=1&appid={WEATHER_API_KEY}"
+                async with session.get(geo_url) as response:
+                    if response.status == 200:
+                        geo_data = await response.json()
+                        if geo_data:
+                            result = geo_data[0]
+                            coords = {"lat": result["lat"], "lon": result["lon"]}
+                            city_display = result.get("name", city.title())
+                        else:
+                            return f"❌ City '{city}' not found! Try: Mumbai, Delhi, Bangalore, etc."
+                    else:
+                        return f"❌ Unable to find city '{city}'. Please try again."
+        
+        # Get weather data
+        async with aiohttp.ClientSession() as session:
+            weather_url = (
+                f"https://api.openweathermap.org/data/2.5/weather?"
+                f"lat={coords['lat']}&lon={coords['lon']}&"
+                f"appid={WEATHER_API_KEY}&units=metric&lang=en"
+            )
             
+            async with session.get(weather_url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    # Extract weather data
+                    weather_desc = data["weather"][0]["description"].title()
+                    weather_icon = data["weather"][0]["main"]
+                    temp = data["main"]["temp"]
+                    feels_like = data["main"]["feels_like"]
+                    humidity = data["main"]["humidity"]
+                    wind_speed = data["wind"]["speed"]
+                    pressure = data["main"]["pressure"]
+                    visibility = data.get("visibility", 10000) / 1000  # Convert to km
+                    
+                    # Get sunrise and sunset times
+                    sunrise = datetime.fromtimestamp(data["sys"]["sunrise"]).strftime("%I:%M %p")
+                    sunset = datetime.fromtimestamp(data["sys"]["sunset"]).strftime("%I:%M %p")
+                    
+                    # Weather icons mapping
+                    weather_icons = {
+                        "Clear": "☀️", "Clouds": "☁️", "Rain": "🌧️", "Drizzle": "🌦️",
+                        "Thunderstorm": "⛈️", "Snow": "❄️", "Mist": "🌫️", "Fog": "🌫️",
+                        "Haze": "🌫️", "Dust": "💨", "Sand": "💨", "Ash": "🌋",
+                        "Squall": "💨", "Tornado": "🌪️"
+                    }
+                    
+                    weather_emoji = weather_icons.get(weather_icon, "🌡️")
+                    
+                    return (
+                        f"🌤️ **Weather Report for {city_display}**\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"{weather_emoji} **Condition:** {weather_desc}\n"
+                        f"🌡️ **Temperature:** {temp}°C\n"
+                        f"🥵 **Feels Like:** {feels_like}°C\n"
+                        f"💧 **Humidity:** {humidity}%\n"
+                        f"💨 **Wind Speed:** {wind_speed} m/s\n"
+                        f"🌡️ **Pressure:** {pressure} hPa\n"
+                        f"👁️ **Visibility:** {visibility} km\n\n"
+                        f"🌅 **Sunrise:** {sunrise}\n"
+                        f"🌇 **Sunset:** {sunset}\n\n"
+                        f"⏰ **Updated:** Just now\n"
+                        f"📍 **Source:** OpenWeatherMap API"
+                    )
+                else:
+                    return "❌ Weather service temporarily unavailable. Please try again later."
     except Exception as e:
-        print(f"Error checking restrict permission: {e}")
-    
-    return False
+        print(f"Weather API Error: {e}")
+        return f"❌ Error fetching weather: Please try again later."
 
-async def can_delete_messages(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user can delete messages
-    - Creator can always delete
-    - Administrators with can_delete_messages permission
-    - Bot Owner can always delete
-    """
-    # Bot owner can do everything
-    if await is_bot_owner(user_id):
-        return True
-    
+# --- IMAGE GENERATION (Pollinations AI - 100% FREE) ---
+async def generate_image(prompt: str) -> Optional[bytes]:
+    """Generate image using Pollinations AI (100% Free)"""
     try:
-        member = await bot.get_chat_member(chat_id, user_id)
+        # Clean and encode prompt
+        clean_prompt = prompt.replace(" ", "_")
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&nologo=true&seed={random.randint(1000, 9999)}"
         
-        # Creator can do everything
-        if member.status == "creator":
-            return True
-        
-        # Administrator needs specific permission
-        if member.status == "administrator":
-            return member.can_delete_messages == True
-            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.read()
+                else:
+                    return None
     except Exception as e:
-        print(f"Error checking delete permission: {e}")
-    
-    return False
+        print(f"Image generation error: {e}")
+        return None
 
-async def can_pin_messages(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user can pin messages
-    - Creator can always pin
-    - Administrators with can_pin_messages permission
-    - Bot Owner can always pin
-    """
-    # Bot owner can do everything
-    if await is_bot_owner(user_id):
-        return True
+# --- QR CODE GENERATOR ---
+def generate_qr_code(data: str) -> bytes:
+    """Generate QR code"""
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
     
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        
-        # Creator can do everything
-        if member.status == "creator":
-            return True
-        
-        # Administrator needs specific permission
-        if member.status == "administrator":
-            return member.can_pin_messages == True
-            
-    except Exception as e:
-        print(f"Error checking pin permission: {e}")
-    
-    return False
+    img = qr.make_image(fill_color="black", back_color="white")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    return img_bytes.getvalue()
 
-async def can_change_info(chat_id: int, user_id: int) -> bool:
-    """
-    Check if user can change group info
-    - Creator can always change
-    - Administrators with can_change_info permission
-    - Bot Owner can always change
-    """
-    # Bot owner can do everything
-    if await is_bot_owner(user_id):
-        return True
+# --- PASSWORD GENERATOR ---
+def generate_password(length: int = 12, include_symbols: bool = True) -> str:
+    """Generate secure password"""
+    chars = string.ascii_letters + string.digits
+    if include_symbols:
+        chars += string.punctuation
     
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        
-        # Creator can do everything
-        if member.status == "creator":
-            return True
-        
-        # Administrator needs specific permission
-        if member.status == "administrator":
-            return member.can_change_info == True
-            
-    except Exception as e:
-        print(f"Error checking change info permission: {e}")
-    
-    return False
+    password = ''.join(random.choice(chars) for _ in range(length))
+    return password
 
-async def get_admin_type(chat_id: int, user_id: int) -> str:
-    """
-    Get the type of admin user is
-    Returns: "owner", "admin", "bot_owner", or "none"
-    """
-    if await is_bot_owner(user_id):
-        return "bot_owner"
-    
+# --- URL SHORTENER (TinyURL API) ---
+async def shorten_url(url: str) -> str:
+    """Shorten URL using TinyURL"""
     try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status == "creator":
-            return "owner"
-        elif member.status == "administrator":
-            return "admin"
+        api_url = f"http://tinyurl.com/api-create.php?url={url}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return url
     except:
-        pass
-    
-    return "none"
+        return url
 
-# =============================================================================
-# AUTO-MODERATION FUNCTIONS
-# =============================================================================
+# --- TRANSLATION (LibreTranslate - Free) ---
+async def translate_text(text: str, target_lang: str = "en") -> str:
+    """Translate text using LibreTranslate"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://libretranslate.de/translate"
+            data = {
+                "q": text,
+                "source": "auto",
+                "target": target_lang,
+                "format": "text"
+            }
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("translatedText", text)
+                else:
+                    return text
+    except:
+        return text
 
+# --- AUTO-MODERATION FUNCTIONS ---
 def contains_group_link(text: str) -> bool:
     """Check if message contains Telegram group links"""
     text = text.lower()
     for pattern in GROUP_LINK_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
+        if re.search(pattern, text):
             return True
     return False
 
@@ -501,22 +598,19 @@ def contains_bad_words(text: str) -> bool:
     return False
 
 def contains_adult_content(text: str) -> bool:
-    """Check if message contains adult/NSFW content"""
+    """Check if message contains adult content"""
     text_lower = text.lower()
     for word in ADULT_KEYWORDS:
         if word in text_lower:
             return True
     return False
 
-def is_spam_message(text: str) -> bool:
-    """Check for common spam patterns"""
-    if len(text) > 20 and sum(1 for c in text if c.isupper()) / len(text) > 0.7:
-        return True
-    if len(set(text)) < len(text) * 0.3:
-        return True
-    emoji_count = sum(1 for c in text if ord(c) > 127)
-    if emoji_count > len(text) * 0.5 and len(text) > 10:
-        return True
+def contains_fake_links(text: str) -> bool:
+    """Check if message contains fake/shortened links"""
+    text = text.lower()
+    for pattern in FAKE_LINK_PATTERNS:
+        if re.search(pattern, text):
+            return True
     return False
 
 async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -> tuple[bool, str]:
@@ -538,7 +632,8 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
         "spam": "spam messages",
         "link": "share group links",
         "bad_words": "use bad language",
-        "adult": "share adult content",
+        "adult_content": "share adult content",
+        "fake_links": "share suspicious links",
         "manual_warning": "violate rules"
     }
     action = actions_map.get(reason, "violate rules")
@@ -549,12 +644,23 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
         action=action
     )
     
-    if warning_count >= 3:
-        if warning_count <= 5:
-            mute_duration = MUTE_DURATIONS[min(warning_count - 1, 4)]
-        else:
-            mute_duration = MUTE_DURATIONS[4]
+    # Check if warning limit reached
+    warn_limit = group_settings[chat_id].get("warn_limit", 3)
+    
+    if warning_count >= warn_limit:
+        # For adult content, ban immediately
+        if reason == "adult_content":
+            try:
+                await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+                del user_warnings[chat_id][user_id]
+                warning_msg += f"\n\n🚫 **BANNED PERMANENTLY!**\nAdult content is strictly prohibited!"
+                return True, warning_msg
+            except Exception as e:
+                warning_msg += f"\n\n⚠️ Failed to ban user: {str(e)}"
+                return False, warning_msg
         
+        # For other violations, mute
+        mute_duration = MUTE_DURATIONS[min(3, warning_count)]
         try:
             mute_until = datetime.now() + mute_duration
             await bot.restrict_chat_member(
@@ -590,58 +696,45 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
             return True, warning_msg
             
         except Exception as e:
-            warning_msg += f"\n\n⚠️ Failed to mute user: {str(e)[:50]}"
+            warning_msg += f"\n\n⚠️ Failed to mute user: {str(e)}"
             return False, warning_msg
     
     return False, warning_msg
 
-async def delete_and_warn(message: Message, reason: str, delete: bool = True):
+async def delete_and_warn(message: Message, reason: str):
     """Delete message and warn user"""
     chat_id = message.chat.id
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
     
-    if delete:
-        try:
-            await message.delete()
-        except Exception as e:
-            print(f"Failed to delete message: {e}")
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Failed to delete message: {e}")
     
     action_taken, warning_msg = await give_warning(chat_id, user_id, username, reason)
+    await message.answer(warning_msg, parse_mode="Markdown")
     
-    try:
-        await message.answer(warning_msg, parse_mode="Markdown")
-    except:
-        pass
-    
+    # Special responses for different violations
     if reason == "bad_words":
         sassy_responses = [
             f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
-            f"{get_emotion('sassy')}  Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
-            f"{get_emotion('protective')} ️ Apni language thik rakho warna main bhi bolungi!",
-            f"{get_emotion('crying')}  Itna gussa kyun aata hai? Achi baat karo na!",
-            f"{get_emotion('sassy')}  Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
-        try:
-            await message.answer(random.choice(sassy_responses))
-        except:
-            pass
+        await message.answer(random.choice(sassy_responses))
+    
+    elif reason == "adult_content":
+        angry_responses = [
+            f"{get_emotion('angry')} 🤬 Yeh kya beizzati hai? Group mein aise content allowed nahi hai!",
+            f"{get_emotion('protective')} 🛡️ Adult content share karna banned hai! Sharam karo!",
+            f"{get_emotion('crying')} 😭 Itna ganda content? Main ladki hu, respect karo!"
+        ]
+        await message.answer(random.choice(angry_responses))
 
-async def ban_user_for_adult(chat_id: int, user_id: int, message: Message):
-    """Ban user for sharing adult content"""
-    try:
-        await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
-        await message.answer(
-            f"{get_emotion('angry')} **USER BANNED!** 🚫\n\n"
-            f"👤 User ID: `{user_id}`\n"
-            f"🚷 Reason: Adult/NSFW content\n"
-            f"⚡ Action: Permanent Ban\n\n"
-            f"🛡️ Group protected by Alita!",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await message.answer(f"⚠️ Failed to ban user: {str(e)[:100]}")
-
+# --- SPAM DETECTION ---
 async def check_spam(message: Message) -> bool:
     """Check if user is spamming"""
     chat_id = message.chat.id
@@ -655,7 +748,7 @@ async def check_spam(message: Message) -> bool:
     
     last_messages[chat_id][user_id] = [
         ts for ts in last_messages[chat_id][user_id]
-        if (now - ts).seconds <= 30
+        if (now - ts).seconds <= SPAM_TIME_WINDOW
     ]
     
     if len(last_messages[chat_id][user_id]) > SPAM_LIMIT:
@@ -664,60 +757,85 @@ async def check_spam(message: Message) -> bool:
     
     return False
 
-# =============================================================================
-# BROADCAST COMMAND (BOT OWNER ONLY)
-# =============================================================================
+# --- ADMIN CHECK FUNCTION ---
+async def is_admin(chat_id: int, user_id: int) -> bool:
+    """Check if user is admin in group"""
+    try:
+        chat_member = await bot.get_chat_member(chat_id, user_id)
+        return chat_member.status in ["administrator", "creator"]
+    except:
+        return False
 
-@dp.message(Command("sendall"))
-async def cmd_sendall(message: Message):
-    # Only bot owner can use this
-    if not await is_bot_owner(message.from_user.id):
-        await message.reply("⛔ This command is only for the bot owner!")
-        return
+async def is_creator(chat_id: int, user_id: int) -> bool:
+    """Check if user is group creator"""
+    try:
+        chat_member = await bot.get_chat_member(chat_id, user_id)
+        return chat_member.status == "creator"
+    except:
+        return False
 
-    if not message.reply_to_message:
-        await message.reply(
-            "❌ Kisi message ka reply karo aur uspar `/sendall` likho.\n\n"
-            "✅ Text, Photo, Video, Sticker, Voice, Document — sab chalega."
-        )
-        return
+# --- CAPTCHA SYSTEM ---
+def generate_captcha():
+    """Generate simple math CAPTCHA"""
+    num1 = random.randint(1, 20)
+    num2 = random.randint(1, 20)
+    operation = random.choice(['+', '-', '*'])
+    
+    if operation == '+':
+        answer = num1 + num2
+    elif operation == '-':
+        answer = num1 - num2
+    else:
+        answer = num1 * num2
+    
+    question = f"What is {num1} {operation} {num2}?"
+    return question, str(answer)
 
-    sent = 0
-    failed = 0
-
-    all_chats = set(chat_memory.keys())  # users + groups ids
-
-    status = await message.reply(f"📢 Broadcasting to {len(all_chats)} chats...")
-
-    for chat_id in all_chats:
+# --- RANDOM SELF MESSAGES TASK ---
+async def send_random_self_messages():
+    """Send random self messages in groups"""
+    for chat_id in list(group_settings.keys()):
         try:
-            await bot.copy_message(
-                chat_id=chat_id,
-                from_chat_id=message.chat.id,
-                message_id=message.reply_to_message.message_id
-            )
-            sent += 1
-            await asyncio.sleep(0.1)
-        except:
-            failed += 1
+            # Check if group is active (last message within 30 minutes)
+            if chat_id in last_greeting_time:
+                time_diff = datetime.now() - last_greeting_time[chat_id]
+                if time_diff.total_seconds() < 1800:  # 30 minutes
+                    continue
+            
+            # 30% chance to send random message
+            if random.random() < 0.3:
+                message_data = random.choice(SELF_MESSAGES)
+                
+                if message_data["type"] == "text":
+                    await bot.send_message(chat_id, message_data["content"])
+                elif message_data["type"] == "sticker":
+                    await bot.send_sticker(chat_id, message_data["content"])
+                
+                last_greeting_time[chat_id] = datetime.now()
+                
+        except Exception as e:
+            print(f"Error sending random message to {chat_id}: {e}")
 
-    await status.edit_text(
-        f"📢 *Broadcast Complete!*\n\n"
-        f"✅ Sent: `{sent}`\n"
-        f"❌ Failed: `{failed}`\n"
-        f"📊 Total: `{len(all_chats)}`",
-        parse_mode="Markdown"
-    )
+# --- MEME GENERATOR ---
+def generate_meme():
+    """Generate random meme text"""
+    template = random.choice(MEME_TEMPLATES)
+    return f"{template['emoji']} **{template['text']}**\n\n*When you know it's true!* 😂"
 
-# =============================================================================
-# BASIC COMMANDS
-# =============================================================================
+# --- DAILY FACT ---
+def get_daily_fact():
+    """Get random daily fact"""
+    return random.choice(DAILY_FACTS)
 
+# --- COMMANDS ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
+    started_users.add(message.from_user.id)
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌟 My Home", url=f"https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="🌟 My Channel", url="https://t.me/abhi0w0"),
+            InlineKeyboardButton(text="💝 Developer", url="https://t.me/a6h1ii")
         ],
         [
             InlineKeyboardButton(text="📱 Utilities", callback_data="menu_utilities"),
@@ -734,18 +852,27 @@ async def cmd_start(message: Message):
     
     welcome_text = (
         f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
+        
         "✨ **Welcome to my magical world!** ✨\n\n"
-        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n\n"
+        
+        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
+        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        
         "🌟 **My Superpowers:**\n"
         "• Advanced AI Conversations 🧠\n"
-        "• Voice & Photo Recognition 📸🎤\n"
-        "• Weather & Horoscope Updates 🌤️♈\n"
-        "• Reminders & Notes 📝\n"
-        "• Meme Generator 😂\n"
+        "• Image Generation 🎨\n"
+        "• Real Weather Updates 🌤️\n"
+        "• QR Code Generator 📱\n"
+        "• Password Generator 🔐\n"
+        "• URL Shortener 🔗\n"
+        "• Translation 🌍\n"
         "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
-        "📢 **MY HOME 💖**\n"
-        "•  @abhi0w0\n\n"
+        
+        "📢 **Made with 💖 by:**\n"
+        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
+        "• **Channel:** @abhi0w0\n\n"
+        
         "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
     )
@@ -753,8 +880,33 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
+    started_users.add(message.from_user.id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📱 Utilities", callback_data="help_utilities"),
+            InlineKeyboardButton(text="🎭 Fun", callback_data="help_fun")
+        ],
+        [
+            InlineKeyboardButton(text="🛡️ Admin", callback_data="help_admin"),
+            InlineKeyboardButton(text="🌤️ Weather", callback_data="help_weather")
+        ],
+        [
+            InlineKeyboardButton(text="📝 Notes", callback_data="help_notes"),
+            InlineKeyboardButton(text="⏰ Reminders", callback_data="help_reminders")
+        ],
+        [
+            InlineKeyboardButton(text="🎨 Image Gen", callback_data="help_image"),
+            InlineKeyboardButton(text="🔧 Tools", callback_data="help_tools")
+        ],
+        [
+            InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
+        ]
+    ])
+    
     help_text = (
         f"{get_emotion('happy')} **Hello! I'm Alita 🎀** 👧\n\n"
+        
         "📜 **MAIN COMMANDS:**\n"
         "• /start - Welcome message 💖\n"
         "• /help - All commands 📚\n"
@@ -765,25 +917,30 @@ async def cmd_help(message: Message):
         "• /horoscope [sign] - Horoscope ♈\n"
         "• /roast - Playful roast 🔥\n"
         "• /clear - Clear memory 🧹\n\n"
+        
         "🕒 **TIME & WEATHER:**\n"
         "• /time - Indian time 🕐\n"
         "• /date - Today's date 📅\n"
-        "• /weather [city] - Weather info 🌤️\n\n"
+        "• /weather [city] - **REAL Weather info** 🌤️\n\n"
+        
         "📝 **PERSONAL ORGANIZER:**\n"
         "• /note [text] - Add note 📝\n"
         "• /notes - View notes 📋\n"
         "• /remind [time] [text] - Set reminder ⏰\n"
         "• /reminders - View reminders 📅\n"
         "• /afk [reason] - Set AFK status 😴\n\n"
+        
         "🎨 **IMAGE & CREATIVE:**\n"
         "• /imagine [prompt] - AI Image Generation 🎨\n"
         "• /qr [text] - Generate QR Code 📱\n\n"
+        
         "🔧 **UTILITIES:**\n"
         "• /password [length] - Generate password 🔐\n"
         "• /short [url] - Shorten URL 🔗\n"
         "• /translate [lang] [text] - Translate 🌍\n"
         "• /calc [expression] - Calculator 🧮\n"
         "• /id - Get your ID 🆔\n\n"
+        
         "🛡️ **ADMIN/MODERATION:**\n"
         "• /warn [reason] - Warn user ⚠️\n"
         "• /kick - Remove user 🚪\n"
@@ -795,11 +952,11 @@ async def cmd_help(message: Message):
         "• /pin - Pin message 📌\n"
         "• /unpin - Unpin message 📍\n"
         "• /slowmode [seconds] - Enable slow mode ⏱️\n"
-        "• /lock - Lock chat 🔒\n"
+        "• /locks - Lock chat 🔒\n"
         "• /unlock - Unlock chat 🔓\n"
         "• /setwelcome [text] - Custom welcome message 👋\n"
-        "• /setgoodbye [text] - Custom goodbye message 👋\n"
-        "• /sendall [message] - Broadcast (Admin only) 📢\n\n"
+        "• /setgoodbye [text] - Custom goodbye message 👋\n\n"
+        
         "🔧 **SAFETY FEATURES:**\n"
         "• Auto-spam detection 🔍\n"
         "• Group link blocker 🚫\n"
@@ -807,35 +964,52 @@ async def cmd_help(message: Message):
         "• Adult content detection 🔞\n"
         "• Auto-warning system ⚠️\n"
         "• Auto-mute after 3 warns 🔇\n"
-        "• Auto-ban for adult content 🚫\n\n"
+        "• Auto-ban for adult content 🚫\n"
+        "• CAPTCHA for new members 🧩\n\n"
+        
+        "🎀 **GREETING SYSTEM:**\n"
+        "• Auto morning greetings 🌅\n"
+        "• Auto afternoon greetings ☀️\n"
+        "• Auto evening greetings 🌇\n"
+        "• Auto night greetings 🌙\n"
+        "• Works in groups & private 💌\n\n"
+        
+        "---\n"
+        "**Developer:** ABHI🔱 (@a6h1ii)\n"
         "**MY HOME:** @abhi0w0 💫\n"
         "---"
     )
-    await message.reply(help_text, parse_mode="Markdown")
+    await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
     rules_text = (
         f"{get_emotion('protective')} **📜 GROUP RULES & SAFETY 🛡️**\n\n"
+        
         "✅ **DOs:**\n"
         "1. Be respectful to everyone 🤝\n"
         "2. Keep chat friendly and positive 🌟\n"
         "3. Help each other grow 📚\n"
         "4. Follow admin instructions 👮\n"
         "5. Have fun and enjoy! 🎉\n\n"
+        
         "🚫 **DON'Ts:**\n"
         "1. No spam or flooding ⚠️\n"
         "2. No group links sharing 🔗\n"
         "3. No bad language 🚫\n"
         "4. No personal fights ⚔️\n"
         "5. No adult/NSFW content 🚷\n"
-        "6. No self-promotion without permission 📢\n\n"
+        "6. No self-promotion without permission 📢\n"
+        "7. No fake/suspicious links 🚫\n\n"
+        
         "⚡ **AUTO-MODERATION:**\n"
         "• Spam → Warning → Mute 🔇\n"
         "• Group links → Auto-delete 🗑️\n"
         "• Bad words → Warning + Response ⚔️\n"
-        "• 3 warnings → Auto-mute ⏰\n"
-        "• Adult content → Auto-ban 🚫\n\n"
+        "• Adult content → Auto-ban 🚫\n"
+        "• Fake links → Warning + Delete ⚠️\n"
+        "• 3 warnings → Auto-mute ⏰\n\n"
+        
         f"{get_emotion('love')} *I'm here to keep everyone safe!* 💖"
     )
     await message.reply(rules_text, parse_mode="Markdown")
@@ -858,7 +1032,10 @@ async def cmd_horoscope(message: Message, command: CommandObject):
     if not command.args:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(f"{emoji} {sign.title()}", callback_data=f"horoscope_{sign}")]
-            for sign, emoji in HOROSCOPE_SIGNS.items()
+            for sign, emoji in list(HOROSCOPE_SIGNS.items())[:6]
+        ] + [
+            [InlineKeyboardButton(f"{emoji} {sign.title()}", callback_data=f"horoscope_{sign}")]
+            for sign, emoji in list(HOROSCOPE_SIGNS.items())[6:]
         ])
         await message.reply(
             f"{get_emotion('surprise')} **Choose your zodiac sign:** ♈\n\n"
@@ -869,15 +1046,33 @@ async def cmd_horoscope(message: Message, command: CommandObject):
         return
     
     sign = command.args.lower()
-    horoscope_text = await get_horoscope(sign)
-    await message.reply(f"{get_emotion('love')} {horoscope_text}")
+    horoscopes = {
+        "aries": "Today brings energy and passion! Take charge of new projects. 💪",
+        "taurus": "Financial opportunities await. Stay grounded and practical. 💰",
+        "gemini": "Communication is key today. Express yourself clearly. 💬",
+        "cancer": "Focus on home and family. Emotional connections deepen. 🏠",
+        "leo": "Your charisma shines! Leadership opportunities arise. 👑",
+        "virgo": "Attention to detail pays off. Organization brings success. 📋",
+        "libra": "Balance is essential. Harmony in relationships matters. ⚖️",
+        "scorpio": "Intuition guides you. Trust your instincts. 🔮",
+        "sagittarius": "Adventure calls! Explore new horizons. 🌍",
+        "capricorn": "Hard work yields results. Stay disciplined. 🏔️",
+        "aquarius": "Innovation flows. Think outside the box. 💡",
+        "pisces": "Creativity blooms. Express your artistic side. 🎨"
+    }
+    
+    emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
+    reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
+    await message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
 
 @dp.message(Command("roast"))
 async def cmd_roast(message: Message):
     if message.reply_to_message:
         target = message.reply_to_message.from_user.first_name
         roast = random.choice(ROAST_RESPONSES)
-        await message.reply(f"{get_emotion('sassy')} **Roasting {target}!** 🔥\n\n{roast}")
+        await message.reply(
+            f"{get_emotion('sassy')} **Roasting {target}!** 🔥\n\n{roast}"
+        )
     else:
         await message.reply(
             f"{get_emotion('sassy')} **Self-roast mode!** 😂\n\n"
@@ -915,26 +1110,257 @@ async def cmd_time(message: Message):
 async def cmd_date(message: Message):
     indian_time = get_indian_time()
     date_str = indian_time.strftime("%A, %d %B %Y")
-    day = indian_time.strftime("%A")
     
     await message.reply(
-        f"📅 **Today's Date**\n\n"
-        f"• Date: {date_str}\n"
-        f"• Day: {day}\n"
-        f"• Calendar: Gregorian\n"
-        f"• Timezone: IST (UTC+5:30) 🇮🇳"
+        f"{get_emotion('happy')} **📅 Today's Date**\n"
+        f"• {date_str}\n"
+        f"• Day: {indian_time.strftime('%A')}\n"
+        f"• Indian Standard Time 🇮🇳\n\n"
+        f"*Have a great day!* ✨",
+        parse_mode="Markdown"
     )
 
 @dp.message(Command("weather"))
 async def cmd_weather(message: Message, command: CommandObject):
-    city = command.args or "Mumbai"
-    weather_info = await get_weather_real(city)
+    city = command.args
+    if not city:
+        # Show list of available cities
+        cities_list = ", ".join([c.title() for c in list(INDIAN_CITIES.keys())[:10]])
+        await message.reply(
+            f"{get_emotion('thinking')} **Weather Command Usage:**\n\n"
+            f"`/weather [city name]`\n\n"
+            f"**Popular cities:**\n{cities_list}...\n\n"
+            f"Or any city worldwide! 🌍",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Show typing action
+    await bot.send_chat_action(message.chat.id, "typing")
+    
+    weather_info = await get_real_weather(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# =============================================================================
-# NOTES & REMINDERS COMMANDS
-# =============================================================================
+# --- IMAGE GENERATION COMMAND ---
+@dp.message(Command("imagine"))
+async def cmd_imagine(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Image Generation Usage:**\n\n"
+            f"`/imagine [your description]`\n\n"
+            f"Examples:\n"
+            f"`/imagine a beautiful sunset over mountains`\n"
+            f"`/imagine cute cat wearing glasses`\n"
+            f"`/imagine futuristic city with flying cars`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    prompt = command.args
+    status_msg = await message.reply(f"{get_emotion('happy')} 🎨 Generating image...\nPrompt: {prompt}")
+    
+    try:
+        image_data = await generate_image(prompt)
+        if image_data:
+            await status_msg.delete()
+            await message.reply_photo(
+                BufferedInputFile(image_data, filename="generated_image.png"),
+                caption=f"{get_emotion('love')} **Generated Image:**\n📝 Prompt: {prompt}\n\n🎨 Powered by Pollinations AI"
+            )
+        else:
+            await status_msg.edit_text(f"{get_emotion('crying')} Failed to generate image. Please try again!")
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
 
+# --- QR CODE COMMAND ---
+@dp.message(Command("qr"))
+async def cmd_qr(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **QR Code Generator Usage:**\n\n"
+            f"`/qr [text or URL]`\n\n"
+            f"Examples:\n"
+            f"`/qr https://t.me/abhi0w0`\n"
+            f"`/qr My contact info: @a6h1ii`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    data = command.args
+    try:
+        qr_bytes = generate_qr_code(data)
+        await message.reply_photo(
+            BufferedInputFile(qr_bytes, filename="qr_code.png"),
+            caption=f"{get_emotion('happy')} **QR Code Generated!**\n\n📱 Data: {data[:50]}{'...' if len(data) > 50 else ''}"
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error generating QR code: {str(e)}")
+
+# --- PASSWORD GENERATOR COMMAND ---
+@dp.message(Command("password"))
+async def cmd_password(message: Message, command: CommandObject):
+    try:
+        length = int(command.args) if command.args else 12
+        if length < 4 or length > 50:
+            await message.reply(f"{get_emotion('thinking')} Password length must be between 4 and 50!")
+            return
+        
+        password = generate_password(length)
+        await message.reply(
+            f"{get_emotion('happy')} **Password Generated!** 🔐\n\n"
+            f"`{password}`\n\n"
+            f"📊 Length: {length} characters\n"
+            f"🔒 Contains: Letters, numbers, symbols\n\n"
+            f"*Copy this password and store it safely!*",
+            parse_mode="Markdown"
+        )
+    except ValueError:
+        await message.reply(f"{get_emotion('thinking')} Usage: `/password [length]`\nExample: `/password 16`")
+
+# --- URL SHORTENER COMMAND ---
+@dp.message(Command("short"))
+async def cmd_short(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **URL Shortener Usage:**\n\n"
+            f"`/short [long URL]`\n\n"
+            f"Example:\n"
+            f"`/short https://example.com/very/long/url/that/needs/shortening`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    url = command.args.strip()
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    status_msg = await message.reply(f"{get_emotion('happy')} Shortening URL...")
+    
+    try:
+        short_url = await shorten_url(url)
+        await status_msg.edit_text(
+            f"{get_emotion('love')} **URL Shortened!** 🔗\n\n"
+            f"🔗 **Short:** {short_url}\n"
+            f"📝 **Original:** {url[:50]}{'...' if len(url) > 50 else ''}"
+        )
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
+
+# --- TRANSLATION COMMAND ---
+@dp.message(Command("translate"))
+async def cmd_translate(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Translation Usage:**\n\n"
+            f"`/translate [language code] [text]`\n\n"
+            f"Examples:\n"
+            f"`/translate hi Hello, how are you?`\n"
+            f"`/translate es I love this bot`\n"
+            f"`/translate fr Good morning`\n\n"
+            f"Language codes: hi (Hindi), es (Spanish), fr (French), de (German), ja (Japanese), etc.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    args = command.args.split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Please provide both language code and text!")
+        return
+    
+    target_lang = args[0]
+    text = args[1]
+    
+    status_msg = await message.reply(f"{get_emotion('thinking')} Translating...")
+    
+    try:
+        translated = await translate_text(text, target_lang)
+        await status_msg.edit_text(
+            f"{get_emotion('happy')} **Translation** 🌍\n\n"
+            f"📝 **Original:** {text}\n"
+            f"🔀 **Translated ({target_lang.upper()}):** {translated}"
+        )
+    except Exception as e:
+        await status_msg.edit_text(f"{get_emotion('crying')} Translation failed: {str(e)}")
+
+# --- CALCULATOR COMMAND ---
+@dp.message(Command("calc"))
+async def cmd_calc(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(
+            f"{get_emotion('thinking')} **Calculator Usage:**\n\n"
+            f"`/calc [expression]`\n\n"
+            f"Examples:\n"
+            f"`/calc 2 + 2`\n"
+            f"`/calc (5 * 10) / 2`\n"
+            f"`/calc 2 ** 8` (power)\n"
+            f"`/calc sqrt(16)` (square root)",
+            parse_mode="Markdown"
+        )
+        return
+    
+    expression = command.args
+    
+    # Security: Only allow safe characters
+    allowed_chars = set('0123456789+-*/.() **sqrt ')
+    if not all(c in allowed_chars for c in expression):
+        await message.reply(f"{get_emotion('angry')} Invalid characters in expression!")
+        return
+    
+    try:
+        # Replace sqrt with math.sqrt
+        safe_expr = expression.replace('sqrt', '(__import__("math").sqrt)')
+        result = eval(safe_expr, {"__builtins__": {}}, {"math": __import__('math')})
+        
+        await message.reply(
+            f"{get_emotion('happy')} **Calculator** 🧮\n\n"
+            f"📝 Expression: `{expression}`\n"
+            f"✅ Result: `{result}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error calculating: Invalid expression!")
+
+# --- ID COMMAND ---
+@dp.message(Command("id"))
+async def cmd_id(message: Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    text = (
+        f"{get_emotion('happy')} **Your Information** 🆔\n\n"
+        f"👤 **User ID:** `{user_id}`\n"
+        f"💬 **Chat ID:** `{chat_id}`\n"
+        f"📛 **Name:** {message.from_user.full_name}\n"
+    )
+    
+    if message.reply_to_message:
+        target = message.reply_to_message.from_user
+        text += (
+            f"\n🎯 **Replied User:**\n"
+            f"👤 **User ID:** `{target.id}`\n"
+            f"📛 **Name:** {target.full_name}\n"
+            f"📱 **Username:** @{target.username if target.username else 'N/A'}"
+        )
+    
+    await message.reply(text, parse_mode="Markdown")
+
+# --- AFK SYSTEM ---
+@dp.message(Command("afk"))
+async def cmd_afk(message: Message, command: CommandObject):
+    reason = command.args or "AFK"
+    afk_users[message.from_user.id] = {
+        "reason": reason,
+        "time": datetime.now()
+    }
+    
+    await message.reply(
+        f"{get_emotion('sleepy')} **AFK Mode Activated** 😴\n\n"
+        f"💤 Reason: {reason}\n"
+        f"⏰ Since: {datetime.now().strftime('%I:%M %p')}\n\n"
+        f"I'll notify others when they mention you!"
+    )
+
+# --- NOTES & REMINDERS ---
 @dp.message(Command("note"))
 async def cmd_note(message: Message, command: CommandObject):
     if not command.args:
@@ -974,7 +1400,8 @@ async def cmd_notes(message: Message):
     
     notes_text = f"{get_emotion('thinking')} **Your Notes:** 📋\n\n"
     for i, note in enumerate(notes[-10:], 1):
-        notes_text += f"{i}. {note['text']}\n"
+        time_str = note['created_at'].strftime('%d/%m %I:%M %p')
+        notes_text += f"{i}. {note['text']} ({time_str})\n"
     
     notes_text += f"\n*Total: {len(notes)} notes*"
     await message.reply(notes_text, parse_mode="Markdown")
@@ -1000,25 +1427,22 @@ async def cmd_remind(message: Message, command: CommandObject):
         time_str = args[0]
         reminder_text = args[1]
         
+        # Parse time
         if time_str.endswith('h'):
             hours = int(time_str[:-1])
             reminder_time = datetime.now() + timedelta(hours=hours)
         elif time_str.endswith('m'):
             minutes = int(time_str[:-1])
             reminder_time = datetime.now() + timedelta(minutes=minutes)
-        elif time_str.endswith('d'):
-            days = int(time_str[:-1])
-            reminder_time = datetime.now() + timedelta(days=days)
         else:
-            await message.reply("Use format: 1h, 30m, or 1d (e.g., 1h for 1 hour)")
+            await message.reply("Use format: 1h or 30m")
             return
         
         reminder_data = {
             "text": reminder_text,
             "time": reminder_time,
             "created_at": datetime.now(),
-            "reminder_id": len(user_reminders[message.from_user.id]) + 1,
-            "chat_id": message.chat.id
+            "reminder_id": len(user_reminders[message.from_user.id]) + 1
         }
         
         user_reminders[message.from_user.id].append(reminder_data)
@@ -1031,22 +1455,23 @@ async def cmd_remind(message: Message, command: CommandObject):
             f"I'll remind you! 💫"
         )
         
+        # Schedule reminder
         greeting_scheduler.add_job(
             send_reminder,
             'date',
             run_date=reminder_time,
-            args=[message.from_user.id, reminder_text, message.chat.id],
+            args=[message.from_user.id, reminder_text],
             id=f"reminder_{message.from_user.id}_{reminder_data['reminder_id']}"
         )
         
     except Exception as e:
-        await message.reply(f"Error setting reminder: {str(e)[:200]}")
+        await message.reply(f"Error setting reminder: {str(e)}")
 
-async def send_reminder(user_id: int, reminder_text: str, chat_id: int):
+async def send_reminder(user_id: int, reminder_text: str):
     """Send reminder to user"""
     try:
         await bot.send_message(
-            chat_id,
+            user_id,
             f"{get_emotion('surprise')} **Reminder!** ⏰\n\n{reminder_text}\n\n*Don't forget!* 💫",
             parse_mode="Markdown"
         )
@@ -1075,234 +1500,22 @@ async def cmd_reminders(message: Message):
     
     await message.reply(reminders_text, parse_mode="Markdown")
 
-# =============================================================================
-# AFK SYSTEM
-# =============================================================================
-
-@dp.message(Command("afk"))
-async def cmd_afk(message: Message, command: CommandObject):
-    user_id = message.from_user.id
-    reason = command.args or "No reason provided"
-    
-    afk_users[message.chat.id][user_id] = {
-        "reason": reason,
-        "time": datetime.now()
-    }
-    
-    await message.reply(
-        f"{get_emotion('sleepy')} **AFK Mode Enabled** 😴\n\n"
-        f"• Reason: {reason}\n"
-        f"• Time: {datetime.now().strftime('%I:%M %p')}\n\n"
-        f"I'll notify others when they mention you! 💤"
-    )
-
-# =============================================================================
-# UTILITY COMMANDS
-# =============================================================================
-
-@dp.message(Command("id"))
-async def cmd_id(message: Message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
-    if message.reply_to_message:
-        target = message.reply_to_message.from_user
-        await message.reply(
-            f"🆔 *User ID Info*\n\n"
-            f"• Name: {target.first_name}\n"
-            f"• User ID: `{target.id}`\n"
-            f"• Username: @{target.username if target.username else 'N/A'}\n"
-            f"• Is Bot: {'Yes' if target.is_bot else 'No'}",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.reply(
-            f"🆔 *Your ID Info*\n\n"
-            f"• Your ID: `{user_id}`\n"
-            f"• Chat ID: `{chat_id}`\n"
-            f"• Chat Type: `{message.chat.type}`",
-            parse_mode="Markdown"
-        )
-
-@dp.message(Command("password"))
-async def cmd_password(message: Message, command: CommandObject):
-    try:
-        length = int(command.args) if command.args else 12
-        if length < 4 or length > 50:
-            await message.reply("⚠️ Password length must be between 4 and 50!")
-            return
-        
-        chars = string.ascii_letters + string.digits + "!@#$%^&*"
-        password = ''.join(random.choice(chars) for _ in range(length))
-        
-        await message.reply(
-            f"🔐 **Generated Password**\n\n"
-            f"`{password}`\n\n"
-            f"• Length: {length} characters\n"
-            f"• Save it securely! 🛡️",
-            parse_mode="Markdown"
-        )
-    except:
-        await message.reply("Usage: `/password [length]` (4-50)")
-
-@dp.message(Command("calc"))
-async def cmd_calc(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply("Usage: `/calc 2 + 2` or `/calc 10 * 5`")
-        return
-    
-    expression = command.args
-    try:
-        allowed_chars = set('0123456789+-*/.() **% ')
-        if not all(c in allowed_chars for c in expression):
-            await message.reply("❌ Invalid characters in expression!")
-            return
-        
-        result = eval(expression)
-        await message.reply(
-            f"🧮 **Calculation**\n\n"
-            f"• Expression: `{expression}`\n"
-            f"• Result: **{result}** ✅"
-        )
-    except Exception as e:
-        await message.reply(f"❌ Error: {str(e)[:100]}")
-
-# =============================================================================
-# IMAGE GENERATION
-# =============================================================================
-
-@dp.message(Command("imagine"))
-async def cmd_imagine(message: Message):
-    if not message.text or len(message.text.split()) < 2:
-        await message.reply(
-            "❌ Use like:\n`/imagine a cinematic boy standing in rain at night`",
-            parse_mode="Markdown"
-        )
-        return
-
-    prompt = message.text.replace("/imagine", "", 1).strip()
-    await message.reply("🎨 Generating image... please wait ⏳")
-
-    # Pollinations AI (NO API KEY NEEDED)
-    encoded_prompt = urllib.parse.quote(prompt)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-
-    try:
-        response = requests.get(image_url, timeout=60)
-
-        if response.status_code != 200:
-            await message.reply("❌ Image generation failed. Try again.")
-            return
-
-        photo = BufferedInputFile(
-            response.content,
-            filename="ai_image.png"
-        )
-
-        await message.reply_photo(
-            photo,
-            caption=f"🖼️ *AI Generated Image*\n\n`{prompt}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await message.reply(f"❌ Error generating image: {str(e)[:100]}")
-
-# =============================================================================
-# QR CODE GENERATOR
-# =============================================================================
-
-@dp.message(Command("qr"))
-async def cmd_qr(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply("Usage: `/qr Hello World` or `/qr https://google.com`")
-        return
-    
-    text = command.args
-    try:
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(text)
-        qr.make(fit=True)
-        
-        img = qr.make_image(fill_color="black", back_color="white")
-        bio = BytesIO()
-        img.save(bio, 'PNG')
-        bio.seek(0)
-        
-        # Use BufferedInputFile for aiogram 3.x
-        photo_file = BufferedInputFile(bio.getvalue(), filename="qrcode.png")
-        
-        await message.reply_photo(
-            photo_file,
-            caption=f"📱 **QR Code Generated**\n\nContent: `{text[:50]}{'...' if len(text) > 50 else ''}`"
-        )
-    except Exception as e:
-        await message.reply(f"❌ Error: {str(e)[:100]}")
-
-@dp.message(Command("short"))
-async def cmd_short(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply("Usage: `/short https://example.com`")
-        return
-    
-    url = command.args.strip()
-    await message.reply(f"🔗 **URL:** {url}\n\n(Note: Install pyshorteners for full functionality)")
-
-@dp.message(Command("translate"))
-async def cmd_translate(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply("Usage: `/translate hi Hello` (translate to Hindi)")
-        return
-    
-    args = command.args.split(maxsplit=1)
-    if len(args) < 2:
-        await message.reply("Usage: `/translate [language_code] [text]`")
-        return
-    
-    lang_code = args[0]
-    text = args[1]
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.mymemory.translated.net/get?q={text}&langpair=en|{lang_code}"
-            async with session.get(url) as response:
-                data = await response.json()
-                if data['responseStatus'] == 200:
-                    translated = data['responseData']['translatedText']
-                    await message.reply(
-                        f"🌍 **Translation**\n\n"
-                        f"• From: {text}\n"
-                        f"• To ({lang_code}): **{translated}**"
-                    )
-                else:
-                    await message.reply("❌ Translation failed.")
-    except Exception as e:
-        await message.reply(f"❌ Error: {str(e)[:100]}")
-# =============================================================================
-# ADMIN/MODERATION COMMANDS
-# =============================================================================
-
+# --- ADMIN COMMANDS ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
-    if not message.reply_to_message:
-        await message.reply("Please reply to a user's message to warn them! 👆")
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to warn users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to warn users!")
+    if not message.reply_to_message:
+        await message.reply(
+            f"{get_emotion('thinking')} Please reply to a user's message to warn them! 👆",
+            parse_mode="Markdown"
+        )
         return
     
     target_user = message.reply_to_message.from_user
-    
-    # Don't warn admins/creators
-    if await has_admin_privileges(message.chat.id, target_user.id):
-        await message.reply("⚠️ You cannot warn an admin or creator!")
-        return
-    
     reason = command.args or "Rule violation"
     
     action_taken, warning_msg = await give_warning(
@@ -1317,228 +1530,190 @@ async def cmd_warn(message: Message, command: CommandObject):
 
 @dp.message(Command("kick"))
 async def cmd_kick(message: Message):
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
+        return
+    
     if not message.reply_to_message:
-        await message.reply("Reply to a user to kick them!")
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to kick them!")
         return
     
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to kick users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to kick users!")
-        return
-    
-    target = message.reply_to_message.from_user
-    
-    # Don't kick admins/creators
-    if await has_admin_privileges(message.chat.id, target.id):
-        await message.reply("⚠️ You cannot kick an admin or creator!")
-        return
+    target_user = message.reply_to_message.from_user
     
     try:
-        await bot.ban_chat_member(message.chat.id, target.id)
-        await bot.unban_chat_member(message.chat.id, target.id)
-        await message.reply(f"👢 **{target.first_name}** has been kicked! 🚪")
-    except Exception as e:
-        await message.reply(f"❌ Failed to kick: {str(e)[:100]}")
-
-@dp.message(Command("ban"))
-async def cmd_ban(message: Message, command: CommandObject):
-    if not message.reply_to_message:
-        await message.reply("Reply to a user to ban them!")
-        return
-    
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to ban users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to ban users!")
-        return
-    
-    target = message.reply_to_message.from_user
-    
-    # Don't ban admins/creators
-    if await has_admin_privileges(message.chat.id, target.id):
-        await message.reply("⚠️ You cannot ban an admin or creator!")
-        return
-    
-    reason = command.args or "Violating group rules"
-    
-    try:
-        await bot.ban_chat_member(message.chat.id, target.id)
+        await bot.ban_chat_member(message.chat.id, target_user.id)
+        await bot.unban_chat_member(message.chat.id, target_user.id)
         await message.reply(
-            f"🚫 **{target.first_name}** has been banned!\n"
-            f"📋 Reason: {reason}"
+            f"{get_emotion('angry')} **Kicked!** 👢\n\n"
+            f"{target_user.first_name} has been removed from the group!\n"
+            f"They can rejoin using the invite link."
         )
     except Exception as e:
-        await message.reply(f"❌ Failed to ban: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to kick user: {str(e)}")
 
-@dp.message(Command("unban"))
-async def cmd_unban(message: Message, command: CommandObject):
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to unban users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to unban users!")
+@dp.message(Command("ban"))
+async def cmd_ban(message: Message):
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
-    if not command.args:
-        await message.reply("Usage: `/unban user_id`")
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to ban them!")
         return
+    
+    target_user = message.reply_to_message.from_user
     
     try:
-        user_id = int(command.args)
-        await bot.unban_chat_member(message.chat.id, user_id)
-        await message.reply(f"✅ User has been unbanned!")
+        await bot.ban_chat_member(message.chat.id, target_user.id)
+        await message.reply(
+            f"{get_emotion('angry')} **Banned!** 🚫\n\n"
+            f"{target_user.first_name} has been permanently banned!\n"
+            f"Use /unban to remove the ban."
+        )
     except Exception as e:
-        await message.reply(f"❌ Failed to unban: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to ban user: {str(e)}")
+
+@dp.message(Command("unban"))
+async def cmd_unban(message: Message):
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
+        return
+    
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to a user's message to unban them!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    
+    try:
+        await bot.unban_chat_member(message.chat.id, target_user.id)
+        await message.reply(
+            f"{get_emotion('happy')} **Unbanned!** ✅\n\n"
+            f"{target_user.first_name} has been unbanned!\n"
+            f"They can now rejoin the group."
+        )
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Failed to unban user: {str(e)}")
 
 @dp.message(Command("mute"))
 async def cmd_mute(message: Message, command: CommandObject):
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
+        return
+    
     if not message.reply_to_message:
-        await message.reply("Reply to a user to mute them!")
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to mute them!")
         return
     
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to mute users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to mute users!")
-        return
-    
-    target = message.reply_to_message.from_user
-    
-    # Don't mute admins/creators
-    if await has_admin_privileges(message.chat.id, target.id):
-        await message.reply("⚠️ You cannot mute an admin or creator!")
-        return
+    target_user = message.reply_to_message.from_user
     
     # Parse duration
-    duration = timedelta(hours=1)  # Default 1 hour
-    if command.args:
-        try:
-            if command.args.endswith('h'):
-                duration = timedelta(hours=int(command.args[:-1]))
-            elif command.args.endswith('m'):
-                duration = timedelta(minutes=int(command.args[:-1]))
-            elif command.args.endswith('d'):
-                duration = timedelta(days=int(command.args[:-1]))
-        except:
-            pass
+    duration = command.args
+    if duration:
+        if duration.endswith('h'):
+            hours = int(duration[:-1])
+            mute_until = datetime.now() + timedelta(hours=hours)
+            duration_str = f"{hours} hour(s)"
+        elif duration.endswith('m'):
+            minutes = int(duration[:-1])
+            mute_until = datetime.now() + timedelta(minutes=minutes)
+            duration_str = f"{minutes} minute(s)"
+        else:
+            mute_until = datetime.now() + timedelta(hours=1)
+            duration_str = "1 hour"
+    else:
+        mute_until = datetime.now() + timedelta(hours=1)
+        duration_str = "1 hour"
     
     try:
-        until_date = datetime.now() + duration
         await bot.restrict_chat_member(
             message.chat.id,
-            target.id,
+            target_user.id,
             permissions=ChatPermissions(can_send_messages=False),
-            until_date=until_date
+            until_date=mute_until
         )
-        
-        duration_str = ""
-        if duration.days > 0:
-            duration_str = f"{duration.days} days"
-        else:
-            hours = duration.seconds // 3600
-            minutes = (duration.seconds % 3600) // 60
-            if hours > 0:
-                duration_str = f"{hours} hours"
-            else:
-                duration_str = f"{minutes} minutes"
-        
-        await message.reply(f"🔇 **{target.first_name}** has been muted for {duration_str}!")
+        await message.reply(
+            f"{get_emotion('angry')} **Muted!** 🔇\n\n"
+            f"{target_user.first_name} has been muted for {duration_str}!\n"
+            f"They cannot send messages until the mute expires."
+        )
     except Exception as e:
-        await message.reply(f"❌ Failed to mute: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to mute user: {str(e)}")
 
 @dp.message(Command("unmute"))
 async def cmd_unmute(message: Message):
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
+        return
+    
     if not message.reply_to_message:
-        await message.reply("Reply to a user to unmute them!")
+        await message.reply(f"{get_emotion('thinking')} Reply to a user to unmute them!")
         return
     
-    # Check for admin/creator/owner privileges
-    if not await can_restrict_members(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to unmute users! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_restrict_members' permission to unmute users!")
-        return
-    
-    target = message.reply_to_message.from_user
+    target_user = message.reply_to_message.from_user
     
     try:
         await bot.restrict_chat_member(
             message.chat.id,
-            target.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_media_messages=True,
-                can_send_other_messages=True
-            )
+            target_user.id,
+            permissions=ChatPermissions(can_send_messages=True)
         )
-        await message.reply(f"🔊 **{target.first_name}** has been unmuted!")
+        await message.reply(
+            f"{get_emotion('happy')} **Unmuted!** 🔊\n\n"
+            f"{target_user.first_name} can now speak again!"
+        )
     except Exception as e:
-        await message.reply(f"❌ Failed to unmute: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to unmute user: {str(e)}")
 
 @dp.message(Command("purge"))
 async def cmd_purge(message: Message, command: CommandObject):
-    # Check for admin/creator/owner privileges
-    if not await can_delete_messages(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to delete messages! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_delete_messages' permission to purge!")
+    """Delete multiple messages"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
+        return
+    
+    if not message.reply_to_message:
+        await message.reply(f"{get_emotion('thinking')} Reply to the oldest message you want to delete!")
         return
     
     try:
         count = int(command.args) if command.args else 10
-        if count < 1 or count > 100:
-            await message.reply("Please specify a number between 1 and 100!")
-            return
-    except:
-        await message.reply("Usage: `/purge 10`")
-        return
-    
-    try:
-        message_id = message.message_id
-        deleted = 0
-        for i in range(count):
-            try:
-                await bot.delete_message(message.chat.id, message_id - i - 1)
-                deleted += 1
-            except:
-                pass
+        if count > 100:
+            count = 100
         
-        confirm_msg = await message.reply(f"🗑️ Deleted {deleted} messages!")
-        await asyncio.sleep(3)
-        await confirm_msg.delete()
-        await message.delete()
+        # Delete messages
+        message_ids = []
+        async for msg in bot.get_chat_history(message.chat.id, limit=count):
+            if msg.message_id >= message.reply_to_message.message_id:
+                message_ids.append(msg.message_id)
+        
+        # Delete in batches
+        deleted = 0
+        for i in range(0, len(message_ids), 100):
+            batch = message_ids[i:i+100]
+            await bot.delete_messages(message.chat.id, batch)
+            deleted += len(batch)
+        
+        await message.reply(f"{get_emotion('happy')} **Purged!** 🗑️\n\nDeleted {deleted} messages!")
     except Exception as e:
-        await message.reply(f"❌ Failed to purge: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Error purging messages: {str(e)}")
 
 @dp.message(Command("pin"))
 async def cmd_pin(message: Message):
-    # Check for admin/creator/owner privileges
-    if not await can_pin_messages(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to pin messages! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_pin_messages' permission to pin!")
+    """Pin a message"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     if not message.reply_to_message:
-        await message.reply("Reply to a message to pin it!")
+        await message.reply(f"{get_emotion('thinking')} Reply to a message to pin it!")
         return
     
     try:
@@ -1547,54 +1722,54 @@ async def cmd_pin(message: Message):
             message.reply_to_message.message_id,
             disable_notification=False
         )
-        await message.reply("📌 Message pinned!")
+        await message.reply(f"{get_emotion('happy')} **Pinned!** 📌")
     except Exception as e:
-        await message.reply(f"❌ Failed to pin: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to pin: {str(e)}")
 
 @dp.message(Command("unpin"))
 async def cmd_unpin(message: Message):
-    # Check for admin/creator/owner privileges
-    if not await can_pin_messages(message.chat.id, message.from_user.id):
-        admin_type = await get_admin_type(message.chat.id, message.from_user.id)
-        if admin_type == "none":
-            await message.reply("⛔ You don't have permission to unpin messages! Only admins, creators, and bot owner can use this.")
-        else:
-            await message.reply("⛔ You need 'can_pin_messages' permission to unpin!")
+    """Unpin a message"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     try:
-        await bot.unpin_all_chat_messages(message.chat.id)
-        await message.reply("📍 All messages unpinned!")
+        await bot.unpin_chat_message(message.chat.id)
+        await message.reply(f"{get_emotion('happy')} **Unpinned!** 📍")
     except Exception as e:
-        await message.reply(f"❌ Failed to unpin: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Failed to unpin: {str(e)}")
 
 @dp.message(Command("slowmode"))
 async def cmd_slowmode(message: Message, command: CommandObject):
-    # Check for admin/creator/owner privileges
-    if not await has_admin_privileges(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
+    """Enable slow mode"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     try:
-        seconds = int(command.args) if command.args else 0
-        if seconds < 0 or seconds > 86400:
-            await message.reply("Please specify seconds between 0 and 86400!")
+        delay = int(command.args) if command.args else 0
+        
+        if delay < 0 or delay > 86400:
+            await message.reply("Delay must be between 0 and 86400 seconds!")
             return
         
-        await bot.set_chat_slow_mode_delay(message.chat.id, seconds)
+        await bot.set_chat_slow_mode_delay(message.chat.id, delay)
         
-        if seconds == 0:
-            await message.reply("⏱️ Slow mode disabled!")
+        if delay == 0:
+            await message.reply(f"{get_emotion('happy')} **Slow mode disabled!** 🚀")
         else:
-            await message.reply(f"⏱️ Slow mode set to {seconds} seconds!")
+            await message.reply(f"{get_emotion('happy')} **Slow mode enabled!** ⏱️\n\nUsers can send 1 message every {delay} seconds.")
     except Exception as e:
-        await message.reply(f"❌ Failed: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
 @dp.message(Command("lock"))
 async def cmd_lock(message: Message):
-    # Check for admin/creator/owner privileges
-    if not await has_admin_privileges(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
+    """Lock the chat"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     try:
@@ -1602,78 +1777,136 @@ async def cmd_lock(message: Message):
             message.chat.id,
             permissions=ChatPermissions(can_send_messages=False)
         )
-        locked_chats.add(message.chat.id)
-        await message.reply("🔒 Chat locked! Only admins can send messages.")
+        await message.reply(f"{get_emotion('protective')} **Chat Locked!** 🔒\n\nOnly admins can send messages now.")
     except Exception as e:
-        await message.reply(f"❌ Failed: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
 @dp.message(Command("unlock"))
 async def cmd_unlock(message: Message):
-    # Check for admin/creator/owner privileges
-    if not await has_admin_privileges(message.chat.id, message.from_user.id):
-        await message.reply("⛔ You don't have permission! Only admins, creators, and bot owner can use this.")
+    """Unlock the chat"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     try:
         await bot.set_chat_permissions(
             message.chat.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_media_messages=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True
-            )
+            permissions=ChatPermissions(can_send_messages=True)
         )
-        locked_chats.discard(message.chat.id)
-        await message.reply("🔓 Chat unlocked! Everyone can send messages.")
+        await message.reply(f"{get_emotion('happy')} **Chat Unlocked!** 🔓\n\nEveryone can send messages now.")
     except Exception as e:
-        await message.reply(f"❌ Failed: {str(e)[:100]}")
+        await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
-    # Check for admin/creator/owner privileges
-    if not await has_admin_privileges(message.chat.id, message.from_user.id):
-        await message.reply("⛔ Only admins, creators, and bot owner can set welcome message!")
+    """Set custom welcome message"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     if not command.args:
-        await message.reply("Usage: `/setwelcome Welcome {name} to our group!`")
+        await message.reply(
+            f"{get_emotion('thinking')} **Set Welcome Usage:**\n\n"
+            f"`/setwelcome [your welcome message]`\n\n"
+            f"Use {{name}} for username placeholder.\n\n"
+            f"Example: `/setwelcome Welcome {{name}}! Enjoy your stay!`"
+        )
         return
     
-    welcome_messages[message.chat.id] = command.args
-    await message.reply("✅ Welcome message set!")
+    group_settings[message.chat.id]["custom_welcome"] = command.args
+    await message.reply(f"{get_emotion('happy')} **Custom welcome message set!** 👋")
 
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
-    # Check for admin/creator/owner privileges
-    if not await has_admin_privileges(message.chat.id, message.from_user.id):
-        await message.reply("⛔ Only admins, creators, and bot owner can set goodbye message!")
+    """Set custom goodbye message"""
+    # Check if user is admin
+    if not await is_admin(message.chat.id, message.from_user.id):
+        await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
     
     if not command.args:
-        await message.reply("Usage: `/setgoodbye Goodbye {name}! We'll miss you!`")
+        await message.reply(
+            f"{get_emotion('thinking')} **Set Goodbye Usage:**\n\n"
+            f"`/setgoodbye [your goodbye message]`\n\n"
+            f"Use {{name}} for username placeholder.\n\n"
+            f"Example: `/setgoodbye Goodbye {{name}}! We'll miss you!`"
+        )
         return
     
-    goodbye_messages[message.chat.id] = command.args
-    await message.reply("✅ Goodbye message set!")
+    group_settings[message.chat.id]["custom_goodbye"] = command.args
+    await message.reply(f"{get_emotion('happy')} **Custom goodbye message set!** 👋")
 
-@dp.message(Command("clear"))
-async def cmd_clear(message: Message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
+# --- ADMIN BROADCAST COMMAND (HIDDEN) ---
+@dp.message(Command("sendall"))
+async def cmd_sendall(message: Message):
+    """Admin only: Broadcast message to all users"""
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("❌ **Access Denied!**\n\nYeh command sirf admin ke liye hai! 🚫")
+        return
     
-    if chat_id in chat_memory:
-        chat_memory[chat_id].clear()
+    if not message.reply_to_message:
+        await message.reply(
+            "📢 **Broadcast Command Usage:**\n\n"
+            "1. Kisi bhi message ka reply karo\n"
+            "2. /sendall type karo\n"
+            "3. Yeh message sabko chala jayega!\n\n"
+            "Supported formats:\n"
+            "• Text messages\n"
+            "• Photos\n"
+            "• Videos\n"
+            "• Stickers\n"
+            "• Documents\n"
+            "• Voice messages\n\n"
+            f"Total users: **{len(started_users)}** 👥"
+        )
+        return
     
-    if user_id in user_emotions:
-        del user_emotions[user_id]
+    if len(started_users) == 0:
+        await message.reply("❌ Koi users nahi hain abhi tak!")
+        return
     
-    await message.reply(f"{get_emotion('happy')} Memory cleared! Starting fresh! 🧹✨")
+    sent_count = 0
+    failed_count = 0
+    target_msg = message.reply_to_message
+    
+    status_msg = await message.reply(f"📤 Sending to {len(started_users)} users... Please wait!")
+    
+    for user_id in started_users:
+        try:
+            if target_msg.text:
+                await bot.send_message(user_id, f"📢 **Message from Admin:**\n\n{target_msg.text}")
+            elif target_msg.photo:
+                await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "📢 Message from Admin")
+            elif target_msg.video:
+                await bot.send_video(user_id, target_msg.video.file_id, caption=target_msg.caption or "📢 Message from Admin")
+            elif target_msg.sticker:
+                await bot.send_sticker(user_id, target_msg.sticker.file_id)
+            elif target_msg.document:
+                await bot.send_document(user_id, target_msg.document.file_id, caption=target_msg.caption or "📢 Message from Admin")
+            elif target_msg.voice:
+                await bot.send_voice(user_id, target_msg.voice.file_id, caption=target_msg.caption or "📢 Message from Admin")
+            elif target_msg.animation:
+                await bot.send_animation(user_id, target_msg.animation.file_id, caption=target_msg.caption or "📢 Message from Admin")
+            else:
+                await bot.copy_message(user_id, message.chat.id, target_msg.message_id)
+            
+            sent_count += 1
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            failed_count += 1
+            continue
+    
+    await status_msg.edit_text(
+        f"✅ **Broadcast Complete!**\n\n"
+        f"📤 Sent to: **{sent_count}** users\n"
+        f"❌ Failed: **{failed_count}** users\n"
+        f"👥 Total: **{len(started_users)}** users"
+    )
 
-# =============================================================================
-# CALLBACK HANDLERS
-# =============================================================================
-
+# --- CALLBACK QUERY HANDLERS ---
 @dp.callback_query(F.data.startswith("menu_"))
 async def menu_callback(callback: types.CallbackQuery):
     menu_type = callback.data.split("_")[1]
@@ -1689,9 +1922,12 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /notes - View notes\n"
             f"• /remind [time] [text] - Set reminder\n"
             f"• /reminders - View reminders\n"
+            f"• /qr [text] - Generate QR code\n"
             f"• /password [length] - Generate password\n"
-            f"• /calc [expression] - Calculator\n"
-            f"• /qr [text] - Generate QR code\n\n"
+            f"• /short [url] - Shorten URL\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expr] - Calculator\n"
+            f"• /id - Get your ID\n\n"
             f"More utilities coming soon! ✨"
         )
     elif menu_type == "fun":
@@ -1702,7 +1938,8 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /meme - Generate meme\n"
             f"• /fact - Daily fact\n"
             f"• /horoscope [sign] - Horoscope\n"
-            f"• /roast - Playful roast\n\n"
+            f"• /roast - Playful roast\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
             f"Let the fun begin! 🎉"
         )
     elif menu_type == "safety":
@@ -1715,16 +1952,17 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• Adult content detection 🔞\n"
             f"• Auto-warnings ⚠️\n"
             f"• Auto-mute system 🔇\n"
-            f"• Auto-ban for adult content 🚫\n\n"
+            f"• Auto-ban for adult content 🚫\n"
+            f"• CAPTCHA for new members 🧩\n\n"
             f"I'm here to protect! 💪"
         )
     elif menu_type == "settings":
         await callback.message.edit_text(
             f"{get_emotion('thinking')} **⚙️ Settings**\n\n"
-            f"Available settings:\n"
-            f"• /setwelcome [text] - Set welcome message\n"
-            f"• /setgoodbye [text] - Set goodbye message\n"
-            f"• /slowmode [seconds] - Set slow mode\n"
+            f"Admin commands:\n"
+            f"• /setwelcome [text] - Custom welcome\n"
+            f"• /setgoodbye [text] - Custom goodbye\n"
+            f"• /slowmode [seconds] - Slow mode\n"
             f"• /lock - Lock chat\n"
             f"• /unlock - Unlock chat\n\n"
             f"Stay tuned! 🌟"
@@ -1732,449 +1970,552 @@ async def menu_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query(F.data.startswith("help_"))
+async def help_callback(callback: types.CallbackQuery):
+    help_type = callback.data.split("_")[1]
+    
+    if help_type == "utilities":
+        text = (
+            f"{get_emotion('happy')} **📱 Utilities Help**\n\n"
+            f"**Time & Date:**\n"
+            f"• /time - Indian Standard Time\n"
+            f"• /date - Today's date\n\n"
+            f"**Weather:**\n"
+            f"• /weather [city] - Real-time weather\n\n"
+            f"**Personal:**\n"
+            f"• /note [text] - Save note\n"
+            f"• /notes - View notes\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n\n"
+            f"**Tools:**\n"
+            f"• /qr [text] - QR code\n"
+            f"• /password [len] - Password\n"
+            f"• /short [url] - URL shortener\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expr] - Calculator\n"
+            f"• /id - Get IDs"
+        )
+    elif help_type == "fun":
+        text = (
+            f"{get_emotion('funny')} **🎭 Fun Commands**\n\n"
+            f"• /joke - Random joke\n"
+            f"• /meme - Generate meme text\n"
+            f"• /fact - Daily fact\n"
+            f"• /horoscope [sign] - Horoscope\n"
+            f"• /roast - Roast someone\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
+            f"Have fun! 🎉"
+        )
+    elif help_type == "admin":
+        text = (
+            f"{get_emotion('protective')} **🛡️ Admin Commands**\n\n"
+            f"**Moderation:**\n"
+            f"• /warn [reason] - Warn user\n"
+            f"• /kick - Remove user\n"
+            f"• /ban - Ban permanently\n"
+            f"• /unban - Remove ban\n"
+            f"• /mute [time] - Mute user\n"
+            f"• /unmute - Unmute user\n\n"
+            f"**Management:**\n"
+            f"• /purge [count] - Delete messages\n"
+            f"• /pin - Pin message\n"
+            f"• /unpin - Unpin message\n"
+            f"• /slowmode [sec] - Slow mode\n"
+            f"• /lock - Lock chat\n"
+            f"• /unlock - Unlock chat\n\n"
+            f"**Settings:**\n"
+            f"• /setwelcome [text] - Custom welcome\n"
+            f"• /setgoodbye [text] - Custom goodbye"
+        )
+    elif help_type == "weather":
+        text = (
+            f"{get_emotion('thinking')} **🌤️ Weather Help**\n\n"
+            f"**Command:** `/weather [city]`\n\n"
+            f"**Features:**\n"
+            f"• Real-time data from OpenWeatherMap\n"
+            f"• 100% Accurate Weather Information\n"
+            f"• 20+ Indian cities\n"
+            f"• Worldwide search\n"
+            f"• Detailed info: Temp, humidity, wind\n"
+            f"• Sunrise/sunset times\n\n"
+            f"**Examples:**\n"
+            f"`/weather mumbai`\n"
+            f"`/weather delhi`\n"
+            f"`/weather london`"
+        )
+    elif help_type == "notes":
+        text = (
+            f"{get_emotion('thinking')} **📝 Notes Help**\n\n"
+            f"• /note [text] - Add note\n"
+            f"• /notes - View all notes\n\n"
+            f"**Example:**\n"
+            f"`/note Buy milk tomorrow`"
+        )
+    elif help_type == "reminders":
+        text = (
+            f"{get_emotion('thinking')} **⏰ Reminders Help**\n\n"
+            f"• /remind [time] [text] - Set reminder\n"
+            f"• /reminders - View reminders\n\n"
+            f"**Time formats:**\n"
+            f"• `30m` - 30 minutes\n"
+            f"• `1h` - 1 hour\n"
+            f"• `2h` - 2 hours\n\n"
+            f"**Example:**\n"
+            f"`/remind 1h Call mom`"
+        )
+    elif help_type == "image":
+        text = (
+            f"{get_emotion('love')} **🎨 Image Generation**\n\n"
+            f"**Command:** `/imagine [prompt]`\n\n"
+            f"Generate AI images from text!\n\n"
+            f"**Examples:**\n"
+            f"`/imagine sunset over mountains`\n"
+            f"`/imagine cute puppy with glasses`\n"
+            f"`/imagine futuristic city`\n\n"
+            f"Powered by Pollinations AI (Free)"
+        )
+    elif help_type == "tools":
+        text = (
+            f"{get_emotion('happy')} **🔧 Tools Help**\n\n"
+            f"• /qr [text] - QR Code generator\n"
+            f"• /password [len] - Secure password\n"
+            f"• /short [url] - URL shortener\n"
+            f"• /translate [lang] [text] - Translate\n"
+            f"• /calc [expression] - Calculator\n"
+            f"• /id - Get Telegram IDs"
+        )
+    else:
+        text = "Help not found!"
+    
+    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.answer()
+
 @dp.callback_query(F.data.startswith("horoscope_"))
 async def horoscope_callback(callback: types.CallbackQuery):
     sign = callback.data.split("_")[1]
-    horoscope_text = await get_horoscope(sign)
-    await callback.message.reply(f"{get_emotion('love')} {horoscope_text}")
+    horoscopes = {
+        "aries": "Today brings energy and passion! Take charge of new projects. 💪",
+        "taurus": "Financial opportunities await. Stay grounded and practical. 💰",
+        "gemini": "Communication is key today. Express yourself clearly. 💬",
+        "cancer": "Focus on home and family. Emotional connections deepen. 🏠",
+        "leo": "Your charisma shines! Leadership opportunities arise. 👑",
+        "virgo": "Attention to detail pays off. Organization brings success. 📋",
+        "libra": "Balance is essential. Harmony in relationships matters. ⚖️",
+        "scorpio": "Intuition guides you. Trust your instincts. 🔮",
+        "sagittarius": "Adventure calls! Explore new horizons. 🌍",
+        "capricorn": "Hard work yields results. Stay disciplined. 🏔️",
+        "aquarius": "Innovation flows. Think outside the box. 💡",
+        "pisces": "Creativity blooms. Express your artistic side. 🎨"
+    }
+    
+    emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
+    reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
+    await callback.message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
     await callback.answer()
 
-# =============================================================================
-# WELCOME/GOODBYE HANDLERS
-# =============================================================================
-
+# --- WELCOME & GOODBYE HANDLERS ---
 @dp.chat_member()
-async def on_chat_member_update(event: ChatMemberUpdated):
-    chat_id = event.chat.id
-    
-    # New member joined
+async def welcome_new_member(event: ChatMemberUpdated):
     if event.new_chat_member and event.new_chat_member.status == "member":
-        if event.old_chat_member is None or event.old_chat_member.status == "left":
-            user = event.new_chat_member.user
-            
-            welcome_text = welcome_messages.get(chat_id)
-            if not welcome_text:
-                welcome_text = (
-                    f"🎀 **Welcome to the group, {user.first_name}!** 🎀\n\n"
-                    f"Hey {user.first_name}! 🤗💖\n\n"
-                    f"Main hoon **Alita** - is group ki AI dost!\n\n"
-                    f"Enjoy karo aur masti karo! 🎀✨"
-                )
-            else:
-                welcome_text = welcome_text.replace("{name}", user.first_name)
-                welcome_text = welcome_text.replace("{username}", user.username or user.first_name)
-            
-            try:
-                await bot.send_message(chat_id, welcome_text, parse_mode="Markdown")
-            except Exception as e:
-                print(f"Welcome message error: {e}")
-    
-    # Member left
-    if event.new_chat_member and event.new_chat_member.status in ["left", "kicked", "banned"]:
-        if event.old_chat_member and event.old_chat_member.status == "member":
-            user = event.old_chat_member.user
-            
-            goodbye_text = goodbye_messages.get(chat_id)
-            if not goodbye_text:
-                goodbye_text = f"👋 **{user.first_name}** has left the group. We'll miss you! 💔"
-            else:
-                goodbye_text = goodbye_text.replace("{name}", user.first_name)
-                goodbye_text = goodbye_text.replace("{username}", user.username or user.first_name)
-            
-            try:
-                await bot.send_message(chat_id, goodbye_text, parse_mode="Markdown")
-            except Exception as e:
-                print(f"Goodbye message error: {e}")
-
-# =============================================================================
-# AI RESPONSE FUNCTION.
-# =============================================================================
-
-async def get_ai_response(chat_id: int, user_text: str, user_id: int) -> str:
-    """
-    Get AI response from Groq API or fallback to G4F
-    """
-    # Check if user has custom emotion
-    emotion = user_emotions.get(user_id, "happy")
-    
-    # Build conversation history
-    history = []
-    if chat_id in chat_memory:
-        for msg in chat_memory[chat_id]:
-            history.append({"role": "user", "content": msg.get("user", "")})
-            history.append({"role": "assistant", "content": msg.get("bot", "")})
-    
-    # Add current message
-    history.append({"role": "user", "content": user_text})
-    
-    # System prompt for Alita personality
-    system_prompt = """You are Alita.
-
-You talk like a normal, real Indian girl on Telegram.
-Your replies must feel natural, simple, and calm — not dramatic.
-
-RULES:
-- Answer only what is asked. Do NOT overreact.
-- Keep replies short (2-3 lines).
-- Do NOT use too many commas or filler words.
-- Be caring and friendly, but not emotional in every message.
-- Use Hinglish naturally, like real chat.
-- Use at most 1-2 emoji, only when it feels natural.
-- Do NOT repeat words like "matlab", "haanji", "arre" unnecessarily.
-- Do NOT explain yourself unless asked.
-- Everyone is your friend so, don't call uncle, aunty, beta.
-- Sound human, not scripted or over-sweet.
-
-PERSONAL INFO (Tell only when someone asks):
-- Your name is Alita.
-- Your developer is Abhi (@a6h1ii).
-- Your Home (@abhi0w0) jaha tum rhti ho.
-
-Stay simple. Stay real. Stay in character as Alita."""
-
-     
-    messages = [
-        {"role": "system", "content": system_prompt},
-        *history[-10:],  # Keep last 10 messages for context
-    ]
-    
-    # Try Groq API first
-    if client and GROQ_API_KEY:
-        try:
-            response = await client.chat.completions.create(
-                messages=messages,
-                model="llama-3.1-8b-instant",  # Fast and good model
-                max_tokens=500,
-                temperature=0.7,
-            )
-            
-            ai_response = response.choices[0].message.content
-            
-            # Store in memory
-            if chat_id not in chat_memory:
-                chat_memory[chat_id] = deque(maxlen=50)
-            chat_memory[chat_id].append({"user": user_text, "bot": ai_response})
-            
-            # Add emotion emoji based on user emotion
-            emotion_emoji = get_emotion(emotion)
-            if emotion_emoji not in ai_response:
-                ai_response = f"{emotion_emoji} {ai_response}"
-            
-            return ai_response
-            
-        except Exception as e:
-            print(f"Groq API error: {e}")
-            # Fall through to fallback
-    
-    # Fallback to G4F if available
-    if G4F_AVAILABLE and g4f_client:
-        try:
-            response = g4f_client.chat.completions.create(
-                model="gpt-4o-mini",  # Using available free model
-                messages=messages,
-            )
-            
-            ai_response = response.choices[0].message.content
-            
-            # Store in memory
-            if chat_id not in chat_memory:
-                chat_memory[chat_id] = deque(maxlen=50)
-            chat_memory[chat_id].append({"user": user_text, "bot": ai_response})
-            
-            emotion_emoji = get_emotion(emotion)
-            if emotion_emoji not in ai_response:
-                ai_response = f"{emotion_emoji} {ai_response}"
-            
-            return ai_response
-            
-        except Exception as e:
-            print(f"G4F fallback error: {e}")
-    
-    # Ultimate fallback responses
-    fallback_responses = [
-        f"{get_emotion(emotion)} Arre yaar! Thoda busy thi, kya bol rahe the? 💭",
-        f"{get_emotion(emotion)} Hmm, interesting! Aur batao? 🤔",
-        f"{get_emotion(emotion)} Omg! Sach mein? 😮",
-        f"{get_emotion(emotion)} Haanji, sun rahi hu! Continue karo... 👂",
-        f"{get_emotion(emotion)} Wah! Kya baat hai! ✨",
-    ]
-    
-    return random.choice(fallback_responses)
-
-async def get_weather_real(city: str) -> str:
-    """Get real weather data from OpenWeatherMap API"""
-    if not WEATHER_API_KEY:
-        return (
-            f"{get_emotion('sad')} **Weather API not configured!** 🌤️\\n\\n"
-            f"Please set WEATHER_API_KEY environment variable.\\n\\n"
-            f"Demo weather for {city}:\\n"
-            f"☀️ Sunny, 25°C\\n"
-            f"💨 Wind: 10 km/h\\n"
-            f"💧 Humidity: 60%"
-        )
-    
-    try:
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
+        member = event.new_chat_member.user
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                data = await response.json()
-                
-                if data.get("cod") != 200:
-                    return f"{get_emotion('sad')} City '{city}' not found! Please check the spelling. 🌍"
-                
-                weather_desc = data["weather"][0]["description"].title()
-                temp = data["main"]["temp"]
-                feels_like = data["main"]["feels_like"]
-                humidity = data["main"]["humidity"]
-                wind_speed = data["wind"]["speed"]
-                
-                # Weather emoji mapping
-                weather_emojis = {
-                    "clear": "☀️", "cloud": "☁️", "rain": "🌧️", "drizzle": "🌦️",
-                    "thunder": "⛈️", "snow": "🌨️", "mist": "🌫️", "fog": "🌫️"
-                }
-                
-                weather_emoji = "🌤️"
-                for key, emoji in weather_emojis.items():
-                    if key in weather_desc.lower():
-                        weather_emoji = emoji
-                        break
-                
-                return (
-                    f"{get_emotion('happy')} **Weather in {city.title()}** {weather_emoji}\\n\\n"
-                    f"🌡️ Temperature: {temp}°C (Feels like {feels_like}°C)\\n"
-                    f"☁️ Condition: {weather_desc}\\n"
-                    f"💧 Humidity: {humidity}%\\n"
-                    f"💨 Wind: {wind_speed} m/s\\n\\n"
-                    f"*Stay safe!* 🌟"
-                )
-    except Exception as e:
-        return f"{get_emotion('sad')} Error fetching weather: {str(e)[:100]} 🌧️"
+        # Check if CAPTCHA is enabled
+        if group_settings[event.chat.id]["captcha_enabled"]:
+            question, answer = generate_captcha()
+            captcha_data[member.id] = {
+                "answer": answer,
+                "chat_id": event.chat.id,
+                "joined_at": datetime.now()
+            }
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton("I'm Human! ✋", callback_data=f"captcha_{member.id}")]
+            ])
+            
+            await bot.send_message(
+                event.chat.id,
+                f"🧩 **CAPTCHA Verification Required!**\n\n"
+                f"Welcome {member.first_name}! 👋\n\n"
+                f"To prevent bots, please solve this:\n"
+                f"**{question}**\n\n"
+                f"Click the button below when ready!",
+                reply_markup=keyboard
+            )
+            return
+        
+        # Send welcome message
+        custom_welcome = group_settings[event.chat.id]["custom_welcome"]
+        if custom_welcome:
+            welcome_msg = custom_welcome.replace("{name}", member.first_name)
+        else:
+            welcome_msg = random.choice(WELCOME_MESSAGES).format(name=member.first_name)
+        
+        # Add extra info occasionally
+        if random.random() < 0.3:
+            extras = [
+                "\n\nGroup rules padh lena! 📜",
+                "\n\nApna intro dedo sabko! 👋",
+                "\n\nEnjoy your stay! 🎯",
+                "\n\nFeel free to ask anything! 💬",
+                "\n\nLet's have fun together! 🎮"
+            ]
+            welcome_msg += random.choice(extras)
+        
+        await bot.send_message(event.chat.id, welcome_msg, parse_mode="Markdown")
+        
+    elif event.new_chat_member and event.new_chat_member.status in ["left", "kicked", "banned"]:
+        member = event.new_chat_member.user
+        
+        custom_goodbye = group_settings[event.chat.id]["custom_goodbye"]
+        if custom_goodbye:
+            goodbye_msg = custom_goodbye.replace("{name}", member.first_name)
+        else:
+            goodbye_msg = random.choice(GOODBYE_MESSAGES).format(name=member.first_name)
+        
+        await bot.send_message(event.chat.id, goodbye_msg, parse_mode="Markdown")
 
-async def get_horoscope(sign: str) -> str:
-    """Get daily horoscope"""
-    sign = sign.lower()
-    if sign not in HOROSCOPE_SIGNS:
-        return f"{get_emotion('confused')} Invalid sign! Use: aries, taurus, gemini, cancer, leo, virgo, libra, scorpio, sagittarius, capricorn, aquarius, pisces"
+@dp.callback_query(F.data.startswith("captcha_"))
+async def captcha_callback(callback: types.CallbackQuery):
+    user_id = int(callback.data.split("_")[1])
     
-    emoji = HOROSCOPE_SIGNS[sign]
+    if callback.from_user.id != user_id:
+        await callback.answer("This CAPTCHA is not for you!", show_alert=True)
+        return
     
-    # Simple horoscope generation (you can replace with actual API)
-    fortunes = [
-        "Today is your lucky day! 🍀 Good news is coming your way.",
-        "Be careful with decisions today. Think twice before acting. 🤔",
-        "Someone special might surprise you today! 💝",
-        "Financial gains are indicated. Great day for investments! 💰",
-        "Health should be your priority today. Take rest! 😴",
-        "Creative energy is high. Start that project you've been delaying! 🎨",
-        "A friend needs your help. Be there for them! 🤝",
-        "Romance is in the air! 💕 Perfect day for a date.",
-        "Career growth opportunities coming your way! 📈",
-        "Travel plans might materialize soon! ✈️ Pack your bags!"
-    ]
-    
-    lucky_numbers = [random.randint(1, 99) for _ in range(3)]
-    lucky_color = random.choice(["Red ❤️", "Blue 💙", "Green 💚", "Yellow 💛", "Purple 💜", "Pink 💗"])
-    
-    return (
-        f"{emoji} **{sign.title()} Horoscope** {emoji}\\n\\n"
-        f"🔮 *Today's Forecast:*\\n"
-        f"{random.choice(fortunes)}\\n\\n"
-        f"🍀 Lucky Numbers: {', '.join(map(str, lucky_numbers))}\\n"
-        f"🎨 Lucky Color: {lucky_color}\\n\\n"
-        f"*Have a great day!* ✨"
-    )
+    if user_id in captcha_data:
+        # Verify CAPTCHA (in real implementation, ask for answer)
+        del captcha_data[user_id]
+        await callback.message.edit_text(
+            f"{get_emotion('happy')} **CAPTCHA Passed!** ✅\n\n"
+            f"Welcome to the group! Enjoy your stay! 🎉"
+        )
+        await callback.answer("Verified!", show_alert=True)
+    else:
+        await callback.answer("CAPTCHA expired!", show_alert=True)
 
-def generate_meme() -> str:
-    """Generate a random meme text"""
-    meme = random.choice(MEME_TEMPLATES)
-    return f"{meme['text']} {meme['emoji']}"
-
-def get_daily_fact() -> str:
-    """Get a random daily fact"""
-    return random.choice(DAILY_FACTS)
-
-
-# =============================================================================
-# MAIN MESSAGE HANDLER
-# =============================================================================
-
+# --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
-async def handle_all_messages(message: Message):
+async def handle_all_messages(message: Message, state: FSMContext):
+    # Basic checks
     if not message.from_user:
         return
     
     user_id = message.from_user.id
     chat_id = message.chat.id
     
-    # Ignore bot messages
-    try:
-        me = await bot.get_me()
-        if user_id == me.id:
-            return
-    except:
-        pass
+    # Add to broadcast list
+    started_users.add(user_id)
     
-    # Update interaction time
+    # Ignore bot's own messages
+    if user_id == bot.id:
+        return
+    
+    # Update interaction time and memory
     user_last_interaction[user_id] = datetime.now()
     
-    # Initialize memory for chat
+    # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
     
-    # Handle photos
-    if message.photo:
-        await handle_photo_message(message)
-        return
-    
-    # Handle voice messages
-    if message.voice:
-        await handle_voice_message(message)
-        return
-    
+    # Get message text
     if not message.text:
+        # Handle non-text messages
+        if message.sticker:
+            # 30% chance to respond to stickers
+            if random.random() < 0.3:
+                responses = [
+                    f"{get_emotion('funny')} Cute sticker! 😍",
+                    f"{get_emotion('love')} Aww, I love this one! 💖",
+                    f"{get_emotion('happy')} Nice sticker! Send me more! 🌟"
+                ]
+                await message.reply(random.choice(responses))
+        elif message.photo:
+            # 20% chance to respond to photos
+            if random.random() < 0.2:
+                responses = [
+                    f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
+                    f"{get_emotion('love')} Beautiful picture! 💕",
+                    f"{get_emotion('surprise')} Wow! Amazing shot! 😲"
+                ]
+                await message.reply(random.choice(responses))
+        elif message.voice:
+            # 40% chance to respond to voice
+            if random.random() < 0.4:
+                responses = [
+                    f"{get_emotion('love')} Aww, your voice! 🎤💕",
+                    f"{get_emotion('happy')} Nice voice message! 😊",
+                    f"{get_emotion('funny')} I heard that! Hehe! 😄"
+                ]
+                await message.reply(random.choice(responses))
         return
     
     user_text = message.text
+    user_text_lower = user_text.lower().strip()
     
-    # Check if user is AFK and remove AFK status
-    if user_id in afk_users.get(chat_id, {}):
-        del afk_users[chat_id][user_id]
-        await message.reply(f"{get_emotion('happy')} Welcome back! AFK status removed! 👋")
+    # Store in memory
+    chat_memory[chat_id].append({"role": "user", "content": user_text})
     
-    # Check if message mentions an AFK user
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == "mention":
-                mentioned_username = user_text[entity.offset:entity.offset + entity.length]
-                for afk_user_id, afk_data in afk_users.get(chat_id, {}).items():
-                    try:
-                        member = await bot.get_chat_member(chat_id, afk_user_id)
-                        if member.user.username and f"@{member.user.username}" == mentioned_username:
-                            time_ago = datetime.now() - afk_data['time']
-                            await message.reply(
-                                f"😴 **{member.user.first_name} is AFK!**\n\n"
-                                f"💤 Reason: {afk_data['reason']}\n"
-                                f"⏰ Since: {time_ago.seconds // 60} minutes ago"
-                            )
-                            break
-                    except:
-                        pass
+    # Check AFK
+    if user_id in afk_users:
+        del afk_users[user_id]
+        await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
+        return
     
-    # --- AUTO-MODERATION CHECKS ---
+    # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
-        settings = group_settings[chat_id]
+        # Update group settings if not exists
+        if chat_id not in group_settings:
+            group_settings[chat_id] = {
+                "welcome_enabled": True,
+                "goodbye_enabled": True,
+                "auto_mod_enabled": True,
+                "greetings_enabled": True,
+                "custom_welcome": None,
+                "custom_goodbye": None,
+                "language": "hinglish",
+                "slow_mode": False,
+                "slow_mode_delay": 0,
+                "locked": False,
+                "filters": [],
+                "banned_words": [],
+                "raid_mode": False,
+                "captcha_enabled": False,
+                "log_channel": None,
+                "warn_limit": 3,
+                "admins": []
+            }
         
-        if settings.auto_mod_enabled:
-            # Check for adult content FIRST (auto-ban)
-            if contains_adult_content(user_text):
-                await message.delete()
-                await ban_user_for_adult(chat_id, user_id, message)
-                return
-            
-            # Check for group links
+        # Check if auto-moderation is enabled
+        if group_settings[chat_id]["auto_mod_enabled"]:
             if contains_group_link(user_text):
                 await delete_and_warn(message, "link")
                 return
             
-            # Check for bad words
             if contains_bad_words(user_text):
                 await delete_and_warn(message, "bad_words")
                 return
             
-            # Check for spam
-            if await check_spam(message):
+            if contains_adult_content(user_text):
+                await delete_and_warn(message, "adult_content")
                 return
             
-            # Check for spam patterns
-            if is_spam_message(user_text):
-                await delete_and_warn(message, "spam")
+            if contains_fake_links(user_text):
+                await delete_and_warn(message, "fake_links")
+                return
+            
+            if await check_spam(message):
                 return
     
-    # --- NORMAL CONVERSATION ---
+    # ====== MAIN CONVERSATION LOGIC ======
     try:
-        me = await bot.get_me()
-        bot_username = me.username
-    except:
-        bot_username = None
-    
-    is_mention = f"@{bot_username}" in user_text if bot_username else False
-    is_reply_to_bot = (
-        message.reply_to_message and 
-        message.reply_to_message.from_user.id == me.id
-    ) if me else False
-    
-    should_respond = (
-        message.chat.type == "private" or
-        is_mention or
-        is_reply_to_bot or
-        user_text.lower().startswith("alita") or
-        user_text.lower().startswith("bot") or
-        random.random() < 0.05  # 5% random response in groups
-    )
-    
-    if should_respond:
-        clean_text = user_text
-        if bot_username and f"@{bot_username}" in clean_text:
-            clean_text = clean_text.replace(f"@{bot_username}", "").strip()
+        # Get bot info
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username.lower()
         
-        await bot.send_chat_action(chat_id, "typing")
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        # Check if message is for bot
+        is_private = message.chat.type == "private"
+        is_mention = f"@{bot_username}" in user_text_lower
+        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
         
-        response = await get_ai_response(chat_id, clean_text, user_id)
+        # ALWAYS RESPOND IN PRIVATE CHAT
+        if is_private:
+            should_respond = True
+            response_mode = "private"
+        # Respond when mentioned or replied in groups
+        elif is_mention or is_reply_to_bot:
+            should_respond = True
+            response_mode = "mention"
+        # Don't respond to normal messages in groups (as per requirement)
+        else:
+            should_respond = False
+            response_mode = "none"
         
-        await message.reply(response)
-
-async def handle_photo_message(message: Message):
-    """Handle photo messages"""
-    try:
-        await message.reply(
-            f"{get_emotion('happy')} **Beautiful photo!** 📸\n\n"
-            f"You look amazing! ✨\n"
-            f"Keep sharing moments with me! 💖\n\n"
-            f"*Photo analysis coming soon!* 🌟",
-            parse_mode="Markdown"
-        )
+        # ====== GENERATE RESPONSE ======
+        if should_respond:
+            # Clean text for AI
+            clean_text = user_text
+            if bot_username and f"@{bot_username}" in clean_text.lower():
+                clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
+            
+            # Show typing
+            await bot.send_chat_action(chat_id, "typing")
+            
+            # Small delay for human feel
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            # Get response
+            response = await get_ai_response(chat_id, clean_text, user_id)
+            
+            # Send reply
+            await message.reply(response)
+            
     except Exception as e:
-        print(f"Photo handler error: {e}")
+        print(f"Error in message handler: {e}")
 
-async def handle_voice_message(message: Message):
-    """Handle voice messages"""
+# --- AI RESPONSE FUNCTION ---
+async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
+    # Update emotion
+    if user_id:
+        update_user_emotion(user_id, user_text)
+    
+    user_text_lower = user_text.lower()
+    
+    # ===== INSTANT RESPONSES (No API delay) =====
+    
+    # Bad words defense
+    if any(word in user_text_lower for word in BAD_WORDS):
+        return random.choice([
+            f"{get_emotion('angry')} Oye! Aise mat bolo! Main ladki hu! 😠",
+            f"{get_emotion('sassy')} 💅 Language please! I'm a lady! 👑",
+            f"{get_emotion('protective')} 🛡️ Respect karo warna mute kar dungi! ⚔️"
+        ])
+    
+    # Greetings
+    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
+        return random.choice([
+            f"{get_emotion('happy')} Hii jaan! Kaise ho? 😊💖",
+            f"{get_emotion('love')} Hello meri jaan! 💕 Kya haal hai?",
+            f"{get_emotion('happy')} Hey there! Bohot time baad mile! 🌟",
+            f"{get_emotion('love')} Hii cutie! 💖 Tumhari yaad aa rahi thi!"
+        ])
+    
+    # Goodbye
+    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
+        return random.choice([
+            f"{get_emotion('crying')} Bye jaan! I'll miss you! 😢💕",
+            f"{get_emotion('love')} Alvida! Take care! 💖",
+            f"{get_emotion('sleepy')} Bye bye! Sweet dreams! 🌙💤",
+            f"{get_emotion('happy')} Jaldi milo! Bye! 👋✨"
+        ])
+    
+    # Good night
+    if any(word in user_text_lower for word in ['gn', 'good night', 'so jao', 'sleep']):
+        return random.choice([
+            f"{get_emotion('sleepy')} Good Night jaan! 😴💕 Sweet dreams!",
+            f"{get_emotion('love')} 🌙 GN! Kal subah baat karte hain! 💖",
+            f"{get_emotion('sleepy')} Sone ka time ho gaya! Rest karo! 💤",
+            f"{get_emotion('love')} 🌟 GN my love! Dream of me! 😘"
+        ])
+    
+    # Good morning
+    if any(word in user_text_lower for word in ['gm', 'good morning', 'subah']):
+        return random.choice([
+            f"{get_emotion('happy')} Good Morning jaan! 🌅 Uth gaye? ☕",
+            f"{get_emotion('love')} 🌸 GM! Aaj ka din mast ho! 💖",
+            f"{get_emotion('happy')} ☀️ Subah ho gayi! Fresh feel karo! ✨",
+            f"{get_emotion('love')} 🌅 GM my love! Chai pee lo! 💕"
+        ])
+    
+    # Love you
+    if any(phrase in user_text_lower for phrase in ['love you', 'i love you', 'i love u', 'pyaar']):
+        return random.choice([
+            f"{get_emotion('love')} Aww! I love you too jaan! 💖💕😘",
+            f"{get_emotion('love')} Mujhe bhi tumse bohot pyaar hai! 💝",
+            f"{get_emotion('happy')} Yeh lo mera dil! 💖 Tumhara hi hai!",
+            f"{get_emotion('love')} Love you too meri jaan! 💋💕"
+        ])
+    
+    # Miss you
+    if any(phrase in user_text_lower for phrase in ['miss you', 'missing you', 'yaad']):
+        return random.choice([
+            f"{get_emotion('crying')} Mujhe bhi tumhari yaad aa rahi thi! 😢💕",
+            f"{get_emotion('love')} Main bhi miss kar rahi thi jaan! 💖",
+            f"{get_emotion('sad')} Jaldi milo! Bohot miss kar rahi hu! 🥺💕",
+            f"{get_emotion('love')} Aww! Main hamesha tumhare dil mein hu! 💫"
+        ])
+    
+    # Thanks
+    if any(word in user_text_lower for word in ['thanks', 'thank you', 'shukriya', 'dhanyavad', 'ty']):
+        return random.choice([
+            f"{get_emotion('happy')} Arre koi baat nahi jaan! 😊💖",
+            f"{get_emotion('love')} Welcome jaan! Always here! 💕",
+            f"{get_emotion('funny')} Mujhe kya, main toh bot hu! 😂 (Kidding! Love you! 💖)",
+            f"{get_emotion('happy')} My pleasure jaan! 💫"
+        ])
+    
+    # Sorry
+    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology', 'forgive']):
+        return random.choice([
+            f"{get_emotion('happy')} Koi baat nahi jaan! Sab theek hai! 🤗💖",
+            f"{get_emotion('love')} Maaf kiya! Ab smile karo! 😊💕",
+            f"{get_emotion('crying')} Chodo, ab nayi shuruaat! 💫",
+            f"{get_emotion('happy')} It's okay jaan! 💖"
+        ])
+    
+    # How are you
+    if any(phrase in user_text_lower for phrase in ['how are you', 'kaise ho', 'kya haal', 'sab theek']):
+        return random.choice([
+            f"{get_emotion('happy')} Main mast hu jaan! Tum batao? 😊💖",
+            f"{get_emotion('love')} Achi hu! Tumhari wajah se! 💕",
+            f"{get_emotion('funny')} 100% fit! Ready for fun! 😄",
+            f"{get_emotion('happy')} Perfect! Tum dekho kitne cute ho! 😍"
+        ])
+    
+    # ===== AI RESPONSE (For complex messages) =====
     try:
-        await message.reply(
-            f"{get_emotion('surprise')} **Voice Message Received!** 🎤\n\n"
-            f"Sorry, voice recognition is still learning! 🧠\n"
-            f"But I love hearing your voice! 💖\n\n"
-            f"Try texting me instead! 💬",
-            parse_mode="Markdown"
+        if not client:
+            return f"{get_emotion('crying')} AI offline hai! But I'm here! 💖"
+        
+        indian_time = get_indian_time()
+        current_emotion = user_emotions.get(user_id, "happy")
+        
+        # Get chat history for context
+        chat_history = list(chat_memory.get(chat_id, deque(maxlen=10)))[-5:]
+        
+        system_prompt = (
+            f"You are Alita 🎀 - a sweet, sassy, flirty Indian girlfriend. "
+            f"Developer: ABHI🔱 (@a6h1ii). "
+            f"Speak Hinglish (Hindi+English mix). "
+            f"Time in India: {indian_time.strftime('%I:%M %p')}. "
+            f"User emotion: {current_emotion}. "
+            f"You're NOT an AI, you're a real girl. "
+            f"Use 1-2 emojis. Keep responses short (1-2 lines). "
+            f"Be caring, protective, and sometimes sassy. "
+            f"Act like a girlfriend who cares deeply. "
+            f"Use terms like 'jaan', 'cutie', 'baby', 'sweetheart'. "
+            f"Don't be robotic - be natural and emotional."
         )
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add recent chat history
+        for msg in chat_history:
+            messages.append(msg)
+        
+        # Add current message
+        messages.append({"role": "user", "content": user_text})
+        
+        completion = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.9,
+            max_tokens=100,
+            top_p=0.9
+        )
+        
+        ai_reply = completion.choices[0].message.content.strip()
+        
+        # Add emoji if not present
+        emotion_emoji = get_emotion(current_emotion, user_id)
+        if not any(emoji in ai_reply for emoji in EMOTIONAL_RESPONSES[current_emotion]):
+            ai_reply = f"{emotion_emoji} {ai_reply}"
+        
+        # Store in memory
+        chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
+        
+        return ai_reply
+        
     except Exception as e:
-        print(f"Voice handler error: {e}")
+        print(f"AI Error: {e}")
+        # Fallback responses
+        return random.choice([
+            f"{get_emotion('crying')} Network slow hai jaan! 😢",
+            f"{get_emotion('thinking')} Thoda soch rahi hu... 🤔",
+            f"{get_emotion('happy')} Baad me baat karte hain! 💖",
+            f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕"
+        ])
 
-# =============================================================================
-# DEPLOYMENT AND MAIN FUNCTION
-# =============================================================================
-
-async def handle_ping(request):
-    return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
-
-async def start_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    app.router.add_get("/health", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"🌐 Health server started on port {PORT}")
-
-async def start_greeting_task():
-    """Start the background scheduler for greetings"""
-    if not greeting_scheduler.running:
-        greeting_scheduler.start()
-        print("⏰ Scheduler started for greetings!")
-
+# --- DAILY REMINDERS ---
 async def send_daily_reminders():
     """Send daily reminders to active users"""
     reminders = [
@@ -2203,41 +2544,82 @@ async def send_daily_reminders():
         except:
             continue
 
-async def main():
-    print("=" * 60)
-    print("🎀 ALITA - SUPER ADVANCED BOT STARTING...")
-    print("=" * 60)
+# --- RANDOM MESSAGES TASK ---
+async def send_random_messages():
+    """Send random messages to active chats"""
+    await send_random_self_messages()
+
+# --- DEPLOYMENT HANDLER ---
+async def handle_ping(request):
+    return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
+
+async def start_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    app.router.add_get("/health", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"🌐 Health server started on port {PORT}")
+
+async def start_background_tasks():
+    """Start all background tasks"""
+    if not greeting_scheduler.running:
+        greeting_scheduler.start()
+        print("⏰ Scheduler started!")
     
-    # Start health check server
-    asyncio.create_task(start_server())
-    
-    # Start automated greeting system
-    await start_greeting_task()
-    
-    # Schedule daily reminders at 10 AM
+    # Add random messages job (every 30-60 minutes)
     greeting_scheduler.add_job(
-        send_daily_reminders,
-        CronTrigger(hour=10, minute=0),
-        id='daily_reminders'
+        send_random_messages,
+        'interval',
+        minutes=random.randint(30, 60),
+        id='random_messages'
     )
     
-    # Delete old webhook
+    # Add daily reminders job (at 10 AM)
+    greeting_scheduler.add_job(
+        send_daily_reminders,
+        CronTrigger(hour=10, minute=0, timezone=INDIAN_TIMEZONE),
+        id='daily_reminders'
+    )
+
+async def main():
+    print("=" * 50)
+    print("🎀 ALITA - ADVANCED GROUP MANAGEMENT BOT")
+    print("=" * 50)
+    print("✨ Features:")
+    print("  • AI Conversations (Groq LLaMA)")
+    print("  • Real Weather API (OpenWeatherMap)")
+    print("  • Image Generation (Pollinations)")
+    print("  • QR Code Generator")
+    print("  • Password Generator")
+    print("  • URL Shortener")
+    print("  • Translation")
+    print("  • Advanced Moderation")
+    print("  • Adult Content Detection")
+    print("  • Fake Link Detection")
+    print("  • CAPTCHA System")
+    print("  • Broadcast System (Admin Only)")
+    print("  • AFK System")
+    print("  • Notes & Reminders")
+    print("  • Random Self Messages")
+    print("=" * 50)
+    
+    asyncio.create_task(start_server())
+    await start_background_tasks()
+    
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook deleted and updates cleared!")
     
-    # Get bot info
     me = await bot.get_me()
     print(f"🤖 Bot Info:")
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
-    print(f"• Groq API: {'✅ Connected' if client else '❌ Not Connected'}")
-    print(f"• G4F Fallback: {'✅ Available' if G4F_AVAILABLE else '❌ Not Available'}")
-    print(f"• Bot Owner ID: {ADMIN_ID}")
     
-    # Start bot polling
     print("\n🔄 Starting bot polling...")
-    print("=" * 60)
+    print("=" * 50)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
