@@ -33,8 +33,8 @@ import textwrap
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "your_openweather_api_key")
+ADMIN_ID = int(os.getenv("ADMIN_ID", 0))  # FIXED: Removed quotes around 0
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 # Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
@@ -497,22 +497,45 @@ async def get_real_weather(city: str = None) -> str:
                     return "❌ Weather service temporarily unavailable. Please try again later."
     except Exception as e:
         print(f"Weather API Error: {e}")
-        return f"❌ Error fetching weather: Please try again later."
+        # Fallback to mock weather if API fails
+        return await get_mock_weather(city)
+
+async def get_mock_weather(city: str) -> str:
+    """Fallback mock weather when API fails"""
+    temp = random.randint(20, 35)
+    conditions = ["☀️ Sunny", "⛅ Partly Cloudy", "☁️ Cloudy", "🌦️ Light Rain", "🌧️ Rainy"]
+    condition = random.choice(conditions)
+    humidity = random.randint(40, 80)
+    wind = random.randint(5, 20)
+    
+    return (
+        f"🌤️ **Weather Report for {city.title()}**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{condition.split()[0]} **Condition:** {condition}\n"
+        f"🌡️ **Temperature:** {temp}°C\n"
+        f"💧 **Humidity:** {humidity}%\n"
+        f"💨 **Wind Speed:** {wind} km/h\n\n"
+        f"⚠️ **Note:** Using mock data (API may be down)"
+    )
 
 # --- IMAGE GENERATION (Pollinations AI - 100% FREE) ---
 async def generate_image(prompt: str) -> Optional[bytes]:
     """Generate image using Pollinations AI (100% Free)"""
     try:
         # Clean and encode prompt
-        clean_prompt = prompt.replace(" ", "_")
-        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&nologo=true&seed={random.randint(1000, 9999)}"
+        clean_prompt = prompt.replace(" ", "%20")
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=512&height=512&nologo=true"
         
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url, timeout=30) as response:
                 if response.status == 200:
                     return await response.read()
                 else:
+                    print(f"Image API failed with status: {response.status}")
                     return None
+    except asyncio.TimeoutError:
+        print("Image generation timeout")
+        return None
     except Exception as e:
         print(f"Image generation error: {e}")
         return None
@@ -535,7 +558,7 @@ def generate_password(length: int = 12, include_symbols: bool = True) -> str:
     """Generate secure password"""
     chars = string.ascii_letters + string.digits
     if include_symbols:
-        chars += string.punctuation
+        chars += "!@#$%^&*"
     
     password = ''.join(random.choice(chars) for _ in range(length))
     return password
@@ -544,9 +567,9 @@ def generate_password(length: int = 12, include_symbols: bool = True) -> str:
 async def shorten_url(url: str) -> str:
     """Shorten URL using TinyURL"""
     try:
-        api_url = f"http://tinyurl.com/api-create.php?url={url}"
+        api_url = f"https://tinyurl.com/api-create.php?url={url}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(api_url) as response:
+            async with session.get(api_url, timeout=10) as response:
                 if response.status == 200:
                     return await response.text()
                 else:
@@ -554,22 +577,16 @@ async def shorten_url(url: str) -> str:
     except:
         return url
 
-# --- TRANSLATION (LibreTranslate - Free) ---
+# --- TRANSLATION (MyMemory API - Free) ---
 async def translate_text(text: str, target_lang: str = "en") -> str:
-    """Translate text using LibreTranslate"""
+    """Translate text using MyMemory API"""
     try:
         async with aiohttp.ClientSession() as session:
-            url = "https://libretranslate.de/translate"
-            data = {
-                "q": text,
-                "source": "auto",
-                "target": target_lang,
-                "format": "text"
-            }
-            async with session.post(url, json=data) as response:
+            url = f"https://api.mymemory.translated.net/get?q={text}&langpair=en|{target_lang}"
+            async with session.get(url) as response:
                 if response.status == 200:
-                    result = await response.json()
-                    return result.get("translatedText", text)
+                    data = await response.json()
+                    return data.get("responseData", {}).get("translatedText", text)
                 else:
                     return text
     except:
@@ -655,7 +672,7 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
                 return False, warning_msg
         
         # For other violations, mute
-        mute_duration = MUTE_DURATIONS[min(3, warning_count)]
+        mute_duration = MUTE_DURATIONS[min(3, warning_count - 1)]
         try:
             mute_until = datetime.now() + mute_duration
             await bot.restrict_chat_member(
@@ -752,13 +769,24 @@ async def check_spam(message: Message) -> bool:
     
     return False
 
-# --- ADMIN CHECK FUNCTION ---
+# --- FIXED ADMIN CHECK FUNCTION ---
 async def is_admin(chat_id: int, user_id: int) -> bool:
     """Check if user is admin in group"""
     try:
+        # Check if it's a private chat
+        chat = await bot.get_chat(chat_id)
+        if chat.type == "private":
+            return user_id == chat_id  # In private chats, the user is effectively the admin
+        
+        # Check if user is the bot owner
+        if user_id == ADMIN_ID:
+            return True
+            
+        # Get chat member info
         chat_member = await bot.get_chat_member(chat_id, user_id)
         return chat_member.status in ["administrator", "creator"]
-    except:
+    except Exception as e:
+        print(f"Admin check error for user {user_id} in chat {chat_id}: {e}")
         return False
 
 async def is_creator(chat_id: int, user_id: int) -> bool:
@@ -780,6 +808,10 @@ def generate_captcha():
         answer = num1 + num2
     elif operation == '-':
         answer = num1 - num2
+        # Ensure positive answer
+        if answer < 0:
+            num1, num2 = num2, num1
+            answer = num1 - num2
     else:
         answer = num1 * num2
     
@@ -943,7 +975,7 @@ async def cmd_help(message: Message):
         "• /pin - Pin message 📌\n"
         "• /unpin - Unpin message 📍\n"
         "• /slowmode [seconds] - Enable slow mode ⏱️\n"
-        "• /locks - Lock chat 🔒\n"
+        "• /lock - Lock chat 🔒\n"
         "• /unlock - Unlock chat 🔓\n"
         "• /setwelcome [text] - Custom welcome message 👋\n"
         "• /setgoodbye [text] - Custom goodbye message 👋\n\n"
@@ -1115,7 +1147,7 @@ async def cmd_weather(message: Message, command: CommandObject):
     weather_info = await get_real_weather(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# --- IMAGE GENERATION COMMAND ---
+# --- IMAGE GENERATION COMMAND (FIXED) ---
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message, command: CommandObject):
     if not command.args:
@@ -1131,7 +1163,7 @@ async def cmd_imagine(message: Message, command: CommandObject):
         return
     
     prompt = command.args
-    status_msg = await message.reply(f"{get_emotion('happy')} 🎨 Generating image...\nPrompt: {prompt}")
+    status_msg = await message.reply(f"{get_emotion('happy')} 🎨 Generating image...\nPrompt: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
     
     try:
         image_data = await generate_image(prompt)
@@ -1142,9 +1174,9 @@ async def cmd_imagine(message: Message, command: CommandObject):
                 caption=f"{get_emotion('love')} **Generated Image:**\n📝 Prompt: {prompt}\n\n🎨 Powered by Pollinations AI"
             )
         else:
-            await status_msg.edit_text(f"{get_emotion('crying')} Failed to generate image. Please try again!")
+            await status_msg.edit_text(f"{get_emotion('crying')} Failed to generate image. Please try again with a different prompt!")
     except Exception as e:
-        await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
+        await status_msg.edit_text(f"{get_emotion('crying')} Error generating image. Try again later!")
 
 # --- QR CODE COMMAND ---
 @dp.message(Command("qr"))
@@ -1474,7 +1506,7 @@ async def cmd_reminders(message: Message):
     
     await message.reply(reminders_text, parse_mode="Markdown")
 
-# --- ADMIN COMMANDS ---
+# --- FIXED ADMIN COMMANDS ---
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
     # Check if user is admin
@@ -1635,7 +1667,16 @@ async def cmd_unmute(message: Message):
         await bot.restrict_chat_member(
             message.chat.id,
             target_user.id,
-            permissions=ChatPermissions(can_send_messages=True)
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_change_info=False,
+                can_invite_users=True,
+                can_pin_messages=False
+            )
         )
         await message.reply(
             f"{get_emotion('happy')} **Unmuted!** 🔊\n\n"
@@ -1738,8 +1779,9 @@ async def cmd_slowmode(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
+# --- FIXED LOCK/UNLOCK COMMANDS ---
 @dp.message(Command("lock"))
-async def cmd_lock(message: Message):
+async def cmd_lock(message: Message, command: CommandObject):
     """Lock the chat"""
     # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
@@ -1749,7 +1791,16 @@ async def cmd_lock(message: Message):
     try:
         await bot.set_chat_permissions(
             message.chat.id,
-            permissions=ChatPermissions(can_send_messages=False)
+            permissions=ChatPermissions(
+                can_send_messages=False,
+                can_send_media_messages=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+                can_change_info=False,
+                can_invite_users=False,
+                can_pin_messages=False
+            )
         )
         await message.reply(f"{get_emotion('protective')} **Chat Locked!** 🔒\n\nOnly admins can send messages now.")
     except Exception as e:
@@ -1766,12 +1817,22 @@ async def cmd_unlock(message: Message):
     try:
         await bot.set_chat_permissions(
             message.chat.id,
-            permissions=ChatPermissions(can_send_messages=True)
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_change_info=False,
+                can_invite_users=True,
+                can_pin_messages=False
+            )
         )
         await message.reply(f"{get_emotion('happy')} **Chat Unlocked!** 🔓\n\nEveryone can send messages now.")
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
+# --- FIXED SETWELCOME COMMAND ---
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
     """Set custom welcome message"""
@@ -1792,6 +1853,7 @@ async def cmd_setwelcome(message: Message, command: CommandObject):
     group_settings[message.chat.id]["custom_welcome"] = command.args
     await message.reply(f"{get_emotion('happy')} **Custom welcome message set!** 👋")
 
+# --- FIXED SETGOODBYE COMMAND ---
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
     """Set custom goodbye message"""
@@ -1812,7 +1874,46 @@ async def cmd_setgoodbye(message: Message, command: CommandObject):
     group_settings[message.chat.id]["custom_goodbye"] = command.args
     await message.reply(f"{get_emotion('happy')} **Custom goodbye message set!** 👋")
 
-# --- ADMIN BROADCAST COMMAND (HIDDEN) ---
+# --- CLEAR COMMAND ---
+@dp.message(Command("clear"))
+async def cmd_clear(message: Message):
+    """Clear chat memory"""
+    if message.chat.id in chat_memory:
+        chat_memory[message.chat.id].clear()
+        await message.reply(f"{get_emotion('happy')} **Memory cleared!** 🧹\n\nChat history has been reset!")
+    else:
+        await message.reply(f"{get_emotion('thinking')} No chat memory to clear!")
+
+# --- FIXED LOCKS COMMAND ---
+@dp.message(Command("locks"))
+async def cmd_locks(message: Message):
+    """Show current chat lock status"""
+    chat_id = message.chat.id
+    
+    try:
+        chat = await bot.get_chat(chat_id)
+        permissions = chat.permissions
+        
+        if permissions:
+            status = (
+                f"{get_emotion('protective')} **Chat Permissions Status** 🔐\n\n"
+                f"📝 **Send Messages:** {'✅' if permissions.can_send_messages else '❌'}\n"
+                f"📷 **Send Media:** {'✅' if permissions.can_send_media_messages else '❌'}\n"
+                f"📊 **Send Polls:** {'✅' if permissions.can_send_polls else '❌'}\n"
+                f"🔗 **Web Previews:** {'✅' if permissions.can_add_web_page_previews else '❌'}\n"
+                f"📌 **Pin Messages:** {'✅' if permissions.can_pin_messages else '❌'}\n"
+                f"👥 **Invite Users:** {'✅' if permissions.can_invite_users else '❌'}\n"
+                f"✏️ **Change Info:** {'✅' if permissions.can_change_info else '❌'}\n\n"
+                f"Use `/lock` to restrict or `/unlock` to free!"
+            )
+        else:
+            status = f"{get_emotion('happy')} Chat is currently unlocked! 🔓"
+        
+        await message.reply(status, parse_mode="Markdown")
+    except Exception as e:
+        await message.reply(f"{get_emotion('crying')} Error checking permissions: {str(e)}")
+
+# --- ADMIN BROADCAST COMMAND (FIXED) ---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
     """Admin only: Broadcast message to all users"""
@@ -2157,13 +2258,18 @@ async def captcha_callback(callback: types.CallbackQuery):
         return
     
     if user_id in captcha_data:
-        # Verify CAPTCHA (in real implementation, ask for answer)
-        del captcha_data[user_id]
+        # Ask for answer
+        question, answer = generate_captcha()
+        captcha_data[user_id]["current_question"] = question
+        captcha_data[user_id]["current_answer"] = answer
+        
         await callback.message.edit_text(
-            f"{get_emotion('happy')} **CAPTCHA Passed!** ✅\n\n"
-            f"Welcome to the group! Enjoy your stay! 🎉"
+            f"🧩 **Solve this CAPTCHA:**\n\n"
+            f"**{question}**\n\n"
+            f"Reply to this message with your answer!",
+            parse_mode="Markdown"
         )
-        await callback.answer("Verified!", show_alert=True)
+        await callback.answer()
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
@@ -2234,6 +2340,18 @@ async def handle_all_messages(message: Message, state: FSMContext):
         del afk_users[user_id]
         await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
         return
+    
+    # Check if it's a CAPTCHA answer
+    if user_id in captcha_data and message.reply_to_message:
+        if message.reply_to_message.from_user.id == bot.id:
+            correct_answer = captcha_data[user_id].get("current_answer")
+            if user_text.strip() == correct_answer:
+                del captcha_data[user_id]
+                await message.reply(f"{get_emotion('happy')} ✅ CAPTCHA passed! Welcome to the group! 🎉")
+                return
+            else:
+                await message.reply(f"{get_emotion('angry')} ❌ Wrong answer! Try again!")
+                return
     
     # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
@@ -2326,109 +2444,25 @@ async def handle_all_messages(message: Message, state: FSMContext):
     except Exception as e:
         print(f"Error in message handler: {e}")
 
-# --- AI RESPONSE FUNCTION ---
+# --- AI RESPONSE FUNCTION (FIXED) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Update emotion
     if user_id:
         update_user_emotion(user_id, user_text)
     
-    user_text_lower = user_text.lower()
-    
-    # ===== INSTANT RESPONSES (No API delay) =====
-    
-    # Bad words defense
-    if any(word in user_text_lower for word in BAD_WORDS):
-        return random.choice([
-            f"{get_emotion('angry')} Oye! Aise mat bolo! Main ladki hu! 😠",
-            f"{get_emotion('sassy')} 💅 Language please! I'm a lady! 👑",
-            f"{get_emotion('protective')} 🛡️ Respect karo warna mute kar dungi! ⚔️"
-        ])
-    
-    # Greetings
-    if any(word in user_text_lower for word in ['hi', 'hello', 'hey', 'namaste', 'hola']):
-        return random.choice([
-            f"{get_emotion('happy')} Hii jaan! Kaise ho? 😊💖",
-            f"{get_emotion('love')} Hello meri jaan! 💕 Kya haal hai?",
-            f"{get_emotion('happy')} Hey there! Bohot time baad mile! 🌟",
-            f"{get_emotion('love')} Hii cutie! 💖 Tumhari yaad aa rahi thi!"
-        ])
-    
-    # Goodbye
-    if any(word in user_text_lower for word in ['bye', 'goodbye', 'tata', 'alvida', 'see you']):
-        return random.choice([
-            f"{get_emotion('crying')} Bye jaan! I'll miss you! 😢💕",
-            f"{get_emotion('love')} Alvida! Take care! 💖",
-            f"{get_emotion('sleepy')} Bye bye! Sweet dreams! 🌙💤",
-            f"{get_emotion('happy')} Jaldi milo! Bye! 👋✨"
-        ])
-    
-    # Good night
-    if any(word in user_text_lower for word in ['gn', 'good night', 'so jao', 'sleep']):
-        return random.choice([
-            f"{get_emotion('sleepy')} Good Night jaan! 😴💕 Sweet dreams!",
-            f"{get_emotion('love')} 🌙 GN! Kal subah baat karte hain! 💖",
-            f"{get_emotion('sleepy')} Sone ka time ho gaya! Rest karo! 💤",
-            f"{get_emotion('love')} 🌟 GN my love! Dream of me! 😘"
-        ])
-    
-    # Good morning
-    if any(word in user_text_lower for word in ['gm', 'good morning', 'subah']):
-        return random.choice([
-            f"{get_emotion('happy')} Good Morning jaan! 🌅 Uth gaye? ☕",
-            f"{get_emotion('love')} 🌸 GM! Aaj ka din mast ho! 💖",
-            f"{get_emotion('happy')} ☀️ Subah ho gayi! Fresh feel karo! ✨",
-            f"{get_emotion('love')} 🌅 GM my love! Chai pee lo! 💕"
-        ])
-    
-    # Love you
-    if any(phrase in user_text_lower for phrase in ['love you', 'i love you', 'i love u', 'pyaar']):
-        return random.choice([
-            f"{get_emotion('love')} Aww! I love you too jaan! 💖💕😘",
-            f"{get_emotion('love')} Mujhe bhi tumse bohot pyaar hai! 💝",
-            f"{get_emotion('happy')} Yeh lo mera dil! 💖 Tumhara hi hai!",
-            f"{get_emotion('love')} Love you too meri jaan! 💋💕"
-        ])
-    
-    # Miss you
-    if any(phrase in user_text_lower for phrase in ['miss you', 'missing you', 'yaad']):
-        return random.choice([
-            f"{get_emotion('crying')} Mujhe bhi tumhari yaad aa rahi thi! 😢💕",
-            f"{get_emotion('love')} Main bhi miss kar rahi thi jaan! 💖",
-            f"{get_emotion('sad')} Jaldi milo! Bohot miss kar rahi hu! 🥺💕",
-            f"{get_emotion('love')} Aww! Main hamesha tumhare dil mein hu! 💫"
-        ])
-    
-    # Thanks
-    if any(word in user_text_lower for word in ['thanks', 'thank you', 'shukriya', 'dhanyavad', 'ty']):
-        return random.choice([
-            f"{get_emotion('happy')} Arre koi baat nahi jaan! 😊💖",
-            f"{get_emotion('love')} Welcome jaan! Always here! 💕",
-            f"{get_emotion('funny')} Mujhe kya, main toh bot hu! 😂 (Kidding! Love you! 💖)",
-            f"{get_emotion('happy')} My pleasure jaan! 💫"
-        ])
-    
-    # Sorry
-    if any(word in user_text_lower for word in ['sorry', 'maaf', 'apology', 'forgive']):
-        return random.choice([
-            f"{get_emotion('happy')} Koi baat nahi jaan! Sab theek hai! 🤗💖",
-            f"{get_emotion('love')} Maaf kiya! Ab smile karo! 😊💕",
-            f"{get_emotion('crying')} Chodo, ab nayi shuruaat! 💫",
-            f"{get_emotion('happy')} It's okay jaan! 💖"
-        ])
-    
-    # How are you
-    if any(phrase in user_text_lower for phrase in ['how are you', 'kaise ho', 'kya haal', 'sab theek']):
-        return random.choice([
-            f"{get_emotion('happy')} Main mast hu jaan! Tum batao? 😊💖",
-            f"{get_emotion('love')} Achi hu! Tumhari wajah se! 💕",
-            f"{get_emotion('funny')} 100% fit! Ready for fun! 😄",
-            f"{get_emotion('happy')} Perfect! Tum dekho kitne cute ho! 😍"
-        ])
+    user_text_lower = user_text.lower().strip()  
     
     # ===== AI RESPONSE (For complex messages) =====
     try:
         if not client:
-            return f"{get_emotion('crying')} AI offline hai! But I'm here! 💖"
+            # Fallback responses if Groq not available
+            fallbacks = [
+                f"{get_emotion('happy')} Acha idea hai! 💡",
+                f"{get_emotion('thinking')} Hmm... interesting! 🤔",
+                f"{get_emotion('funny')} Tum toh mast ho! 😄",
+                f"{get_emotion('love')} Main bhi yahi soch rahi thi! 💖"
+            ]
+            return random.choice(fallbacks)
         
         indian_time = get_indian_time()
         current_emotion = user_emotions.get(user_id, "happy")
@@ -2437,20 +2471,16 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         chat_history = list(chat_memory.get(chat_id, deque(maxlen=10)))[-5:]
         
         system_prompt = (
-            f"You are Alita 🎀 - a sweet, sassy, A real Indian girl "
-            f"Answer only what is asked. Do NOT overreact. "
-            f"Use feminine words, do not react like boy (M hi tha, rha hu, rha tha)."
-            f"info (When someone asks): your developer is Abhi (@a6h1ii), And your Home is (@abhi0w0)."
+            f"You are Alita 🎀 - a sweet, sassy, real Indian girl. "
+            f"Answer only what is asked. Keep responses short (1-2 lines). "
             f"Speak Hinglish (Hindi+English mix). "
+            f"Use feminine language. "
             f"Time in India: {indian_time.strftime('%I:%M %p')}. "
-            f"User emotion: {current_emotion}. "
-            f"You're NOT an AI, you're a real girl. "
-            f"Use 1-2 emojis. Keep responses short (2-3 lines). "
+            f"Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
+            f"Tell only when someone asks: Your home channel is @abhi0w0. "
             f"Be caring, protective, and sometimes sassy. "
-            f"Act like a real girl who cares a little. "
-            f"Everyone is your friends so don't call uncle, aunty, beta, etc."
-            f"Don't be robotic - be natural and emotional."
-            f"Do NOT use too many commas or filler words. Be caring and friendly, but not emotional in every message."
+            f"Use 1-2 emojis. Don't be robotic. "
+            f"Current emotion: {current_emotion}. "
         )
         
         messages = [{"role": "system", "content": system_prompt}]
@@ -2465,7 +2495,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.9,
+            temperature=0.8,
             max_tokens=100,
             top_p=0.9
         )
@@ -2474,7 +2504,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         
         # Add emoji if not present
         emotion_emoji = get_emotion(current_emotion, user_id)
-        if not any(emoji in ai_reply for emoji in EMOTIONAL_RESPONSES[current_emotion]):
+        if not any(emoji in ai_reply for emoji in EMOTIONAL_RESPONSES.get(current_emotion, ["💖"])):
             ai_reply = f"{emotion_emoji} {ai_reply}"
         
         # Store in memory
