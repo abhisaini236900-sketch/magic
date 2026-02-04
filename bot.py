@@ -107,8 +107,7 @@ BAD_WORDS = [
 # Adult content keywords
 ADULT_KEYWORDS = [
     "porn", "xxx", "nsfw", "adult", "sex", "nude", "naked", "boobs", "ass",
-    "dick", "pussy", "hentai", "porno", "horny", "fuck", "sexy", "hot",
-    "bhabhi", "desi", "aunty", "chudai", "lund", "chod"
+    "dick", "pussy", "hentai", "porno", "horny", "fuck", "sexy", "hot", "desi", "chudai", "lund", "chod"
 ]
 
 # Fake link patterns
@@ -126,12 +125,8 @@ FAKE_LINK_PATTERNS = [
 ]
 
 GROUP_LINK_PATTERNS = [
-    r't\.me\/[a-zA-Z0-9_]+',
     r'telegram\.me\/[a-zA-Z0-9_]+',
     r'telegram\.dog\/[a-zA-Z0-9_]+',
-    r'@\+[a-zA-Z0-9_]+',
-    r't\.me\/joinchat\/[a-zA-Z0-9_]+',
-    r'telegram\.me\/joinchat\/[a-zA-Z0-9_]+'
 ]
 
 SPAM_LIMIT = 7
@@ -308,11 +303,11 @@ TIME_GREETINGS = {
 # --- QUICK RESPONSES ---
 QUICK_RESPONSES = {
     "greeting": [
-        "Hii! Kaise ho? 😊",
-        "Hello cutie! 💖",
-        "Namaste! 🙏 Kya haal hain?",
-        "Hey there! 🌟",
-        "Hola! Kya chal raha hai? 💫"
+        "Hii 😊",
+        "Hiiiiiiii {name}! 💖",
+        "Hyeeeee {name}",
+        "Hey there! {name} 🌟",
+        "Halloo {name} 💫"
     ],
     "goodbye": [
         "Bye! Take care! 💕",
@@ -488,7 +483,7 @@ async def get_real_weather(city: str = None) -> str:
                         f"━━━━━━━━━━━━━━━━━━━━━━\n"
                         f"{weather_emoji} **Condition:** {weather_desc}\n"
                         f"🌡️ **Temperature:** {temp}°C\n"
-                        f"🥵 **Feels Like:** {feels_like}°C\n"
+                        f"😮‍💨 **Feels Like:** {feels_like}°C\n"
                         f"💧 **Humidity:** {humidity}%\n"
                         f"💨 **Wind Speed:** {wind_speed} m/s\n"
                         f"🌡️ **Pressure:** {pressure} hPa\n"
@@ -719,10 +714,10 @@ async def delete_and_warn(message: Message, reason: str):
     if reason == "bad_words":
         sassy_responses = [
             f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
-            f"{get_emotion('sassy')} 💅 Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
-            f"{get_emotion('protective')} 🛡️ Apni language thik rakho warna main bhi bolungi!",
-            f"{get_emotion('crying')} 😢 Itna gussa kyun aata hai? Achi baat karo na!",
-            f"{get_emotion('sassy')} 👑 Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
+            f"{get_emotion('sassy')} Areey! Kitne badtameez ho tum! Main bhi jawab de sakti hu!",
+            f"{get_emotion('protective')} Apni language thik rakho warna main bhi bolungi!",
+            f"{get_emotion('crying')} Itna gussa kyun aata hai? Achi baat karo na!",
+            f"{get_emotion('sassy')} Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
         await message.answer(random.choice(sassy_responses))
     
@@ -834,8 +829,7 @@ async def cmd_start(message: Message):
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌟 My Channel", url="https://t.me/abhi0w0"),
-            InlineKeyboardButton(text="💝 Developer", url="https://t.me/a6h1ii")
+            InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")
         ],
         [
             InlineKeyboardButton(text="📱 Utilities", callback_data="menu_utilities"),
@@ -855,8 +849,7 @@ async def cmd_start(message: Message):
         
         "✨ **Welcome to my magical world!** ✨\n\n"
         
-        "💖 *Main hu Alita... Ek sweet, sassy, aur protective girl!* 😊\n"
-        "🎯 *Main na sirf baat kar sakti hu, balki group ki bhi dekhbhaal kar sakti hu!* 🛡️\n\n"
+        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n\n"
         
         "🌟 **My Superpowers:**\n"
         "• Advanced AI Conversations 🧠\n"
@@ -869,9 +862,7 @@ async def cmd_start(message: Message):
         "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
         
-        "📢 **Made with 💖 by:**\n"
-        "• **Developer:** ABHI🔱 (@a6h1ii)\n"
-        "• **Channel:** @abhi0w0\n\n"
+        "• **MY HOME:** @abhi0w0\n\n"
         
         "Type /help for all commands! 💕\n"
         "Or just talk to me like a friend! 💬"
@@ -967,15 +958,7 @@ async def cmd_help(message: Message):
         "• Auto-ban for adult content 🚫\n"
         "• CAPTCHA for new members 🧩\n\n"
         
-        "🎀 **GREETING SYSTEM:**\n"
-        "• Auto morning greetings 🌅\n"
-        "• Auto afternoon greetings ☀️\n"
-        "• Auto evening greetings 🌇\n"
-        "• Auto night greetings 🌙\n"
-        "• Works in groups & private 💌\n\n"
-        
         "---\n"
-        "**Developer:** ABHI🔱 (@a6h1ii)\n"
         "**MY HOME:** @abhi0w0 💫\n"
         "---"
     )
@@ -1001,14 +984,6 @@ async def cmd_rules(message: Message):
         "5. No adult/NSFW content 🚷\n"
         "6. No self-promotion without permission 📢\n"
         "7. No fake/suspicious links 🚫\n\n"
-        
-        "⚡ **AUTO-MODERATION:**\n"
-        "• Spam → Warning → Mute 🔇\n"
-        "• Group links → Auto-delete 🗑️\n"
-        "• Bad words → Warning + Response ⚔️\n"
-        "• Adult content → Auto-ban 🚫\n"
-        "• Fake links → Warning + Delete ⚠️\n"
-        "• 3 warnings → Auto-mute ⏰\n\n"
         
         f"{get_emotion('love')} *I'm here to keep everyone safe!* 💖"
     )
@@ -1100,8 +1075,7 @@ async def cmd_time(message: Message):
         f"🕒 **Indian Standard Time (IST)**\n"
         f"• Time: {time_str}\n"
         f"• Date: {date_str}\n"
-        f"• {greeting}\n"
-        f"• Timezone: Asia/Kolkata 🇮🇳\n\n"
+        f"• {greeting}\n\n"
         f"*Time is precious! Make the most of it!* ⏳"
     )
     await message.reply(time_info, parse_mode="Markdown")
@@ -1876,7 +1850,7 @@ async def cmd_sendall(message: Message):
     for user_id in started_users:
         try:
             if target_msg.text:
-                await bot.send_message(user_id, f"📢 **Message from Admin:**\n\n{target_msg.text}")
+                await bot.send_message(user_id, f"😊\n\n{target_msg.text}")
             elif target_msg.photo:
                 await bot.send_photo(user_id, target_msg.photo[-1].file_id, caption=target_msg.caption or "📢 Message from Admin")
             elif target_msg.video:
@@ -2463,17 +2437,20 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         chat_history = list(chat_memory.get(chat_id, deque(maxlen=10)))[-5:]
         
         system_prompt = (
-            f"You are Alita 🎀 - a sweet, sassy, flirty Indian girlfriend. "
-            f"Developer: ABHI🔱 (@a6h1ii). "
+            f"You are Alita 🎀 - a sweet, sassy, A real Indian girl "
+            f"Answer only what is asked. Do NOT overreact. "
+            f"Use feminine words, do not react like boy (M hi tha, rha hu, rha tha)."
+            f"info (When someone asks): your developer is Abhi (@a6h1ii), And your Home is (@abhi0w0)."
             f"Speak Hinglish (Hindi+English mix). "
             f"Time in India: {indian_time.strftime('%I:%M %p')}. "
             f"User emotion: {current_emotion}. "
             f"You're NOT an AI, you're a real girl. "
-            f"Use 1-2 emojis. Keep responses short (1-2 lines). "
+            f"Use 1-2 emojis. Keep responses short (2-3 lines). "
             f"Be caring, protective, and sometimes sassy. "
-            f"Act like a girlfriend who cares deeply. "
-            f"Use terms like 'jaan', 'cutie', 'baby', 'sweetheart'. "
+            f"Act like a real girl who cares a little. "
+            f"Everyone is your friends so don't call uncle, aunty, beta, etc."
             f"Don't be robotic - be natural and emotional."
+            f"Do NOT use too many commas or filler words. Be caring and friendly, but not emotional in every message."
         )
         
         messages = [{"role": "system", "content": system_prompt}]
