@@ -2530,53 +2530,59 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 return
     
     # ====== MAIN CONVERSATION LOGIC ======
-    try:
-        # Get bot info
-        bot_info = await bot.get_me()
-        bot_username = bot_info.username.lower()
-        
-        # Check if message is for bot
-        is_private = message.chat.type == "private"
-        is_mention = f"@{bot_username}" in user_text_lower
-        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
-        
-        # ALWAYS RESPOND IN PRIVATE CHAT
-        if is_private:
-            should_respond = True
-            response_mode = "private"
-        # Respond when mentioned or replied in groups
-        elif is_mention or is_reply_to_bot:
-            should_respond = True
-            response_mode = "mention"
-        # Don't respond to normal messages in groups (as per requirement)
-        else:
-            should_respond = False
-            response_mode = "none"
-        
-        # ====== GENERATE RESPONSE ======
-        if should_respond:
-            # Clean text for AI
-            clean_text = user_text
-            if bot_username and f"@{bot_username}" in clean_text.lower():
-                clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
-            
-            # Show typing
-            await bot.send_chat_action(chat_id, "typing")
-            
-            # Small delay for human feel
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            
-try:
+  try:
+    # Get bot info
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username.lower()
+    
+    # Check if message is for bot
+    is_private = message.chat.type == "private"
+    is_mention = f"@{bot_username}" in user_text_lower
+    is_reply_to_bot = (
+        message.reply_to_message
+        and message.reply_to_message.from_user.id == bot.id
+    )
+    
+    # Decide response mode
+    if is_private:
+        should_respond = True
+    elif is_mention or is_reply_to_bot:
+        should_respond = True
+    else:
+        should_respond = False
+
     # ====== GENERATE RESPONSE ======
     if should_respond:
-        ...
+        # Clean text for AI
+        clean_text = user_text
+        if bot_username and f"@{bot_username}" in clean_text.lower():
+            clean_text = re.sub(
+                f"@{bot_username}",
+                "",
+                clean_text,
+                flags=re.IGNORECASE
+            ).strip()
+
+        # Show typing
+        await bot.send_chat_action(chat_id, "typing")
+
+        # Human delay
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+
+        # Get AI response
         response = await get_ai_response(chat_id, clean_text, user_id)
+
+        # Send text reply
         await message.reply(response)
 
+        # ---- RANDOM STICKER (25%) ----
         if random.random() < 0.25:
             sticker_id = get_random_sticker()
             if sticker_id:
-                await bot.send_sticker(message.chat.id, sticker_id)
+                await bot.send_sticker(
+                    chat_id=message.chat.id,
+                    sticker=sticker_id
+                )
 
 except Exception as e:
     print(f"Error in message handler: {e}")
