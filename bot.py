@@ -2751,7 +2751,6 @@ async def main():
     
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
-    greeting_scheduler.start()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
