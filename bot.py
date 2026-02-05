@@ -2528,9 +2528,9 @@ async def handle_all_messages(message: Message, state: FSMContext):
             
             if await check_spam(message):
                 return
-    
-    # ====== MAIN CONVERSATION LOGIC ======
-  try:
+                
+#========MAIN FUNCTION =======            
+try:
     # Get bot info
     bot_info = await bot.get_me()
     bot_username = bot_info.username.lower()
