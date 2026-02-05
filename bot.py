@@ -123,6 +123,7 @@ async def auto_sticker():
     if not sticker_id:
         return
 
+    # ---- Private users ----
     cursor.execute("SELECT user_id FROM users")
     users = cursor.fetchall()
 
@@ -130,6 +131,17 @@ async def auto_sticker():
         try:
             await bot.send_sticker(user_id, sticker_id)
             await asyncio.sleep(0.3)
+        except:
+            pass
+
+    # ---- Groups ----
+    cursor.execute("SELECT chat_id FROM groups")
+    groups = cursor.fetchall()
+
+    for (chat_id,) in groups:
+        try:
+            await bot.send_sticker(chat_id, sticker_id)
+            await asyncio.sleep(0.5)
         except:
             pass
             
@@ -1080,16 +1092,21 @@ async def save_group(message: Message):
 async def handle_sticker(message: Message):
     if message.from_user.id not in SAVE_STICKER_MODE:
         return
-
-    file_id = message.sticker.file_id
-
+        file_id = message.sticker.file_id
+        
     cursor.execute(
         "INSERT OR IGNORE INTO stickers (file_id) VALUES (?)",
         (file_id,)
     )
     conn.commit()
+SAVE_STICKER_MODE.discard(message.from_user.id)
+        await message.reply("✅ Sticker saved")
 
-    await message.reply("✅ Sticker saved")
+@dp.message(Command("stickerstats"))
+async def sticker_stats(message: Message):
+    cursor.execute("SELECT COUNT(*) FROM stickers")
+    count = cursor.fetchone()[0]
+    await message.reply(f"🧩 Total saved stickers: {count}")
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
@@ -2552,17 +2569,20 @@ async def handle_all_messages(message: Message, state: FSMContext):
             # Send reply
             await message.reply(response)
             if random.random() < 0.25:
-            	sticker_id = get_random_sticker()
-            	if sticker_id:
-            		await bot.send_sticker(
-            		chat_id=message.chat.id,
-            		sticker=sticker_id
-            		)
+    sticker_id = get_random_sticker()
+    if sticker_id:
+        try:
+            await bot.send_sticker(
+                chat_id=message.chat.id,
+                sticker=sticker_id
+            )
+        except:
+            pass
             
     except Exception as e:
         print(f"Error in message handler: {e}")
 
-# --- AI RESPONSE FUNCTION (FIXED) ---
+# --- AI RESPONSE FUNCTION ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Update emotion
     if user_id:
