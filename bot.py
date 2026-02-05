@@ -136,12 +136,6 @@ async def auto_sticker():
 greeting_scheduler = AsyncIOScheduler()
 greeted_groups: Dict[int, datetime] = {}
 
-greeting_scheduler.add_job(
-    auto_sticker,
-    trigger="interval",
-    minutes=58
-)
-
 # Last greeting time per chat
 last_greeting_time: Dict[int, datetime] = {}
 
@@ -2709,6 +2703,13 @@ async def start_background_tasks():
         'interval',
         minutes=random.randint(30, 60),
         id='random_messages'
+    )
+    
+    greeting_scheduler.add_job(
+        send_random_sticker,
+        'interval',
+        minutes=58,
+        id='random_stickers'
     )
     
     # Add daily reminders job (at 10 AM)
