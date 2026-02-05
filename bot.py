@@ -118,8 +118,24 @@ group_settings: Dict[int, Dict] = defaultdict(lambda: {
 captcha_data: Dict[int, Dict] = {}
 
 # Scheduler
+async def auto_sticker():
+    sticker_id = get_random_sticker()
+    if not sticker_id:
+        return
+
+    cursor.execute("SELECT user_id FROM users")
+    users = cursor.fetchall()
+
+    for (user_id,) in users:
+        try:
+            await bot.send_sticker(user_id, sticker_id)
+            await asyncio.sleep(0.3)
+        except:
+            pass
+            
 greeting_scheduler = AsyncIOScheduler()
 greeted_groups: Dict[int, datetime] = {}
+
 greeting_scheduler.add_job(
     auto_sticker,
     trigger="interval",
@@ -2735,6 +2751,7 @@ async def main():
     
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
+    greeting_scheduler.start()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
