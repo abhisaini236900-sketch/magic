@@ -2406,186 +2406,121 @@ async def captcha_callback(callback: types.CallbackQuery):
 # --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
-    # Basic checks
-    if not message.from_user:
-        return
-    
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
-    # Add to broadcast list
-    started_users.add(user_id)
-    
-    # Ignore bot's own messages
-    if user_id == bot.id:
-        return
-    
-    # Update interaction time and memory
-    user_last_interaction[user_id] = datetime.now()
-    
-    # Initialize memory for chat if not exists
-    if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=20)
-    
-    # Get message text
-    if not message.text:
-        # Handle non-text messages
-        if message.sticker:
-            # 40% chance to respond to stickers
-            if random.random() < 0.4:
-                responses = [
+    try:
+        # ===== BASIC CHECKS =====
+        if not message.from_user:
+            return
+
+        user_id = message.from_user.id
+        chat_id = message.chat.id
+
+        started_users.add(user_id)
+
+        if user_id == bot.id:
+            return
+
+        user_last_interaction[user_id] = datetime.now()
+
+        if chat_id not in chat_memory:
+            chat_memory[chat_id] = deque(maxlen=20)
+
+        # ===== NON-TEXT HANDLING =====
+        if not message.text:
+            if message.sticker and random.random() < 0.4:
+                await message.reply(random.choice([
                     f"{get_emotion('funny')} Cute sticker! 😍",
                     f"{get_emotion('love')} Aww, I love this one! 💖",
-                    f"{get_emotion('happy')} Nice sticker! Send me more! 🌟"
-                ]
-                await message.reply(random.choice(responses))
-                
-        elif message.photo:
-            # 40% chance to respond to photos
-            if random.random() < 0.4:
-                responses = [
-                    f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
+                    f"{get_emotion('happy')} Nice sticker! 🌟"
+                ]))
+
+            elif message.photo and random.random() < 0.4:
+                await message.reply(random.choice([
+                    f"{get_emotion('happy')} Nice photo! 📸✨",
                     f"{get_emotion('love')} Beautiful picture! 💕",
-                    f"{get_emotion('surprise')} Wow! Amazing shot! 😲"
-                ]
-                await message.reply(random.choice(responses))
-        elif message.voice:
-            # 40% chance to respond to voice
-            if random.random() < 0.4:
-                responses = [
+                    f"{get_emotion('surprise')} Wow! 😲"
+                ]))
+
+            elif message.voice and random.random() < 0.4:
+                await message.reply(random.choice([
                     f"{get_emotion('love')} Aww, your voice! 🎤💕",
-                    f"{get_emotion('happy')} Nice voice message! 😊",
-                    f"{get_emotion('funny')} I heard that! Hehe! 😄"
-                ]
-                await message.reply(random.choice(responses))
-        return
-    
-    user_text = message.text
-    user_text_lower = user_text.lower().strip()
-    
-    # Store in memory
-    chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
-    # Check AFK
-    if user_id in afk_users:
-        del afk_users[user_id]
-        await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
-        return
-    
-    # Check if it's a CAPTCHA answer
-    if user_id in captcha_data and message.reply_to_message:
-        if message.reply_to_message.from_user.id == bot.id:
-            correct_answer = captcha_data[user_id].get("current_answer")
-            if user_text.strip() == correct_answer:
-                del captcha_data[user_id]
-                await message.reply(f"{get_emotion('happy')} ✅ CAPTCHA passed! Welcome to the group! 🎉")
-                return
-            else:
-                await message.reply(f"{get_emotion('angry')} ❌ Wrong answer! Try again!")
-                return
-    
-    # Auto-moderation for groups
-    if message.chat.type in ["group", "supergroup"]:
-        # Update group settings if not exists
-        if chat_id not in group_settings:
-            group_settings[chat_id] = {
-                "welcome_enabled": True,
-                "goodbye_enabled": True,
-                "auto_mod_enabled": True,
-                "greetings_enabled": True,
-                "custom_welcome": None,
-                "custom_goodbye": None,
-                "language": "hinglish",
-                "slow_mode": False,
-                "slow_mode_delay": 0,
-                "locked": False,
-                "filters": [],
-                "banned_words": [],
-                "raid_mode": False,
-                "captcha_enabled": False,
-                "log_channel": None,
-                "warn_limit": 3,
-                "admins": []
-            }
-        
-        # Check if auto-moderation is enabled
-        if group_settings[chat_id]["auto_mod_enabled"]:
-            if contains_group_link(user_text):
-                await delete_and_warn(message, "link")
-                return
-            
-            if contains_bad_words(user_text):
-                await delete_and_warn(message, "bad_words")
-                return
-            
-            if contains_adult_content(user_text):
-                await delete_and_warn(message, "adult_content")
-                return
-            
-            if contains_fake_links(user_text):
-                await delete_and_warn(message, "fake_links")
-                return
-            
-            if await check_spam(message):
-                return
-                
-#========MAIN FUNCTION =======            
-try:
-    # Get bot info
-    bot_info = await bot.get_me()
-    bot_username = bot_info.username.lower()
-    
-    # Check if message is for bot
-    is_private = message.chat.type == "private"
-    is_mention = f"@{bot_username}" in user_text_lower
-    is_reply_to_bot = (
-        message.reply_to_message
-        and message.reply_to_message.from_user.id == bot.id
-    )
-    
-    # Decide response mode
-    if is_private:
-        should_respond = True
-    elif is_mention or is_reply_to_bot:
-        should_respond = True
-    else:
-        should_respond = False
+                    f"{get_emotion('happy')} Nice voice! 😊",
+                    f"{get_emotion('funny')} I heard that 😄"
+                ]))
+            return
 
-    # ====== GENERATE RESPONSE ======
-    if should_respond:
-        # Clean text for AI
-        clean_text = user_text
-        if bot_username and f"@{bot_username}" in clean_text.lower():
-            clean_text = re.sub(
-                f"@{bot_username}",
-                "",
-                clean_text,
-                flags=re.IGNORECASE
-            ).strip()
+        # ===== TEXT MESSAGE =====
+        user_text = message.text
+        user_text_lower = user_text.lower().strip()
+        chat_memory[chat_id].append({"role": "user", "content": user_text})
 
-        # Show typing
-        await bot.send_chat_action(chat_id, "typing")
+        # ===== AFK =====
+        if user_id in afk_users:
+            del afk_users[user_id]
+            await message.reply(f"{get_emotion('happy')} Welcome back! 👋")
+            return
 
-        # Human delay
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        # ===== CAPTCHA =====
+        if user_id in captcha_data and message.reply_to_message:
+            if message.reply_to_message.from_user.id == bot.id:
+                if user_text.strip() == captcha_data[user_id]["current_answer"]:
+                    del captcha_data[user_id]
+                    await message.reply(f"{get_emotion('happy')} ✅ CAPTCHA passed!")
+                else:
+                    await message.reply(f"{get_emotion('angry')} ❌ Wrong answer!")
+                return
 
-        # Get AI response
-        response = await get_ai_response(chat_id, clean_text, user_id)
+        # ===== GROUP AUTO MODERATION =====
+        if message.chat.type in ["group", "supergroup"]:
+            if chat_id not in group_settings:
+                group_settings[chat_id] = DEFAULT_GROUP_SETTINGS.copy()
 
-        # Send text reply
-        await message.reply(response)
+            if group_settings[chat_id]["auto_mod_enabled"]:
+                if contains_group_link(user_text):
+                    await delete_and_warn(message, "link"); return
+                if contains_bad_words(user_text):
+                    await delete_and_warn(message, "bad_words"); return
+                if contains_adult_content(user_text):
+                    await delete_and_warn(message, "adult_content"); return
+                if contains_fake_links(user_text):
+                    await delete_and_warn(message, "fake_links"); return
+                if await check_spam(message):
+                    return
 
-        # ---- RANDOM STICKER (25%) ----
-        if random.random() < 0.25:
-            sticker_id = get_random_sticker()
-            if sticker_id:
-                await bot.send_sticker(
-                    chat_id=message.chat.id,
-                    sticker=sticker_id
-                )
+        # ===== AI RESPONSE DECISION =====
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username.lower()
 
-except Exception as e:
-    print(f"Error in message handler: {e}")
+        is_private = message.chat.type == "private"
+        is_mention = f"@{bot_username}" in user_text_lower
+        is_reply_to_bot = (
+            message.reply_to_message
+            and message.reply_to_message.from_user.id == bot.id
+        )
+
+        should_respond = is_private or is_mention or is_reply_to_bot
+
+        # ===== AI RESPONSE =====
+        if should_respond:
+            clean_text = user_text
+            if is_mention:
+                clean_text = re.sub(
+                    f"@{bot_username}", "", clean_text, flags=re.IGNORECASE
+                ).strip()
+
+            await bot.send_chat_action(chat_id, "typing")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            response = await get_ai_response(chat_id, clean_text, user_id)
+            await message.reply(response)
+
+            # ---- RANDOM STICKER (25%) ----
+            if random.random() < 0.25:
+                sticker_id = get_random_sticker()
+                if sticker_id:
+                    await bot.send_sticker(chat_id, sticker_id)
+
+    except Exception as e:
+        print(f"Error in message handler: {e}")
 
 # --- AI RESPONSE FUNCTION ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
