@@ -2278,7 +2278,9 @@ async def help_callback(callback: types.CallbackQuery):
     def get_random_sticker():
         cursor.execute("SELECT file_id FROM stickers ORDER BY RANDOM() LIMIT 1")
         row = cursor.fetchone()
-        return row[0] if row else None
+        if row:
+            return row[0]
+        return None
 
 @dp.callback_query(F.data.startswith("horoscope_"))
 async def horoscope_callback(callback: types.CallbackQuery):
