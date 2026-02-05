@@ -9,6 +9,8 @@ import hashlib
 import string
 import qrcode
 import sqlite3
+import urllib.parse
+from aiogram.filters import Command
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -39,9 +41,18 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 conn.commit()
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS groups (
     chat_id INTEGER PRIMARY KEY
+)
+""")
+conn.commit()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS stickers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id TEXT UNIQUE
 )
 """)
 conn.commit()
@@ -109,6 +120,11 @@ captcha_data: Dict[int, Dict] = {}
 # Scheduler
 greeting_scheduler = AsyncIOScheduler()
 greeted_groups: Dict[int, datetime] = {}
+greeting_scheduler.add_job(
+    auto_sticker,
+    trigger="interval",
+    minutes=58
+)
 
 # Last greeting time per chat
 last_greeting_time: Dict[int, datetime] = {}
@@ -535,35 +551,37 @@ async def get_mock_weather(city: str) -> str:
         f"⚠️ **Note:** Using mock data (API may be down)"
     )
 
-# --- IMAGE GENERATION (Pollinations AI - 100% FREE) ---
+# --- IMAGE GENERATION (Pollinations AI - STABLE) ---
 async def generate_image(prompt: str) -> Optional[bytes]:
-    """Generate image using Pollinations AI (100% Free)"""
     try:
-        # Clean and encode prompt
-        clean_prompt = prompt.replace(" ", "%20")
+        encoded_prompt = urllib.parse.quote(prompt)
         url = (
-            f"https://image.pollinations.ai/prompt/{clean_prompt}"
-            f"?width=512&height=512&nologo=true"
+            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+            f"?width=1024&height=1024&nologo=true"
         )
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=30) as response:
-                if response.status == 200:
-                    image_bytes = await response.read()
+        timeout = aiohttp.ClientTimeout(total=40)
 
-                    if not image_bytes or len(image_bytes) < 1000:
-                        return None
-
-                    return image_bytes
-                else:
-                    print(f"Image API failed with status: {response.status}")
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    print("Image API status:", response.status)
                     return None
+
+                image_bytes = await response.read()
+
+                # Safety check (Pollinations kabhi empty bhej deta hai)
+                if not image_bytes or len(image_bytes) < 1500:
+                    print("Image too small / empty")
+                    return None
+
+                return image_bytes
 
     except asyncio.TimeoutError:
         print("Image generation timeout")
         return None
     except Exception as e:
-        print(f"Image generation error: {e}")
+        print("Image generation error:", e)
         return None
 
 # --- QR CODE GENERATOR ---
@@ -888,11 +906,6 @@ async def start_cmd(message: Message):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    await message.reply("👋 Welcome!")
-
-async def cmd_start(message: Message):
-    started_users.add(message.from_user.id)
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")
@@ -909,15 +922,12 @@ async def cmd_start(message: Message):
             InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
         ]
     ])
-    
+
     welcome_text = (
-        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
-        
-        "✨ **Welcome to my magical world!** ✨\n\n"
-        
-        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n\n"
-        
-        "🌟 **My Superpowers:**\n"
+        f"{get_emotion('love')} <b>Hii! I'm Alita 🎀</b>\n\n"
+        "✨ <b>Welcome to my magical world!</b> ✨\n\n"
+        "💖 <i>Main hu Alita... Ek sweet, aur protective girl!</i> 😊\n\n"
+        "🌟 <b>My Superpowers:</b>\n"
         "• Advanced AI Conversations 🧠\n"
         "• Image Generation 🎨\n"
         "• Real Weather Updates 🌤️\n"
@@ -925,15 +935,22 @@ async def cmd_start(message: Message):
         "• Password Generator 🔐\n"
         "• URL Shortener 🔗\n"
         "• Translation 🌍\n"
-        "• Auto-moderation enabled 👮\n"
+        "• Auto-moderation 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
-        
-        "• **MY HOME:** @abhi0w0\n\n"
-        
-        "Type /help for all commands! 💕\n"
-        "Or just talk to me like a friend! 💬"
+        "• <b>MY HOME:</b> @abhi0w0\n\n"
+        "Type /help for all commands 💕\n"
+        "Or just talk to me like a friend 💬"
     )
-    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+
+    image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
+    # ya koi bhi image / anime girl image
+
+    await message.answer_photo(
+        photo=image_url,
+        caption=welcome_text,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -1029,6 +1046,16 @@ async def cmd_help(message: Message):
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
+
+#----STICKERS SETTINGS----
+SAVE_STICKER_MODE = set()
+@dp.message(Command("savesticker"))
+async def savesticker_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    SAVE_STICKER_MODE.add(message.from_user.id)
+    await message.reply("🧩 Ab sticker bhejo, main save kar lunga")
     
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def save_group(message: Message):
@@ -1038,6 +1065,21 @@ async def save_group(message: Message):
         (chat_id,)
     )
     conn.commit()
+
+@dp.message(F.sticker)
+async def handle_sticker(message: Message):
+    if message.from_user.id not in SAVE_STICKER_MODE:
+        return
+
+    file_id = message.sticker.file_id
+
+    cursor.execute(
+        "INSERT OR IGNORE INTO stickers (file_id) VALUES (?)",
+        (file_id,)
+    )
+    conn.commit()
+
+    await message.reply("✅ Sticker saved")
 
 @dp.message(Command("rules"))
 async def cmd_rules(message: Message):
@@ -1190,66 +1232,52 @@ async def cmd_weather(message: Message, command: CommandObject):
     weather_info = await get_real_weather(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# --- IMAGE GENERATION COMMAND (STABLE & FIXED) ---
+# --- IMAGE GENERATION COMMAND ---
+IMAGE_MODEL = "flux-anime"
+
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message, command: CommandObject):
+
     if not command.args:
         await message.reply(
-            f"{get_emotion('thinking')} **Image Generation Usage:**\n\n"
-            f"`/imagine [your description]`\n\n"
-            f"Examples:\n"
-            f"`/imagine a beautiful sunset over mountains`\n"
-            f"`/imagine cute cat wearing glasses`\n"
-            f"`/imagine futuristic city with flying cars`",
-            parse_mode="Markdown"
+            "🎨 <b>Usage:</b>\n<code>/imagine a cute anime girl</code>",
+            parse_mode="HTML"
         )
         return
 
-    prompt = command.args
+    user_prompt = command.args
 
-    # Telegram ko bata do photo aa rahi hai
-    await bot.send_chat_action(message.chat.id, "upload_photo")
-
-    status_msg = await message.reply(
-        f"{get_emotion('happy')} 🎨 Generating image...\n"
-        f"Prompt: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+    base_prompt = (
+        f"{user_prompt}, anime style, masterpiece, best quality, "
+        f"ultra detailed, vibrant colors, soft lighting"
     )
 
+    encoded_prompt = urllib.parse.quote(base_prompt)
+    seed = random.randint(1, 999999)
+
+    image_url = (
+        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        f"?width=1024&height=1024"
+        f"&seed={seed}&model={IMAGE_MODEL}&nologo=true"
+    )
+
+    status = await message.reply("🎨 <b>Generating image...</b>", parse_mode="HTML")
+
     try:
-        image_data = await generate_image(prompt)
-
-        # ❗ IMAGE VALIDATION
-        if not image_data or len(image_data) < 1000:
-            await status_msg.edit_text(
-                f"{get_emotion('crying')} Image generate nahi ho paayi 😓\n"
-                f"Prompt thoda change karke try karo."
-            )
-            return
-
-        # ❗ TELEGRAM SEND
-        try:
-            await status_msg.delete()
-            await message.reply_photo(
-                BufferedInputFile(image_data, filename="generated_image.png"),
-                caption=(
-                    f"{get_emotion('love')} **Generated Image:**\n"
-                    f"📝 Prompt: {prompt}\n\n"
-                    f"🎨 Powered by Pollinations AI"
-                ),
-                parse_mode="Markdown"
-            )
-
-        except Exception:
-            await status_msg.edit_text(
-                f"{get_emotion('crying')} Telegram image send fail ho gayi 🤕\n"
-                f"Prompt dubara try karo."
-            )
+        await message.reply_photo(
+            photo=image_url,
+            caption=(
+                f"🖼️ <b>Generated Image</b>\n"
+                f"✨ <i>{user_prompt}</i>"
+            ),
+            parse_mode="HTML"
+        )
+        await status.delete()
 
     except Exception as e:
-        print("Imagine command error:", e)
-        await status_msg.edit_text(
-            f"{get_emotion('crying')} Image generation error 😢\n"
-            f"Thodi der baad try karo."
+        await status.edit_text(
+            "❌ <b>Image generation failed.</b>\nTry another prompt.",
+            parse_mode="HTML"
         )
 
 # --- QR CODE COMMAND ---
@@ -1853,7 +1881,7 @@ async def cmd_slowmode(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
-# --- FIXED LOCK/UNLOCK COMMANDS ---
+# --- LOCK/UNLOCK COMMANDS ---
 @dp.message(Command("lock"))
 async def cmd_lock(message: Message, command: CommandObject):
     """Lock the chat"""
@@ -1906,7 +1934,7 @@ async def cmd_unlock(message: Message):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
-# --- FIXED SETWELCOME COMMAND ---
+# --- SETWELCOME COMMAND ---
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
     """Set custom welcome message"""
@@ -1927,7 +1955,7 @@ async def cmd_setwelcome(message: Message, command: CommandObject):
     group_settings[message.chat.id]["custom_welcome"] = command.args
     await message.reply(f"{get_emotion('happy')} **Custom welcome message set!** 👋")
 
-# --- FIXED SETGOODBYE COMMAND ---
+# --- SETGOODBYE COMMAND ---
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
     """Set custom goodbye message"""
@@ -1958,7 +1986,7 @@ async def cmd_clear(message: Message):
     else:
         await message.reply(f"{get_emotion('thinking')} No chat memory to clear!")
 
-# --- FIXED LOCKS COMMAND ---
+# --- LOCKS COMMAND ---
 @dp.message(Command("locks"))
 async def cmd_locks(message: Message):
     """Show current chat lock status"""
@@ -1987,64 +2015,80 @@ async def cmd_locks(message: Message):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error checking permissions: {str(e)}")
 
-# --- ADMIN BROADCAST COMMAND (FIXED) ---
+# --- ADMIN BROADCAST COMMAND ---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
+    """Admin only: Broadcast message to all users"""
     if message.from_user.id != ADMIN_ID:
-        await message.reply("❌ Admin only")
+        await message.reply("❌ **Access Denied!**\n\nYeh command sirf admin ke liye hai! 🚫")
         return
-
+    
     if not message.reply_to_message:
-        await message.reply("Reply to a message and use /sendall")
+        await message.reply(
+            "📢 **Broadcast Command Usage:**\n\n"
+            "1. Kisi bhi message ka reply karo\n"
+            "2. /sendall type karo\n"
+            "3. Yeh message sabko chala jayega!\n\n"
+            "Supported formats:\n"
+            "• Text messages\n"
+            "• Photos\n"
+            "• Videos\n"
+            "• Stickers\n"
+            "• Documents\n"
+            "• Voice messages\n\n"
+            f"Total users: **{len(started_users)}** 👥"
+        )
         return
-
-    target_msg = message.reply_to_message
-
-    cursor.execute("SELECT user_id FROM users")
-    all_users = cursor.fetchall()
-
-    cursor.execute("SELECT chat_id FROM groups")
-    all_groups = cursor.fetchall()
-
+    
+    if len(started_users) == 0:
+        await message.reply("❌ Koi users nahi hain abhi tak!")
+        return
+    
     sent_count = 0
     failed_count = 0
+    target_msg = message.reply_to_message
+    
+    status_msg = await message.reply(f"📤 Sending to {len(started_users)} users... Please wait!")
+    
+cursor.execute("SELECT user_id FROM users")
+all_users = cursor.fetchall()
 
-    status = await message.reply("📤 Broadcasting...")
-
-    # ✅ PRIVATE USERS
-    for (user_id,) in all_users:
-        try:
-            await bot.copy_message(
-                chat_id=user_id,
-                from_chat_id=message.chat.id,
-                message_id=target_msg.message_id
-            )
-            sent_count += 1
-            await asyncio.sleep(0.05)
-        except:
-            failed_count += 1
-            cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-            conn.commit()
-
-    # ✅ GROUPS
-    for (group_id,) in all_groups:
-        try:
-            await bot.copy_message(
-                chat_id=group_id,
-                from_chat_id=message.chat.id,
-                message_id=target_msg.message_id
-            )
-            sent_count += 1
-            await asyncio.sleep(0.05)
-        except:
-            failed_count += 1
-            cursor.execute("DELETE FROM groups WHERE chat_id = ?", (group_id,))
-            conn.commit()
-
-    await status.edit_text(
-        f"✅ Broadcast Complete\n\n"
-        f"Sent: {sent_count}\n"
-        f"Failed: {failed_count}"
+cursor.execute("SELECT chat_id FROM groups")
+all_groups = cursor.fetchall()
+for (user_id,) in all_users:
+    try:
+        await bot.copy_message(
+            chat_id=user_id,
+            from_chat_id=message.chat.id,
+            message_id=target_msg.message_id
+        )
+        sent_count += 1
+        await asyncio.sleep(0.05)
+    except:
+        failed_count += 1
+        cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        conn.commit()
+        
+for (group_id,) in all_groups:
+    try:
+        await bot.copy_message(
+            chat_id=group_id,
+            from_chat_id=message.chat.id,
+            message_id=target_msg.message_id
+        )
+        sent_count += 1
+        await asyncio.sleep(0.05)
+    except:
+        failed_count += 1
+        cursor.execute("DELETE FROM groups WHERE chat_id = ?", (group_id,))
+        conn.commit()
+    continue
+    
+    await status_msg.edit_text(
+        f"✅ **Broadcast Complete!**\n\n"
+        f"📤 Sent to: **{sent_count}** users\n"
+        f"❌ Failed: **{failed_count}** users\n"
+        f"👥 Total: **{len(started_users)}** users"
     )
 
 # --- CALLBACK QUERY HANDLERS ---
@@ -2230,6 +2274,11 @@ async def help_callback(callback: types.CallbackQuery):
     
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
+#-----------------------$$$$$$$$$$$$-----------------
+    def get_random_sticker():
+    cursor.execute("SELECT file_id FROM stickers ORDER BY RANDOM() LIMIT 1")
+    row = cursor.fetchone()
+    return row[0] if row else None
 
 @dp.callback_query(F.data.startswith("horoscope_"))
 async def horoscope_callback(callback: types.CallbackQuery):
@@ -2361,14 +2410,14 @@ async def handle_all_messages(message: Message, state: FSMContext):
     
     # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
-        chat_memory[chat_id] = deque(maxlen=50)
+        chat_memory[chat_id] = deque(maxlen=20)
     
     # Get message text
     if not message.text:
         # Handle non-text messages
         if message.sticker:
-            # 30% chance to respond to stickers
-            if random.random() < 0.3:
+            # 40% chance to respond to stickers
+            if random.random() < 0.4:
                 responses = [
                     f"{get_emotion('funny')} Cute sticker! 😍",
                     f"{get_emotion('love')} Aww, I love this one! 💖",
@@ -2376,8 +2425,8 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 ]
                 await message.reply(random.choice(responses))
         elif message.photo:
-            # 20% chance to respond to photos
-            if random.random() < 0.2:
+            # 40% chance to respond to photos
+            if random.random() < 0.4:
                 responses = [
                     f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
                     f"{get_emotion('love')} Beautiful picture! 💕",
@@ -2506,6 +2555,13 @@ async def handle_all_messages(message: Message, state: FSMContext):
             
             # Send reply
             await message.reply(response)
+            if random.random() < 0.25:
+            	sticker_id = get_random_sticker()
+            	if sticker_id:
+            		await bot.send_sticker(
+            		chat_id=message.chat.id,
+            		sticker=sticker_id
+            		)
             
     except Exception as e:
         print(f"Error in message handler: {e}")
@@ -2582,7 +2638,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         print(f"AI Error: {e}")
         # Fallback responses
         return random.choice([
-            f"{get_emotion('crying')} Network slow hai jaan! 😢",
+            f"{get_emotion('crying')} Network slow hai yrr! 😢",
             f"{get_emotion('thinking')} Thoda soch rahi hu... 🤔",
             f"{get_emotion('happy')} Baad me baat karte hain! 💖",
             f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕"
