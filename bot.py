@@ -2015,80 +2015,64 @@ async def cmd_locks(message: Message):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error checking permissions: {str(e)}")
 
-# --- ADMIN BROADCAST COMMAND ---
+# --- ADMIN BROADCAST COMMAND (FIXED) ---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
-    """Admin only: Broadcast message to all users"""
     if message.from_user.id != ADMIN_ID:
-        await message.reply("❌ **Access Denied!**\n\nYeh command sirf admin ke liye hai! 🚫")
+        await message.reply("❌ Admin only")
         return
-    
+
     if not message.reply_to_message:
-        await message.reply(
-            "📢 **Broadcast Command Usage:**\n\n"
-            "1. Kisi bhi message ka reply karo\n"
-            "2. /sendall type karo\n"
-            "3. Yeh message sabko chala jayega!\n\n"
-            "Supported formats:\n"
-            "• Text messages\n"
-            "• Photos\n"
-            "• Videos\n"
-            "• Stickers\n"
-            "• Documents\n"
-            "• Voice messages\n\n"
-            f"Total users: **{len(started_users)}** 👥"
-        )
+        await message.reply("Reply to a message and use /sendall")
         return
-    
-    if len(started_users) == 0:
-        await message.reply("❌ Koi users nahi hain abhi tak!")
-        return
-    
+
+    target_msg = message.reply_to_message
+
+    cursor.execute("SELECT user_id FROM users")
+    all_users = cursor.fetchall()
+
+    cursor.execute("SELECT chat_id FROM groups")
+    all_groups = cursor.fetchall()
+
     sent_count = 0
     failed_count = 0
-    target_msg = message.reply_to_message
-    
-    status_msg = await message.reply(f"📤 Sending to {len(started_users)} users... Please wait!")
-    
-cursor.execute("SELECT user_id FROM users")
-all_users = cursor.fetchall()
 
-cursor.execute("SELECT chat_id FROM groups")
-all_groups = cursor.fetchall()
-for (user_id,) in all_users:
-    try:
-        await bot.copy_message(
-            chat_id=user_id,
-            from_chat_id=message.chat.id,
-            message_id=target_msg.message_id
-        )
-        sent_count += 1
-        await asyncio.sleep(0.05)
-    except:
-        failed_count += 1
-        cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-        conn.commit()
-        
-for (group_id,) in all_groups:
-    try:
-        await bot.copy_message(
-            chat_id=group_id,
-            from_chat_id=message.chat.id,
-            message_id=target_msg.message_id
-        )
-        sent_count += 1
-        await asyncio.sleep(0.05)
-    except:
-        failed_count += 1
-        cursor.execute("DELETE FROM groups WHERE chat_id = ?", (group_id,))
-        conn.commit()
-    continue
-    
-    await status_msg.edit_text(
-        f"✅ **Broadcast Complete!**\n\n"
-        f"📤 Sent to: **{sent_count}** users\n"
-        f"❌ Failed: **{failed_count}** users\n"
-        f"👥 Total: **{len(started_users)}** users"
+    status = await message.reply("📤 Broadcasting...")
+
+    # ✅ PRIVATE USERS
+    for (user_id,) in all_users:
+        try:
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=message.chat.id,
+                message_id=target_msg.message_id
+            )
+            sent_count += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed_count += 1
+            cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            conn.commit()
+
+    # ✅ GROUPS
+    for (group_id,) in all_groups:
+        try:
+            await bot.copy_message(
+                chat_id=group_id,
+                from_chat_id=message.chat.id,
+                message_id=target_msg.message_id
+            )
+            sent_count += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed_count += 1
+            cursor.execute("DELETE FROM groups WHERE chat_id = ?", (group_id,))
+            conn.commit()
+
+    await status.edit_text(
+        f"✅ Broadcast Complete\n\n"
+        f"Sent: {sent_count}\n"
+        f"Failed: {failed_count}"
     )
 
 # --- CALLBACK QUERY HANDLERS ---
