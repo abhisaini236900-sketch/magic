@@ -1092,15 +1092,17 @@ async def save_group(message: Message):
 async def handle_sticker(message: Message):
     if message.from_user.id not in SAVE_STICKER_MODE:
         return
-        file_id = message.sticker.file_id
-        
+
+    file_id = message.sticker.file_id
+
     cursor.execute(
         "INSERT OR IGNORE INTO stickers (file_id) VALUES (?)",
         (file_id,)
     )
     conn.commit()
-SAVE_STICKER_MODE.discard(message.from_user.id)
-        await message.reply("✅ Sticker saved")
+
+    SAVE_STICKER_MODE.discard(message.from_user.id)
+    await message.reply("✅ Sticker saved")
 
 @dp.message(Command("stickerstats"))
 async def sticker_stats(message: Message):
@@ -2437,6 +2439,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
                     f"{get_emotion('happy')} Nice sticker! Send me more! 🌟"
                 ]
                 await message.reply(random.choice(responses))
+                
         elif message.photo:
             # 40% chance to respond to photos
             if random.random() < 0.4:
@@ -2563,24 +2566,20 @@ async def handle_all_messages(message: Message, state: FSMContext):
             # Small delay for human feel
             await asyncio.sleep(random.uniform(0.5, 1.5))
             
-            # Get response
-            response = await get_ai_response(chat_id, clean_text, user_id)
-            
-            # Send reply
-            await message.reply(response)
-            if random.random() < 0.25:
-    sticker_id = get_random_sticker()
-    if sticker_id:
-        try:
-            await bot.send_sticker(
-                chat_id=message.chat.id,
-                sticker=sticker_id
-            )
-        except:
-            pass
-            
-    except Exception as e:
-        print(f"Error in message handler: {e}")
+try:
+    # ====== GENERATE RESPONSE ======
+    if should_respond:
+        ...
+        response = await get_ai_response(chat_id, clean_text, user_id)
+        await message.reply(response)
+
+        if random.random() < 0.25:
+            sticker_id = get_random_sticker()
+            if sticker_id:
+                await bot.send_sticker(message.chat.id, sticker_id)
+
+except Exception as e:
+    print(f"Error in message handler: {e}")
 
 # --- AI RESPONSE FUNCTION ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
