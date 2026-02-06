@@ -927,10 +927,16 @@ async def get_sticker_count() -> int:
 async def send_random_sticker_in_chat(chat_id: int):
     """Send random sticker in chat (25% chance during conversations)"""
     try:
+        # Check if last sticker was sent recently (10 minutes)
+        last_sent = last_sticker_time.get(chat_id)
+        now = datetime.now()
+        if last_sent and (now - last_sent).total_seconds() < 600:  # 10 minutes
+            return False
+            
         sticker_id = await get_random_sticker()
         if sticker_id:
             await bot.send_sticker(chat_id, sticker_id)
-            last_sticker_time[chat_id] = datetime.now()
+            last_sticker_time[chat_id] = now
             return True
     except Exception as e:
         print(f"Error sending random sticker: {e}")
@@ -2610,7 +2616,7 @@ async def captcha_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
-# --- MESSAGE HANDLER WITH AUTO-MODERATION AND STICKER SENDING ---
+# --- FIXED MESSAGE HANDLER FOR GROUPS ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     # Basic checks
@@ -2627,41 +2633,27 @@ async def handle_all_messages(message: Message, state: FSMContext):
     if user_id == bot.id:
         return
     
-    # Update interaction time and memory
+    # Update interaction time
     user_last_interaction[user_id] = datetime.now()
     
     # Initialize memory for chat if not exists
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
     
+    # Get bot info
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username.lower() if bot_info.username else ""
+    
     # Get message text
     if not message.text:
         # Handle non-text messages
         if message.sticker:
-            # 30% chance to respond to stickers
-            if random.random() < 0.3:
-                responses = [
-                    f"{get_emotion('funny')} Cute sticker! 😍",
-                    f"{get_emotion('love')} Aww, I love this one! 💖",
-                    f"{get_emotion('happy')} Nice sticker! Send me more! 🌟"
-                ]
-                await message.reply(random.choice(responses))
-        elif message.photo:
-            # 20% chance to respond to photos
+            # 20% chance to respond to stickers (in groups too)
             if random.random() < 0.2:
                 responses = [
-                    f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
-                    f"{get_emotion('love')} Beautiful picture! 💕",
-                    f"{get_emotion('surprise')} Wow! Amazing shot! 😲"
-                ]
-                await message.reply(random.choice(responses))
-        elif message.voice:
-            # 40% chance to respond to voice
-            if random.random() < 0.4:
-                responses = [
-                    f"{get_emotion('love')} Aww, your voice! 🎤💕",
-                    f"{get_emotion('happy')} Nice voice message! 😊",
-                    f"{get_emotion('funny')} I heard that! Hehe! 😄"
+                    f"{get_emotion('funny')} Cute sticker! 😍",
+                    f"{get_emotion('love')} Nice sticker! 💖",
+                    f"{get_emotion('happy')} Sticker accha hai! 🌟"
                 ]
                 await message.reply(random.choice(responses))
         return
@@ -2692,6 +2684,10 @@ async def handle_all_messages(message: Message, state: FSMContext):
     
     # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
+        # Save group to database
+        cursor.execute("INSERT OR IGNORE INTO groups (chat_id) VALUES (?)", (chat_id,))
+        conn.commit()
+        
         # Update group settings if not exists
         if chat_id not in group_settings:
             group_settings[chat_id] = {
@@ -2737,24 +2733,20 @@ async def handle_all_messages(message: Message, state: FSMContext):
     
     # ====== MAIN CONVERSATION LOGIC ======
     try:
-        # Get bot info
-        bot_info = await bot.get_me()
-        bot_username = bot_info.username.lower()
-        
         # Check if message is for bot
         is_private = message.chat.type == "private"
-        is_mention = f"@{bot_username}" in user_text_lower
+        is_mention = bot_username and f"@{bot_username}" in user_text_lower
         is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
         
-        # ALWAYS RESPOND IN PRIVATE CHAT
+        # ✅ FIXED: Always respond in private chat
         if is_private:
             should_respond = True
             response_mode = "private"
-        # Respond when mentioned or replied in groups
+        # ✅ FIXED: Respond when mentioned or replied in groups
         elif is_mention or is_reply_to_bot:
             should_respond = True
             response_mode = "mention"
-        # Don't respond to normal messages in groups (as per requirement)
+        # Don't respond to normal messages in groups
         else:
             should_respond = False
             response_mode = "none"
@@ -2766,7 +2758,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
             if bot_username and f"@{bot_username}" in clean_text.lower():
                 clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
             
-            # 25% CHANCE TO SEND STICKER INSTEAD OF TEXT
+            # 25% CHANCE TO SEND STICKER INSTEAD OF TEXT (in groups too)
             if random.random() < 0.25:  # 25% chance
                 await send_random_sticker_in_chat(chat_id)
                 # Still send text response sometimes after sticker
