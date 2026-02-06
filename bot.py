@@ -256,10 +256,10 @@ JOKES = [
 ]
 
 WELCOME_MESSAGES = [
-    "🎉 Welcome {name}! Khush aamdeed! 😊",
+    "🎉 Welcome {name}! jiiiii ! 😊",
     "🌟 Aao ji {name}! Group me welcome! 🫂",
     "✨ Hey {name}! Great to have you here! 💖",
-    "🥳 {name} aa gaya! Party shuru! 🎊",
+    "🥳 {name} aa gaye! welcome 🤗 🎊",
     "😊 Namaste {name}! Aapka swagat hai! 🙏",
     "🌸 Welcome {name}! Hope you have a great time! 💕",
     "🎈 Hey {name}! Thanks for joining us! 🎉",
@@ -1221,8 +1221,7 @@ async def cmd_help(message: Message):
         
         "🎨 **IMAGE & CREATIVE:**\n"
         "• /imagine [prompt] - AI Image Generation 🎨\n"
-        "• /qr [text] - Generate QR Code 📱\n"
-        "• /stickerstatus - Check sticker count 🎭\n\n"
+        "• /qr [text] - Generate QR Code 📱\n\n"
         
         "🎵 **MUSIC & LYRICS:**\n"
         "• /lyrics [song] - Get song lyrics 🎶\n"
@@ -1253,11 +1252,6 @@ async def cmd_help(message: Message):
         "• /setgoodbye [text] - Custom goodbye message 👋\n"
         "• /adminlist - List all admins 👑\n"
         "• /tagall - Mention all members @\n\n"
-        
-        "👑 **OWNER COMMANDS:**\n"
-        "• /savesticker - Save sticker to database\n"
-        "• /stickerstatus - Check sticker database\n"
-        "• /sendall - Broadcast to all users 📢\n\n"
         
         "🔧 **SAFETY FEATURES:**\n"
         "• Auto-spam detection 🔍\n"
@@ -2985,26 +2979,25 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     user_text_lower = user_text.lower().strip()  
     
     # Quick responses for common greetings
-    if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'namaste', 'hola']):
+    if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'Hii', 'Hello', 'Hye']):
         responses = [
             f"{get_emotion('happy')} Hii there! 😊",
             f"{get_emotion('love')} Hello ji! Kaise ho? 💖",
-            f"{get_emotion('flirty')} Oh hello handsome! 😉",
             f"{get_emotion('sassy')} Aarey waah! Kaun aaya? 👀"
         ]
         return random.choice(responses)
     
     # Time-based greetings
-    if any(greet in user_text_lower for greet in ['good morning', 'gm', 'subh prabhat']):
+    if any(greet in user_text_lower for greet in ['good morning']):
         return f"{get_emotion('happy')} Good Morning Sunshine! 🌅 Have a beautiful day! 😊"
     
-    if any(greet in user_text_lower for greet in ['good afternoon', 'ga']):
+    if any(greet in user_text_lower for greet in ['good afternoon']):
         return f"{get_emotion('happy')} Good Afternoon! ☀️ Lunch ho gaya? 🍲"
     
-    if any(greet in user_text_lower for greet in ['good evening', 'ge', 'shubh sandhya']):
+    if any(greet in user_text_lower for greet in ['good evening']):
         return f"{get_emotion('love')} Good Evening! 🌇 Chai peeyo aur relax karo! ☕"
     
-    if any(greet in user_text_lower for greet in ['good night', 'gn', 'shubh ratri']):
+    if any(greet in user_text_lower for greet in ['good night']):
         return f"{get_emotion('sleepy')} Good Night! 🌙 Sweet dreams! 💤"
     
     # ===== AI RESPONSE (For complex messages) =====
