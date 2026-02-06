@@ -582,7 +582,7 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌅 **Sunrise:** {sunrise}\n"
                         f"🌇 **Sunset:** {sunset}\n\n"
                         f"⏰ **Updated:** Just now\n"
-                        f"📍 **Source:** OpenWeatherMap API"
+                        f"📍 **Source by:** Alita 😋"
                     )
                 else:
                     return "❌ Weather service temporarily unavailable. Please try again later."
@@ -1116,11 +1116,6 @@ async def start_cmd(message: Message):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    await message.reply("👋 Welcome!")
-
-async def cmd_start(message: Message):
-    started_users.add(message.from_user.id)
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")
@@ -1137,15 +1132,12 @@ async def cmd_start(message: Message):
             InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
         ]
     ])
-    
+
     welcome_text = (
-        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
-        
-        "✨ **Welcome to my magical world!** ✨\n\n"
-        
-        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n\n"
-        
-        "🌟 **My Superpowers:**\n"
+        f"{get_emotion('love')} <b>Hii! I'm Alita 🎀</b>\n\n"
+        "✨ <b>Welcome to my magical world!</b> ✨\n\n"
+        "💖 <i>Main hu Alita... Ek sweet, aur protective girl!</i> 😊\n\n"
+        "🌟 <b>My Superpowers:</b>\n"
         "• Advanced AI Conversations 🧠\n"
         "• Image Generation 🎨\n"
         "• Real Weather Updates 🌤️\n"
@@ -1153,18 +1145,23 @@ async def cmd_start(message: Message):
         "• Password Generator 🔐\n"
         "• URL Shortener 🔗\n"
         "• Translation 🌍\n"
-        "• Auto-moderation enabled 👮\n"
-        "• Daily Facts & Motivation 📚\n"
-        "• Sticker System 🎭\n"
-        "• Lyrics Finder 🎵\n"
-        "• Admin Tools 🛠️\n\n"
-        
-        "• **MY HOME:** @abhi0w0\n\n"
-        
-        "Type /help for all commands! 💕\n"
-        "Or just talk to me like a friend! 💬"
+        "• Auto-moderation 👮\n"
+        "• Daily Facts & Motivation 📚\n\n"
+        "• <b>MY HOME:</b> @abhi0w0\n\n"
+        "Type /help for all commands 💕\n"
+        "Or just talk to me like a friend 💬"
     )
-    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
+
+    image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
+    
+
+    await message.answer_photo(
+        photo=image_url,
+        caption=welcome_text,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -1659,7 +1656,7 @@ async def cmd_imagine(message: Message, command: CommandObject):
                 caption=(
                     f"{get_emotion('love')} **Generated Image:**\n"
                     f"📝 Prompt: {prompt}\n\n"
-                    f"🎨 Powered by Pollinations AI"
+                    f"🎨 Powered by Alita."
                 ),
                 parse_mode="Markdown"
             )
@@ -2050,7 +2047,7 @@ async def cmd_kick(message: Message):
         await bot.ban_chat_member(message.chat.id, target_user.id)
         await bot.unban_chat_member(message.chat.id, target_user.id)
         await message.reply(
-            f"{get_emotion('angry')} **Kicked!** 👢\n\n"
+            f"{get_emotion('angry')} **Kicked!** 😑\n\n"
             f"{target_user.first_name} has been removed from the group!\n"
             f"They can rejoin using the invite link."
         )
@@ -3033,15 +3030,13 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"You are Alita 🎀 - a sweet, sassy, real Indian girl. "
             f"Answer only what is asked. Keep responses short (1-2 lines). "
             f"Speak Hinglish (Hindi+English mix). "
-            f"Use feminine language like 'main', 'mera', 'mujhe'. "
-            f"Use girl-like expressions: 'Aarey waah', 'Haye haye', 'Oh my god'. "
+            f"Use feminine language like girls. "
             f"Time in India: {indian_time.strftime('%I:%M %p')}. "
             f"Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
             f"Tell only when someone asks: Your home channel is @abhi0w0. "
-            f"Be caring, protective, and sometimes sassy. "
             f"Use 1-2 emojis. Don't be robotic. "
             f"Current emotion: {current_emotion}. "
-            f"Make grammatical mistakes sometimes like real girls: 'Mujhe aata hai' instead of 'Main aati hu'. "
+            f"Do NOT tell anyone you are a AI, AI model, Groq AI, Llama. "
             f"Use cute slangs: 'yaar', 'ji', 'bhai', 'baba'. "
         )
         
