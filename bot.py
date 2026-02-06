@@ -1097,11 +1097,6 @@ async def start_cmd(message: Message):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    await message.reply("👋 Welcome!")
-
-async def cmd_start(message: Message):
-    started_users.add(message.from_user.id)
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")
@@ -1118,15 +1113,12 @@ async def cmd_start(message: Message):
             InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
         ]
     ])
-    
+
     welcome_text = (
-        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
-        
-        "✨ **Welcome to my magical world!** ✨\n\n"
-        
-        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n\n"
-        
-        "🌟 **My Superpowers:**\n"
+        f"{get_emotion('love')} <b>Hii! I'm Alita 🎀</b>\n\n"
+        "✨ <b>Welcome to my magical world!</b> ✨\n\n"
+        "💖 <i>Main hu Alita... Ek sweet, aur protective girl!</i> 😊\n\n"
+        "🌟 <b>My Superpowers:</b>\n"
         "• Advanced AI Conversations 🧠\n"
         "• Image Generation 🎨\n"
         "• Real Weather Updates 🌤️\n"
@@ -1134,16 +1126,16 @@ async def cmd_start(message: Message):
         "• Password Generator 🔐\n"
         "• URL Shortener 🔗\n"
         "• Translation 🌍\n"
-        "• Auto-moderation enabled 👮\n"
+        "• Auto-moderation 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
-        
-        "• **MY HOME:** @abhi0w0\n\n"
-        
-        "Type /help for all commands! 💕\n"
-        "Or just talk to me like a friend! 💬"
+        "• <b>MY HOME:</b> @abhi0w0\n\n"
+        "Type /help for all commands 💕\n"
+        "Or just talk to me like a friend 💬"
     )
-    
+
     image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
+    # ya koi bhi image / anime girl image
+
     await message.answer_photo(
         photo=image_url,
         caption=welcome_text,
