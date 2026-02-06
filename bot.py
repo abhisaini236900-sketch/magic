@@ -524,7 +524,7 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌅 **Sunrise:** {sunrise}\n"
                         f"🌇 **Sunset:** {sunset}\n\n"
                         f"⏰ **Updated:** Just now\n"
-                        f"📍 **Source:** OpenWeatherMap API"
+                    
                     )
                 else:
                     return "❌ Weather service temporarily unavailable. Please try again later."
@@ -1442,7 +1442,7 @@ async def cmd_imagine(message: Message, command: CommandObject):
                 caption=(
                     f"{get_emotion('love')} **Generated Image:**\n"
                     f"📝 Prompt: {prompt}\n\n"
-                    f"🎨 Powered by Pollinations AI"
+                    f"🎨 Powered by Alita."
                 ),
                 parse_mode="Markdown"
             )
