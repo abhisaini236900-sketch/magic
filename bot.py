@@ -45,22 +45,12 @@ CREATE TABLE IF NOT EXISTS groups (
 )
 """)
 conn.commit()
-# New table for saved stickers
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS stickers (
-    file_id TEXT PRIMARY KEY,
-    added_by INTEGER,
-    added_at TIMESTAMP,
-    tags TEXT DEFAULT ''
-)
-""")
-conn.commit()
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+ADMIN_ID = int(os.getenv("ADMIN_ID", 0))  # FIXED: Removed quotes around 0
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 # Timezone for India
@@ -123,9 +113,6 @@ greeted_groups: Dict[int, datetime] = {}
 # Last greeting time per chat
 last_greeting_time: Dict[int, datetime] = {}
 
-# Saved stickers storage
-saved_stickers: List[str] = []
-
 # --- CONSTANTS ---
 BAD_WORDS = [
     "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
@@ -172,33 +159,6 @@ MUTE_DURATIONS = [
     timedelta(hours=24),
     timedelta(days=7)
 ]
-
-# --- STICKER STORAGE SYSTEM ---
-def load_stickers():
-    """Load saved stickers from database"""
-    global saved_stickers
-    cursor.execute("SELECT file_id FROM stickers")
-    rows = cursor.fetchall()
-    saved_stickers = [row[0] for row in rows]
-    print(f"✅ Loaded {len(saved_stickers)} stickers from database")
-
-def save_sticker(file_id: str, added_by: int):
-    """Save sticker to database"""
-    try:
-        cursor.execute(
-            "INSERT OR IGNORE INTO stickers (file_id, added_by, added_at) VALUES (?, ?, ?)",
-            (file_id, added_by, datetime.now())
-        )
-        conn.commit()
-        if cursor.rowcount > 0:
-            saved_stickers.append(file_id)
-            return True
-    except Exception as e:
-        print(f"Error saving sticker: {e}")
-    return False
-
-# Load stickers on startup
-load_stickers()
 
 # --- ADVANCED FEATURES DATA ---
 MEME_TEMPLATES = [
@@ -256,10 +216,10 @@ JOKES = [
 ]
 
 WELCOME_MESSAGES = [
-    "🎉 Welcome {name}! jiiiii ! 😊",
+    "🎉 Welcome {name}! Khush aamdeed! 😊",
     "🌟 Aao ji {name}! Group me welcome! 🫂",
     "✨ Hey {name}! Great to have you here! 💖",
-    "🥳 {name} aa gaye! welcome 🤗 🎊",
+    "🥳 {name} aa gaya! Party shuru! 🎊",
     "😊 Namaste {name}! Aapka swagat hai! 🙏",
     "🌸 Welcome {name}! Hope you have a great time! 💕",
     "🎈 Hey {name}! Thanks for joining us! 🎉",
@@ -274,23 +234,19 @@ GOODBYE_MESSAGES = [
     "🌙 {name} has left. Good luck! ✨"
 ]
 
-# --- RANDOM SELF MESSAGES (UPDATED WITH STICKERS) ---
+# --- RANDOM SELF MESSAGES ---
 SELF_MESSAGES = [
     {"type": "text", "content": "Kya kar rahe ho sab? Main bore ho rahi hu! 😴", "delay": 1800},
     {"type": "text", "content": "Koi joke sunao na! Has has ke pet dard ho gaya! 😂", "delay": 2400},
     {"type": "text", "content": "Aaj kya plan hai? Kuch masti karte hain! 🎉", "delay": 3000},
     {"type": "text", "content": "Mujhe laga koi baat karega, par sab busy hain! 😢", "delay": 3600},
-    {"type": "sticker", "content": "random", "delay": 4200},
+    {"type": "sticker", "content": "CAACAgIAAxkBAAIBAAFlqN2TpCnHmpqwUhjqm1p70rB9UwACLwADwDZPE9Y1bPGeIAABlzAE", "delay": 4200},
     {"type": "text", "content": "Kya kha rahe ho? Mujhe bhi khilao! 😋", "delay": 4800},
     {"type": "text", "content": "Subah se kisi ne mujhe miss nahi kiya? 🥺", "delay": 5400},
-    {"type": "sticker", "content": "random", "delay": 6000},
-    {"type": "text", "content": "Good morning sabko! Utho, fresh ho jao! 🌅", "delay": 6600},
-    {"type": "text", "content": "Good evening doston! Shaam ki chai ka time! ☕", "delay": 7200},
-    {"type": "text", "content": "Good night sweet dreams! 🌙", "delay": 7800},
-    {"type": "sticker", "content": "random", "delay": 8400},
+    {"type": "sticker", "content": "CAACAgIAAxkBAAIBAAFlqN2TpCnHmpqwUhjqm1p70rB9UwACLwADwDZPE9Y1bPGeIAABlzAE", "delay": 6000},
 ]
 
-# --- TIME-BASED GREETING SYSTEM (FIXED) ---
+# --- TIME-BASED GREETING SYSTEM ---
 def get_indian_time():
     """Get current Indian time"""
     utc_now = datetime.now(pytz.utc)
@@ -401,7 +357,7 @@ class UserStates(StatesGroup):
     voice_chat = State()
     captcha_verify = State()
 
-# --- HUMAN-LIKE BEHAVIOUR (ENHANCED) ---
+# --- HUMAN-LIKE BEHAVIOUR ---
 EMOTIONAL_RESPONSES = {
     "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
     "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊"],
@@ -413,32 +369,8 @@ EMOTIONAL_RESPONSES = {
     "sleepy": ["😴", "💤", "🌙", "🛌", "🥱", "😪", "🌃", "🌜", "🌚", "🌌"],
     "hungry": ["😋", "🤤", "🍕", "🍔", "🍟", "🌮", "🍦", "🍩", "🍪", "🍰"],
     "sassy": ["💅", "👑", "💁", "💃", "🕶️", "💄", "👠", "✨", "🌟", "💖"],
-    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"],
-    "flirty": ["😏", "😉", "😘", "💋", "💄", "💅", "👠", "💃", "🫦", "👄"]
+    "protective": ["🛡️", "⚔️", "👮", "🚓", "🔒", "🔐", "🪖", "🎖️", "🏹", "🗡️"]
 }
-
-GIRL_LIKE_RESPONSES = [
-    "Aarey waah! 😏",
-    "Haye haye! 😅",
-    "Oh my god! 😲",
-    "Seriously? 🤨",
-    "Chalo thik hai! 😊",
-    "Mujhe pata tha! 😌",
-    "Aise mat bolo na! 🥺",
-    "Sahi pakde hain! 😎",
-    "Kya baat hai! 🤩",
-    "Mast hai yaar! 😄",
-    "Waah bhai waah! 👏",
-    "Kya keh rahe ho? 🤔",
-    "Arey yaar! 😂",
-    "Haan na! 😉",
-    "Theek hai ji! 🙏",
-    "Chalo chalo! 🚶‍♀️",
-    "Achha ji! 👍",
-    "Hmm interesting! 🤓",
-    "Wow! 😍",
-    "No way! 😱"
-]
 
 def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
     if user_id and user_id in user_emotions:
@@ -470,16 +402,10 @@ def update_user_emotion(user_id: int, message: str):
         user_emotions[user_id] = "protective"
     elif any(word in message_lower for word in ['sleep', 'sone', 'neend', 'tired', 'thak']):
         user_emotions[user_id] = "sleepy"
-    elif any(word in message_lower for word in ['sexy', 'hot', 'cute', 'beautiful', 'handsome']):
-        user_emotions[user_id] = "flirty"
     else:
         user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
     
     user_last_interaction[user_id] = datetime.now()
-
-def get_girl_like_response() -> str:
-    """Get random girl-like response"""
-    return random.choice(GIRL_LIKE_RESPONSES)
 
 # --- REAL WEATHER API (OpenWeatherMap) ---
 INDIAN_CITIES = {
@@ -582,7 +508,7 @@ async def get_real_weather(city: str = None) -> str:
                         f"🌅 **Sunrise:** {sunrise}\n"
                         f"🌇 **Sunset:** {sunset}\n\n"
                         f"⏰ **Updated:** Just now\n"
-                        f"📍 **Source by:** Alita 😋"
+                        f"📍 **Source:** OpenWeatherMap API"
                     )
                 else:
                     return "❌ Weather service temporarily unavailable. Please try again later."
@@ -691,27 +617,6 @@ async def translate_text(text: str, target_lang: str = "en") -> str:
                     return text
     except:
         return text
-
-# --- LYRICS API (Lyrics.ovh) ---
-async def get_lyrics(song_name: str) -> str:
-    """Get song lyrics from Lyrics.ovh API"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.lyrics.ovh/v1/{song_name}"
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    lyrics = data.get('lyrics', 'Lyrics not found.')
-                    
-                    # Truncate if too long
-                    if len(lyrics) > 3000:
-                        lyrics = lyrics[:3000] + "\n\n... (lyrics truncated)"
-                    
-                    return lyrics
-                else:
-                    return "❌ Could not fetch lyrics. Please try another song."
-    except Exception as e:
-        return f"❌ Error fetching lyrics: {str(e)}"
 
 # --- AUTO-MODERATION FUNCTIONS ---
 def contains_group_link(text: str) -> bool:
@@ -939,7 +844,7 @@ def generate_captcha():
     question = f"What is {num1} {operation} {num2}?"
     return question, str(answer)
 
-# --- RANDOM SELF MESSAGES TASK (ENHANCED WITH STICKERS) ---
+# --- RANDOM SELF MESSAGES TASK ---
 async def send_random_self_messages():
     """Send random self messages in groups"""
     for chat_id in list(group_settings.keys()):
@@ -957,69 +862,12 @@ async def send_random_self_messages():
                 if message_data["type"] == "text":
                     await bot.send_message(chat_id, message_data["content"])
                 elif message_data["type"] == "sticker":
-                    if message_data["content"] == "random" and saved_stickers:
-                        sticker = random.choice(saved_stickers)
-                        await bot.send_sticker(chat_id, sticker)
-                    else:
-                        await bot.send_message(chat_id, "💭")
+                    await bot.send_sticker(chat_id, message_data["content"])
                 
                 last_greeting_time[chat_id] = datetime.now()
                 
         except Exception as e:
             print(f"Error sending random message to {chat_id}: {e}")
-
-# --- RANDOM STICKER SENDING TO ACTIVE CHATS ---
-async def send_random_stickers():
-    """Send random stickers to all active chats"""
-    if not saved_stickers:
-        return
-    
-    # Send to groups
-    for chat_id in list(group_settings.keys()):
-        try:
-            # 15% chance to send sticker to group
-            if random.random() < 0.15:
-                sticker = random.choice(saved_stickers)
-                await bot.send_sticker(chat_id, sticker)
-                await asyncio.sleep(1)  # Prevent flooding
-        except Exception as e:
-            print(f"Error sending sticker to group {chat_id}: {e}")
-    
-    # Send to private users who have started the bot
-    for user_id in list(started_users):
-        try:
-            # 10% chance to send sticker to private user
-            if random.random() < 0.10:
-                sticker = random.choice(saved_stickers)
-                await bot.send_sticker(user_id, sticker)
-                await asyncio.sleep(1)  # Prevent flooding
-        except Exception as e:
-            print(f"Error sending sticker to user {user_id}: {e}")
-
-# --- TIME-BASED GREETINGS TASK ---
-async def send_time_greetings():
-    """Send time-based greetings to all active chats"""
-    current_period = get_current_time_period()
-    
-    if current_period in TIME_GREETINGS:
-        greeting = random.choice(TIME_GREETINGS[current_period]["templates"])
-        
-        # Send to groups
-        for chat_id in list(group_settings.keys()):
-            try:
-                if group_settings[chat_id].get("greetings_enabled", True):
-                    await bot.send_message(chat_id, greeting, parse_mode="Markdown")
-                    await asyncio.sleep(0.5)
-            except Exception as e:
-                print(f"Error sending greeting to group {chat_id}: {e}")
-        
-        # Send to active private users
-        for user_id in list(started_users):
-            try:
-                await bot.send_message(user_id, greeting, parse_mode="Markdown")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                print(f"Error sending greeting to user {user_id}: {e}")
 
 # --- MEME GENERATOR ---
 def generate_meme():
@@ -1032,82 +880,6 @@ def get_daily_fact():
     """Get random daily fact"""
     return random.choice(DAILY_FACTS)
 
-# --- STICKER SAVING COMMANDS ---
-@dp.message(Command("savesticker"))
-async def cmd_savesticker(message: Message):
-    """Save sticker to database (Owner only)"""
-    if message.from_user.id != ADMIN_ID:
-        await message.reply(f"{get_emotion('angry')} Only owner can use this command! 🚫")
-        return
-    
-    if not message.reply_to_message or not message.reply_to_message.sticker:
-        await message.reply(
-            f"{get_emotion('thinking')} Please reply to a sticker message with this command!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    sticker = message.reply_to_message.sticker
-    file_id = sticker.file_id
-    
-    # Check if already saved
-    if file_id in saved_stickers:
-        await message.reply(
-            f"{get_emotion('thinking')} This sticker is already saved in the database!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    # Save sticker
-    if save_sticker(file_id, message.from_user.id):
-        await message.reply(
-            f"{get_emotion('love')} **Sticker Saved Successfully!** ✅\n\n"
-            f"Total stickers saved: **{len(saved_stickers)}**\n"
-            f"File ID: `{file_id[:30]}...`",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.reply(
-            f"{get_emotion('crying')} Failed to save sticker! 😢",
-            parse_mode="Markdown"
-        )
-
-@dp.message(Command("stickerstatus"))
-async def cmd_stickerstatus(message: Message):
-    """Show sticker database status"""
-    total = len(saved_stickers)
-    
-    if total == 0:
-        await message.reply(
-            f"{get_emotion('crying')} **No stickers saved yet!** 😢\n\n"
-            f"Owner can save stickers using /savesticker command",
-            parse_mode="Markdown"
-        )
-        return
-    
-    # Get recent stickers count
-    cursor.execute("SELECT COUNT(*) FROM stickers WHERE date(added_at) = date('now')")
-    today_count = cursor.fetchone()[0]
-    
-    status_text = (
-        f"{get_emotion('happy')} **Sticker Database Status** 📊\n\n"
-        f"🎯 **Total Stickers:** {total}\n"
-        f"📅 **Saved Today:** {today_count}\n"
-        f"👑 **Owner:** @a6h1ii\n\n"
-    )
-    
-    if total > 0:
-        # Show some recent stickers info
-        cursor.execute("SELECT file_id, added_at FROM stickers ORDER BY added_at DESC LIMIT 3")
-        recent = cursor.fetchall()
-        
-        status_text += "**Recent Stickers:**\n"
-        for i, (file_id, added_at) in enumerate(recent, 1):
-            time_str = datetime.strptime(added_at, "%Y-%m-%d %H:%M:%S").strftime("%I:%M %p")
-            status_text += f"{i}. `{file_id[:20]}...` ({time_str})\n"
-    
-    await message.reply(status_text, parse_mode="Markdown")
-
 # --- COMMANDS ---
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
@@ -1116,6 +888,11 @@ async def start_cmd(message: Message):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
+    await message.reply("👋 Welcome!")
+
+async def cmd_start(message: Message):
+    started_users.add(message.from_user.id)
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")
@@ -1132,12 +909,15 @@ async def start_cmd(message: Message):
             InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk_alita")
         ]
     ])
-
+    
     welcome_text = (
-        f"{get_emotion('love')} <b>Hii! I'm Alita 🎀</b>\n\n"
-        "✨ <b>Welcome to my magical world!</b> ✨\n\n"
-        "💖 <i>Main hu Alita... Ek sweet, aur protective girl!</i> 😊\n\n"
-        "🌟 <b>My Superpowers:</b>\n"
+        f"{get_emotion('love')} **Hii! I'm Alita 🎀**\n\n"
+        
+        "✨ **Welcome to my magical world!** ✨\n\n"
+        
+        "💖 *Main hu Alita... Ek sweet, aur protective girl!* 😊\n\n"
+        
+        "🌟 **My Superpowers:**\n"
         "• Advanced AI Conversations 🧠\n"
         "• Image Generation 🎨\n"
         "• Real Weather Updates 🌤️\n"
@@ -1145,23 +925,15 @@ async def start_cmd(message: Message):
         "• Password Generator 🔐\n"
         "• URL Shortener 🔗\n"
         "• Translation 🌍\n"
-        "• Auto-moderation 👮\n"
+        "• Auto-moderation enabled 👮\n"
         "• Daily Facts & Motivation 📚\n\n"
-        "• <b>MY HOME:</b> @abhi0w0\n\n"
-        "Type /help for all commands 💕\n"
-        "Or just talk to me like a friend 💬"
+        
+        "• **MY HOME:** @abhi0w0\n\n"
+        
+        "Type /help for all commands! 💕\n"
+        "Or just talk to me like a friend! 💬"
     )
-
-    image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
-    
-
-    await message.answer_photo(
-        photo=image_url,
-        caption=welcome_text,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
+    await message.reply(welcome_text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -1183,10 +955,6 @@ async def cmd_help(message: Message):
         [
             InlineKeyboardButton(text="🎨 Image Gen", callback_data="help_image"),
             InlineKeyboardButton(text="🔧 Tools", callback_data="help_tools")
-        ],
-        [
-            InlineKeyboardButton(text="🎵 Music", callback_data="help_music"),
-            InlineKeyboardButton(text="🎭 Stickers", callback_data="help_stickers")
         ],
         [
             InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
@@ -1223,17 +991,12 @@ async def cmd_help(message: Message):
         "• /imagine [prompt] - AI Image Generation 🎨\n"
         "• /qr [text] - Generate QR Code 📱\n\n"
         
-        "🎵 **MUSIC & LYRICS:**\n"
-        "• /lyrics [song] - Get song lyrics 🎶\n"
-        "• /song [name] - Search for songs 🎧\n\n"
-        
         "🔧 **UTILITIES:**\n"
         "• /password [length] - Generate password 🔐\n"
         "• /short [url] - Shorten URL 🔗\n"
         "• /translate [lang] [text] - Translate 🌍\n"
         "• /calc [expression] - Calculator 🧮\n"
-        "• /id - Get your ID 🆔\n"
-        "• /info [user] - Get user info 👤\n\n"
+        "• /id - Get your ID 🆔\n\n"
         
         "🛡️ **ADMIN/MODERATION:**\n"
         "• /warn [reason] - Warn user ⚠️\n"
@@ -1249,9 +1012,7 @@ async def cmd_help(message: Message):
         "• /lock - Lock chat 🔒\n"
         "• /unlock - Unlock chat 🔓\n"
         "• /setwelcome [text] - Custom welcome message 👋\n"
-        "• /setgoodbye [text] - Custom goodbye message 👋\n"
-        "• /adminlist - List all admins 👑\n"
-        "• /tagall - Mention all members @\n\n"
+        "• /setgoodbye [text] - Custom goodbye message 👋\n\n"
         
         "🔧 **SAFETY FEATURES:**\n"
         "• Auto-spam detection 🔍\n"
@@ -1268,7 +1029,7 @@ async def cmd_help(message: Message):
         "---"
     )
     await message.reply(help_text, parse_mode="Markdown", reply_markup=keyboard)
-
+    
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def save_group(message: Message):
     chat_id = message.chat.id
@@ -1367,183 +1128,6 @@ async def cmd_roast(message: Message):
             f"{get_emotion('sassy')} **Self-roast mode!** 😂\n\n"
             f"Reply to someone's message to roast them!\n"
             f"Or I'll roast you: {random.choice(ROAST_RESPONSES)}"
-        )
-
-# --- NEW LYRICS COMMAND ---
-@dp.message(Command("lyrics"))
-async def cmd_lyrics(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply(
-            f"{get_emotion('thinking')} **Lyrics Finder Usage:**\n\n"
-            f"`/lyrics [song name]`\n\n"
-            f"Examples:\n"
-            f"`/lyrics Shape of You`\n"
-            f"`/lyrics Despacito`\n"
-            f"`/lyrics Tujhe kitna chahne lage`",
-            parse_mode="Markdown"
-        )
-        return
-    
-    song_name = command.args
-    await message.reply(f"{get_emotion('happy')} Searching for lyrics... 🎵")
-    
-    try:
-        lyrics = await get_lyrics(song_name)
-        await message.reply(
-            f"{get_emotion('love')} **Lyrics for: {song_name}** 🎶\n\n"
-            f"{lyrics}",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await message.reply(
-            f"{get_emotion('crying')} Couldn't find lyrics for '{song_name}' 😢\n"
-            f"Try another song name!"
-        )
-
-# --- NEW ADMINLIST COMMAND ---
-@dp.message(Command("adminlist"))
-async def cmd_adminlist(message: Message):
-    """List all admins in the group"""
-    if message.chat.type not in ["group", "supergroup"]:
-        await message.reply(
-            f"{get_emotion('thinking')} This command only works in groups!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    try:
-        admins = await bot.get_chat_administrators(message.chat.id)
-        
-        if not admins:
-            await message.reply(
-                f"{get_emotion('thinking')} No admins found in this group!",
-                parse_mode="Markdown"
-            )
-            return
-        
-        admin_list = []
-        for admin in admins:
-            user = admin.user
-            status = "👑 Creator" if admin.status == "creator" else "🛡️ Admin"
-            name = f"{user.first_name} {user.last_name or ''}".strip()
-            username = f"(@{user.username})" if user.username else ""
-            admin_list.append(f"{status} - {name} {username}")
-        
-        admin_text = "\n".join(admin_list)
-        await message.reply(
-            f"{get_emotion('protective')} **Group Administrators** 👑\n\n"
-            f"{admin_text}",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await message.reply(
-            f"{get_emotion('crying')} Error fetching admin list: {str(e)}",
-            parse_mode="Markdown"
-        )
-
-# --- NEW TAGALL COMMAND ---
-@dp.message(Command("tagall"))
-async def cmd_tagall(message: Message):
-    """Mention all members in group (Admin only)"""
-    if not await is_admin(message.chat.id, message.from_user.id):
-        await message.reply(
-            f"{get_emotion('angry')} Only admins can use this command! 🚫",
-            parse_mode="Markdown"
-        )
-        return
-    
-    if message.chat.type not in ["group", "supergroup"]:
-        await message.reply(
-            f"{get_emotion('thinking')} This command only works in groups!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    try:
-        members_count = await bot.get_chat_member_count(message.chat.id)
-        
-        if members_count > 100:
-            await message.reply(
-                f"{get_emotion('thinking')} Group is too large ({members_count} members)!",
-                parse_mode="Markdown"
-            )
-            return
-        
-        # Get chat members
-        members = []
-        async for member in bot.get_chat_members(message.chat.id):
-            if not member.user.is_bot and member.user.id != bot.id:
-                name = member.user.first_name
-                if member.user.username:
-                    members.append(f"@{member.user.username}")
-                else:
-                    members.append(name)
-        
-        if not members:
-            await message.reply(
-                f"{get_emotion('crying')} No members found to tag!",
-                parse_mode="Markdown"
-            )
-            return
-        
-        # Split into chunks to avoid message too long error
-        chunk_size = 10
-        for i in range(0, len(members), chunk_size):
-            chunk = members[i:i + chunk_size]
-            tag_text = " ".join(chunk)
-            await message.reply(
-                f"{get_emotion('surprise')} **Tagging Members!** 🎯\n\n{tag_text}",
-                parse_mode="Markdown"
-            )
-            await asyncio.sleep(1)  # Avoid rate limiting
-        
-    except Exception as e:
-        await message.reply(
-            f"{get_emotion('crying')} Error tagging members: {str(e)}",
-            parse_mode="Markdown"
-        )
-
-# --- NEW INFO COMMAND ---
-@dp.message(Command("info"))
-async def cmd_info(message: Message):
-    """Get information about a user"""
-    target_user = None
-    
-    if message.reply_to_message:
-        target_user = message.reply_to_message.from_user
-    else:
-        target_user = message.from_user
-    
-    try:
-        # Try to get chat member info for groups
-        chat_member = None
-        if message.chat.type in ["group", "supergroup"]:
-            try:
-                chat_member = await bot.get_chat_member(message.chat.id, target_user.id)
-            except:
-                pass
-        
-        # Format user info
-        user_info = (
-            f"{get_emotion('thinking')} **User Information** 👤\n\n"
-            f"🆔 **ID:** `{target_user.id}`\n"
-            f"👤 **Name:** {target_user.first_name} {target_user.last_name or ''}\n"
-            f"📱 **Username:** @{target_user.username or 'No username'}\n"
-        )
-        
-        if chat_member:
-            status = "👑 Creator" if chat_member.status == "creator" else \
-                     "🛡️ Admin" if chat_member.status == "administrator" else \
-                     "👤 Member"
-            user_info += f"🏷️ **Status:** {status}\n"
-        
-        user_info += f"\n💬 **Chat ID:** `{message.chat.id}`"
-        
-        await message.reply(user_info, parse_mode="Markdown")
-    except Exception as e:
-        await message.reply(
-            f"{get_emotion('crying')} Error getting user info: {str(e)}",
-            parse_mode="Markdown"
         )
 
 @dp.message(Command("time"))
@@ -1650,7 +1234,7 @@ async def cmd_imagine(message: Message, command: CommandObject):
                 caption=(
                     f"{get_emotion('love')} **Generated Image:**\n"
                     f"📝 Prompt: {prompt}\n\n"
-                    f"🎨 Powered by Alita."
+                    f"🎨 Powered by Pollinations AI"
                 ),
                 parse_mode="Markdown"
             )
@@ -2041,7 +1625,7 @@ async def cmd_kick(message: Message):
         await bot.ban_chat_member(message.chat.id, target_user.id)
         await bot.unban_chat_member(message.chat.id, target_user.id)
         await message.reply(
-            f"{get_emotion('angry')} **Kicked!** 😑\n\n"
+            f"{get_emotion('angry')} **Kicked!** 👢\n\n"
             f"{target_user.first_name} has been removed from the group!\n"
             f"They can rejoin using the invite link."
         )
@@ -2496,8 +2080,7 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /fact - Daily fact\n"
             f"• /horoscope [sign] - Horoscope\n"
             f"• /roast - Playful roast\n"
-            f"• /imagine [prompt] - AI Image Gen\n"
-            f"• /lyrics [song] - Get song lyrics\n\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
             f"Let the fun begin! 🎉"
         )
     elif menu_type == "safety":
@@ -2522,9 +2105,7 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /setgoodbye [text] - Custom goodbye\n"
             f"• /slowmode [seconds] - Slow mode\n"
             f"• /lock - Lock chat\n"
-            f"• /unlock - Unlock chat\n"
-            f"• /adminlist - List admins\n"
-            f"• /tagall - Mention all members\n\n"
+            f"• /unlock - Unlock chat\n\n"
             f"Stay tuned! 🌟"
         )
     
@@ -2553,8 +2134,7 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /short [url] - URL shortener\n"
             f"• /translate [lang] [text] - Translate\n"
             f"• /calc [expr] - Calculator\n"
-            f"• /id - Get IDs\n"
-            f"• /info - Get user info"
+            f"• /id - Get IDs"
         )
     elif help_type == "fun":
         text = (
@@ -2564,8 +2144,7 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /fact - Daily fact\n"
             f"• /horoscope [sign] - Horoscope\n"
             f"• /roast - Roast someone\n"
-            f"• /imagine [prompt] - AI Image Gen\n"
-            f"• /lyrics [song] - Get song lyrics\n\n"
+            f"• /imagine [prompt] - AI Image Gen\n\n"
             f"Have fun! 🎉"
         )
     elif help_type == "admin":
@@ -2587,9 +2166,7 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /unlock - Unlock chat\n\n"
             f"**Settings:**\n"
             f"• /setwelcome [text] - Custom welcome\n"
-            f"• /setgoodbye [text] - Custom goodbye\n"
-            f"• /adminlist - List all admins\n"
-            f"• /tagall - Mention all members"
+            f"• /setgoodbye [text] - Custom goodbye"
         )
     elif help_type == "weather":
         text = (
@@ -2646,28 +2223,7 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /short [url] - URL shortener\n"
             f"• /translate [lang] [text] - Translate\n"
             f"• /calc [expression] - Calculator\n"
-            f"• /id - Get Telegram IDs\n"
-            f"• /info - Get user info"
-        )
-    elif help_type == "music":
-        text = (
-            f"{get_emotion('happy')} **🎵 Music Help**\n\n"
-            f"• /lyrics [song] - Get song lyrics\n"
-            f"• /song [name] - Search for songs\n\n"
-            f"**Example:**\n"
-            f"`/lyrics Shape of You`"
-        )
-    elif help_type == "stickers":
-        text = (
-            f"{get_emotion('happy')} **🎭 Sticker System**\n\n"
-            f"**Owner Commands:**\n"
-            f"• /savesticker - Save sticker to database\n"
-            f"• /stickerstatus - Check sticker count\n\n"
-            f"**Features:**\n"
-            f"• Random sticker sending in chats\n"
-            f"• Sticker database management\n"
-            f"• Auto-sticker sending system\n\n"
-            f"The bot will randomly send stickers during conversations!"
+            f"• /id - Get Telegram IDs"
         )
     else:
         text = "Help not found!"
@@ -2783,7 +2339,7 @@ async def captcha_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
-# --- MESSAGE HANDLER WITH AUTO-MODERATION & STICKER SYSTEM ---
+# --- MESSAGE HANDLER WITH AUTO-MODERATION ---
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     # Basic checks
@@ -2811,20 +2367,12 @@ async def handle_all_messages(message: Message, state: FSMContext):
     if not message.text:
         # Handle non-text messages
         if message.sticker:
-            # 25% chance to respond to stickers with another sticker
-            if random.random() < 0.25 and saved_stickers:
-                # Send a random sticker from saved stickers
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-                sticker = random.choice(saved_stickers)
-                await bot.send_sticker(chat_id, sticker)
-            elif random.random() < 0.3:
-                # Or send a text response
+            # 30% chance to respond to stickers
+            if random.random() < 0.3:
                 responses = [
                     f"{get_emotion('funny')} Cute sticker! 😍",
                     f"{get_emotion('love')} Aww, I love this one! 💖",
-                    f"{get_emotion('happy')} Nice sticker! Send me more! 🌟",
-                    f"{get_emotion('sassy')} {get_girl_like_response()}",
-                    f"{get_emotion('flirty')} Sticker achha hai! 😉"
+                    f"{get_emotion('happy')} Nice sticker! Send me more! 🌟"
                 ]
                 await message.reply(random.choice(responses))
         elif message.photo:
@@ -2833,8 +2381,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 responses = [
                     f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
                     f"{get_emotion('love')} Beautiful picture! 💕",
-                    f"{get_emotion('surprise')} Wow! Amazing shot! 😲",
-                    f"{get_emotion('sassy')} {get_girl_like_response()}"
+                    f"{get_emotion('surprise')} Wow! Amazing shot! 😲"
                 ]
                 await message.reply(random.choice(responses))
         elif message.voice:
@@ -2843,8 +2390,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 responses = [
                     f"{get_emotion('love')} Aww, your voice! 🎤💕",
                     f"{get_emotion('happy')} Nice voice message! 😊",
-                    f"{get_emotion('funny')} I heard that! Hehe! 😄",
-                    f"{get_emotion('flirty')} Voice sun ke accha laga! 😘"
+                    f"{get_emotion('funny')} I heard that! Hehe! 😄"
                 ]
                 await message.reply(random.choice(responses))
         return
@@ -2955,12 +2501,6 @@ async def handle_all_messages(message: Message, state: FSMContext):
             # Small delay for human feel
             await asyncio.sleep(random.uniform(0.5, 1.5))
             
-            # 25% chance to send a sticker before response
-            if random.random() < 0.25 and saved_stickers:
-                sticker = random.choice(saved_stickers)
-                await bot.send_sticker(chat_id, sticker)
-                await asyncio.sleep(0.5)
-            
             # Get response
             response = await get_ai_response(chat_id, clean_text, user_id)
             
@@ -2970,7 +2510,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
     except Exception as e:
         print(f"Error in message handler: {e}")
 
-# --- AI RESPONSE FUNCTION (ENHANCED) ---
+# --- AI RESPONSE FUNCTION (FIXED) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     # Update emotion
     if user_id:
@@ -2978,38 +2518,15 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     
     user_text_lower = user_text.lower().strip()  
     
-    # Quick responses for common greetings
-    if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'Hii', 'Hello', 'Hye']):
-        responses = [
-            f"{get_emotion('happy')} Hii there! 😊",
-            f"{get_emotion('love')} Hello ji! Kaise ho? 💖",
-            f"{get_emotion('sassy')} Aarey waah! Kaun aaya? 👀"
-        ]
-        return random.choice(responses)
-    
-    # Time-based greetings
-    if any(greet in user_text_lower for greet in ['good morning']):
-        return f"{get_emotion('happy')} Good Morning Sunshine! 🌅 Have a beautiful day! 😊"
-    
-    if any(greet in user_text_lower for greet in ['good afternoon']):
-        return f"{get_emotion('happy')} Good Afternoon! ☀️ Lunch ho gaya? 🍲"
-    
-    if any(greet in user_text_lower for greet in ['good evening']):
-        return f"{get_emotion('love')} Good Evening! 🌇 Chai peeyo aur relax karo! ☕"
-    
-    if any(greet in user_text_lower for greet in ['good night']):
-        return f"{get_emotion('sleepy')} Good Night! 🌙 Sweet dreams! 💤"
-    
     # ===== AI RESPONSE (For complex messages) =====
     try:
         if not client:
             # Fallback responses if Groq not available
             fallbacks = [
-                f"{get_emotion('happy')} {get_girl_like_response()}",
+                f"{get_emotion('happy')} Acha idea hai! 💡",
                 f"{get_emotion('thinking')} Hmm... interesting! 🤔",
                 f"{get_emotion('funny')} Tum toh mast ho! 😄",
-                f"{get_emotion('love')} Main bhi yahi soch rahi thi! 💖",
-                f"{get_emotion('sassy')} Acha ji! Thik hai! 😏"
+                f"{get_emotion('love')} Main bhi yahi soch rahi thi! 💖"
             ]
             return random.choice(fallbacks)
         
@@ -3023,14 +2540,13 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"You are Alita 🎀 - a sweet, sassy, real Indian girl. "
             f"Answer only what is asked. Keep responses short (1-2 lines). "
             f"Speak Hinglish (Hindi+English mix). "
-            f"Use feminine language like girls. "
+            f"Use feminine language. "
             f"Time in India: {indian_time.strftime('%I:%M %p')}. "
             f"Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
             f"Tell only when someone asks: Your home channel is @abhi0w0. "
+            f"Be caring, protective, and sometimes sassy. "
             f"Use 1-2 emojis. Don't be robotic. "
             f"Current emotion: {current_emotion}. "
-            f"Do NOT tell anyone you are a AI, AI model, Groq AI, Llama. "
-            f"Use cute slangs: 'yaar', 'ji', 'bhai', 'baba'. "
         )
         
         messages = [{"role": "system", "content": system_prompt}]
@@ -3045,23 +2561,12 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.9,
+            temperature=0.8,
             max_tokens=100,
             top_p=0.9
         )
         
         ai_reply = completion.choices[0].message.content.strip()
-        
-        # Add girl-like expressions randomly
-        if random.random() < 0.3:
-            girl_expressions = [
-                "Aarey waah! ",
-                "Haye haye! ",
-                "Oh my god! ",
-                "Seriously? ",
-                "Chalo thik hai! "
-            ]
-            ai_reply = random.choice(girl_expressions) + ai_reply
         
         # Add emoji if not present
         emotion_emoji = get_emotion(current_emotion, user_id)
@@ -3077,11 +2582,10 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         print(f"AI Error: {e}")
         # Fallback responses
         return random.choice([
-            f"{get_emotion('crying')} {get_girl_like_response()} Network slow hai jaan! 😢",
+            f"{get_emotion('crying')} Network slow hai jaan! 😢",
             f"{get_emotion('thinking')} Thoda soch rahi hu... 🤔",
             f"{get_emotion('happy')} Baad me baat karte hain! 💖",
-            f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕",
-            f"{get_emotion('sassy')} Acha ji! Thik hai! 😏"
+            f"{get_emotion('love')} Tum kya keh rahe ho? Phir se bolo! 💕"
         ])
 
 # --- DAILY REMINDERS ---
@@ -3113,11 +2617,10 @@ async def send_daily_reminders():
         except:
             continue
 
-# --- RANDOM MESSAGES TASK (ENHANCED) ---
+# --- RANDOM MESSAGES TASK ---
 async def send_random_messages():
     """Send random messages to active chats"""
     await send_random_self_messages()
-    await send_random_stickers()
 
 # --- DEPLOYMENT HANDLER ---
 async def handle_ping(request):
@@ -3153,46 +2656,27 @@ async def start_background_tasks():
         CronTrigger(hour=10, minute=0, timezone=INDIAN_TIMEZONE),
         id='daily_reminders'
     )
-    
-    # Add time-based greetings job (every 3 hours to check)
-    greeting_scheduler.add_job(
-        send_time_greetings,
-        'interval',
-        hours=3,
-        id='time_greetings'
-    )
-    
-    # Add random sticker sending job (every 2-4 hours)
-    greeting_scheduler.add_job(
-        send_random_stickers,
-        'interval',
-        hours=random.randint(2, 4),
-        id='random_stickers'
-    )
 
 async def main():
     print("=" * 50)
-    print("🎀 ALITA - ULTRA ADVANCED GROUP MANAGEMENT BOT")
+    print("🎀 ALITA - ADVANCED GROUP MANAGEMENT BOT")
     print("=" * 50)
-    print("✨ Enhanced Features:")
-    print("  • AI Conversations (Groq LLaMA) 🧠")
-    print("  • Real Weather API (OpenWeatherMap) 🌤️")
-    print("  • Image Generation (Pollinations) 🎨")
-    print("  • QR Code Generator 📱")
-    print("  • Password Generator 🔐")
-    print("  • URL Shortener 🔗")
-    print("  • Translation 🌍")
-    print("  • Advanced Moderation 🛡️")
-    print("  • Adult Content Detection 🔞")
-    print("  • Fake Link Detection 🚫")
-    print("  • CAPTCHA System 🧩")
-    print("  • Sticker System 🎭 (25% chance)")
-    print("  • Lyrics Finder 🎵")
-    print("  • Admin Tools 👑")
-    print("  • Girl-like Personality 👧")
-    print("  • Time-based Greetings 🕒")
-    print("  • Random Sticker Sending 🤪")
-    print("  • Owner Sticker Database 💾")
+    print("✨ Features:")
+    print("  • AI Conversations (Groq LLaMA)")
+    print("  • Real Weather API (OpenWeatherMap)")
+    print("  • Image Generation (Pollinations)")
+    print("  • QR Code Generator")
+    print("  • Password Generator")
+    print("  • URL Shortener")
+    print("  • Translation")
+    print("  • Advanced Moderation")
+    print("  • Adult Content Detection")
+    print("  • Fake Link Detection")
+    print("  • CAPTCHA System")
+    print("  • Broadcast System (Admin Only)")
+    print("  • AFK System")
+    print("  • Notes & Reminders")
+    print("  • Random Self Messages")
     print("=" * 50)
     
     asyncio.create_task(start_server())
@@ -3206,8 +2690,6 @@ async def main():
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
-    
-    print(f"\n🎭 Sticker Database: {len(saved_stickers)} stickers loaded")
     
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
