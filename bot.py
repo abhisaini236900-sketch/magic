@@ -126,6 +126,9 @@ last_greeting_time: Dict[int, datetime] = {}
 # Saved stickers storage
 saved_stickers: List[str] = []
 
+# Auto-response tracking
+last_auto_response: Dict[int, datetime] = {}
+
 # --- CONSTANTS ---
 BAD_WORDS = [
     "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
@@ -692,26 +695,92 @@ async def translate_text(text: str, target_lang: str = "en") -> str:
     except:
         return text
 
-# --- LYRICS API (Lyrics.ovh) ---
+# --- FIXED LYRICS API (Genius API Alternative) ---
 async def get_lyrics(song_name: str) -> str:
-    """Get song lyrics from Lyrics.ovh API"""
+    """Get song lyrics using multiple APIs"""
     try:
+        # Try Lyrics.ovh first
         async with aiohttp.ClientSession() as session:
-            url = f"https://api.lyrics.ovh/v1/{song_name}"
-            async with session.get(url, timeout=10) as response:
+            # Format: artist/title - try to split if possible
+            if " - " in song_name:
+                parts = song_name.split(" - ", 1)
+                artist = parts[0].strip()
+                title = parts[1].strip()
+                url = f"https://api.lyrics.ovh/v1/{artist}/{title}"
+            else:
+                # Try without artist
+                url = f"https://api.lyrics.ovh/v1/Unknown/{song_name}"
+            
+            async with session.get(url, timeout=15) as response:
                 if response.status == 200:
                     data = await response.json()
-                    lyrics = data.get('lyrics', 'Lyrics not found.')
-                    
-                    # Truncate if too long
-                    if len(lyrics) > 3000:
-                        lyrics = lyrics[:3000] + "\n\n... (lyrics truncated)"
-                    
-                    return lyrics
+                    lyrics = data.get('lyrics', '')
+                    if lyrics and len(lyrics) > 10:
+                        # Truncate if too long
+                        if len(lyrics) > 3500:
+                            lyrics = lyrics[:3500] + "\n\n... (lyrics truncated due to length)"
+                        return lyrics
+            
+            # Try alternative API
+            search_url = f"https://some-random-api.com/lyrics?title={song_name.replace(' ', '+')}"
+            async with session.get(search_url, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    lyrics = data.get('lyrics', '')
+                    if lyrics:
+                        if len(lyrics) > 3500:
+                            lyrics = lyrics[:3500] + "\n\n... (lyrics truncated due to length)"
+                        return lyrics
+                    return f"❌ Lyrics not found for '{song_name}'.\n\nTry format: `/lyrics Artist - Song Name`\nExample: `/lyrics Ed Sheeran - Shape of You`"
                 else:
-                    return "❌ Could not fetch lyrics. Please try another song."
+                    return f"❌ Could not fetch lyrics for '{song_name}'.\n\n💡 **Tip:** Try using format: `Artist - Song Name`\nExample: `/lyrics Ed Sheeran - Shape of You`"
+                    
+    except asyncio.TimeoutError:
+        return "⏱️ Request timed out. Please try again!"
     except Exception as e:
-        return f"❌ Error fetching lyrics: {str(e)}"
+        return f"❌ Error fetching lyrics: {str(e)}\n\nTry: `/lyrics Artist - Song Name`"
+
+# --- SONG SEARCH API ---
+async def search_song(song_name: str) -> str:
+    """Search for songs using iTunes API"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            search_url = f"https://itunes.apple.com/search?term={song_name.replace(' ', '+')}&limit=5&media=music"
+            
+            async with session.get(search_url, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    results = data.get('results', [])
+                    
+                    if not results:
+                        return f"❌ No songs found for '{song_name}'"
+                    
+                    song_list = []
+                    for i, track in enumerate(results[:5], 1):
+                        track_name = track.get('trackName', 'Unknown')
+                        artist = track.get('artistName', 'Unknown')
+                        album = track.get('collectionName', 'Unknown')
+                        preview_url = track.get('previewUrl', 'Not available')
+                        
+                        song_info = (
+                            f"{i}. 🎵 **{track_name}**\n"
+                            f"   👤 Artist: {artist}\n"
+                            f"   💿 Album: {album}\n"
+                        )
+                        song_list.append(song_info)
+                    
+                    return (
+                        f"🎵 **Search Results for '{song_name}':**\n\n"
+                        f"{'\n'.join(song_list)}\n\n"
+                        f"💡 Use `/lyrics Artist - Song Name` to get lyrics!"
+                    )
+                else:
+                    return f"❌ Search failed. Please try again!"
+                    
+    except asyncio.TimeoutError:
+        return "⏱️ Search timed out. Please try again!"
+    except Exception as e:
+        return f"❌ Error searching: {str(e)}"
 
 # --- AUTO-MODERATION FUNCTIONS ---
 def contains_group_link(text: str) -> bool:
@@ -1369,7 +1438,7 @@ async def cmd_roast(message: Message):
             f"Or I'll roast you: {random.choice(ROAST_RESPONSES)}"
         )
 
-# --- NEW LYRICS COMMAND ---
+# --- FIXED LYRICS COMMAND ---
 @dp.message(Command("lyrics"))
 async def cmd_lyrics(message: Message, command: CommandObject):
     if not command.args:
@@ -1378,26 +1447,63 @@ async def cmd_lyrics(message: Message, command: CommandObject):
             f"`/lyrics [song name]`\n\n"
             f"Examples:\n"
             f"`/lyrics Shape of You`\n"
-            f"`/lyrics Despacito`\n"
+            f"`/lyrics Ed Sheeran - Shape of You`\n"
             f"`/lyrics Tujhe kitna chahne lage`",
             parse_mode="Markdown"
         )
         return
     
     song_name = command.args
-    await message.reply(f"{get_emotion('happy')} Searching for lyrics... 🎵")
+    status_msg = await message.reply(f"{get_emotion('happy')} 🔍 Searching lyrics for: *{song_name}*...", parse_mode="Markdown")
     
     try:
         lyrics = await get_lyrics(song_name)
+        
+        # Delete status message
+        await status_msg.delete()
+        
+        # Send in parts if too long
+        if len(lyrics) > 4000:
+            parts = [lyrics[i:i+4000] for i in range(0, len(lyrics), 4000)]
+            for i, part in enumerate(parts):
+                header = f"🎵 **Lyrics for: {song_name}** (Part {i+1}/{len(parts)}) 🎶\n\n" if i == 0 else f"(Continued {i+1}/{len(parts)})...\n\n"
+                await message.reply(header + part, parse_mode="Markdown")
+        else:
+            await message.reply(
+                f"{get_emotion('love')} 🎵 **Lyrics for: {song_name}** 🎶\n\n"
+                f"{lyrics}",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        await status_msg.edit_text(
+            f"{get_emotion('crying')} ❌ Couldn't find lyrics for '{song_name}' 😢\n\n"
+            f"Try format: `/lyrics Artist - Song Name`"
+        )
+
+# --- NEW SONG COMMAND ---
+@dp.message(Command("song"))
+async def cmd_song(message: Message, command: CommandObject):
+    if not command.args:
         await message.reply(
-            f"{get_emotion('love')} **Lyrics for: {song_name}** 🎶\n\n"
-            f"{lyrics}",
+            f"{get_emotion('thinking')} **Song Search Usage:**\n\n"
+            f"`/song [song name]`\n\n"
+            f"Examples:\n"
+            f"`/song Shape of You`\n"
+            f"`/song Arijit Singh`\n"
+            f"`/song Bollywood hits`",
             parse_mode="Markdown"
         )
+        return
+    
+    song_name = command.args
+    status_msg = await message.reply(f"{get_emotion('happy')} 🔍 Searching for: *{song_name}*...", parse_mode="Markdown")
+    
+    try:
+        result = await search_song(song_name)
+        await status_msg.edit_text(result, parse_mode="Markdown")
     except Exception as e:
-        await message.reply(
-            f"{get_emotion('crying')} Couldn't find lyrics for '{song_name}' 😢\n"
-            f"Try another song name!"
+        await status_msg.edit_text(
+            f"{get_emotion('crying')} ❌ Search failed: {str(e)}"
         )
 
 # --- NEW ADMINLIST COMMAND ---
@@ -2497,7 +2603,8 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /horoscope [sign] - Horoscope\n"
             f"• /roast - Playful roast\n"
             f"• /imagine [prompt] - AI Image Gen\n"
-            f"• /lyrics [song] - Get song lyrics\n\n"
+            f"• /lyrics [song] - Get song lyrics\n"
+            f"• /song [name] - Search for songs\n\n"
             f"Let the fun begin! 🎉"
         )
     elif menu_type == "safety":
@@ -2565,7 +2672,8 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /horoscope [sign] - Horoscope\n"
             f"• /roast - Roast someone\n"
             f"• /imagine [prompt] - AI Image Gen\n"
-            f"• /lyrics [song] - Get song lyrics\n\n"
+            f"• /lyrics [song] - Get song lyrics\n"
+            f"• /song [name] - Search songs\n\n"
             f"Have fun! 🎉"
         )
     elif help_type == "admin":
@@ -2655,7 +2763,8 @@ async def help_callback(callback: types.CallbackQuery):
             f"• /lyrics [song] - Get song lyrics\n"
             f"• /song [name] - Search for songs\n\n"
             f"**Example:**\n"
-            f"`/lyrics Shape of You`"
+            f"`/lyrics Shape of You`\n"
+            f"`/song Ed Sheeran`"
         )
     elif help_type == "stickers":
         text = (
@@ -2929,15 +3038,31 @@ async def handle_all_messages(message: Message, state: FSMContext):
         is_mention = f"@{bot_username}" in user_text_lower
         is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
         
-        # ALWAYS RESPOND IN PRIVATE CHAT
+        # ====== 20% AUTO-RESPONSE IN GROUPS ======
+        should_auto_respond = False
+        if message.chat.type in ["group", "supergroup"]:
+            # Check cooldown (minimum 2 minutes between auto-responses)
+            last_response = last_auto_response.get(chat_id)
+            cooldown_passed = True
+            if last_response:
+                if (datetime.now() - last_response).seconds < 120:
+                    cooldown_passed = False
+            
+            # 20% chance for auto-response if cooldown passed
+            if cooldown_passed and random.random() < 0.20:
+                should_auto_respond = True
+                last_auto_response[chat_id] = datetime.now()
+        
+        # Determine if we should respond
         if is_private:
             should_respond = True
             response_mode = "private"
-        # Respond when mentioned or replied in groups
         elif is_mention or is_reply_to_bot:
             should_respond = True
             response_mode = "mention"
-        # Don't respond to normal messages in groups (as per requirement)
+        elif should_auto_respond:
+            should_respond = True
+            response_mode = "auto"
         else:
             should_respond = False
             response_mode = "none"
@@ -2955,8 +3080,8 @@ async def handle_all_messages(message: Message, state: FSMContext):
             # Small delay for human feel
             await asyncio.sleep(random.uniform(0.5, 1.5))
             
-            # 25% chance to send a sticker before response
-            if random.random() < 0.25 and saved_stickers:
+            # 25% chance to send a sticker before response (only for mentions/replies, not auto)
+            if response_mode != "auto" and random.random() < 0.25 and saved_stickers:
                 sticker = random.choice(saved_stickers)
                 await bot.send_sticker(chat_id, sticker)
                 await asyncio.sleep(0.5)
@@ -2965,7 +3090,14 @@ async def handle_all_messages(message: Message, state: FSMContext):
             response = await get_ai_response(chat_id, clean_text, user_id)
             
             # Send reply
-            await message.reply(response)
+            if response_mode == "auto":
+                # For auto-responses, send as new message sometimes
+                if random.random() < 0.5:
+                    await bot.send_message(chat_id, response)
+                else:
+                    await message.reply(response)
+            else:
+                await message.reply(response)
             
     except Exception as e:
         print(f"Error in message handler: {e}")
@@ -2979,7 +3111,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
     user_text_lower = user_text.lower().strip()  
     
     # Quick responses for common greetings
-    if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'Hii', 'Hello', 'Hye']):
+    if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'hii', 'hye']):
         responses = [
             f"{get_emotion('happy')} Hii there! 😊",
             f"{get_emotion('love')} Hello ji! Kaise ho? 💖",
@@ -3176,6 +3308,7 @@ async def main():
     print("=" * 50)
     print("✨ Enhanced Features:")
     print("  • AI Conversations (Groq LLaMA) 🧠")
+    print("  • 20% Auto-Response in Groups 🤖")
     print("  • Real Weather API (OpenWeatherMap) 🌤️")
     print("  • Image Generation (Pollinations) 🎨")
     print("  • QR Code Generator 📱")
@@ -3187,7 +3320,8 @@ async def main():
     print("  • Fake Link Detection 🚫")
     print("  • CAPTCHA System 🧩")
     print("  • Sticker System 🎭 (25% chance)")
-    print("  • Lyrics Finder 🎵")
+    print("  • Lyrics Finder 🎵 (FIXED)")
+    print("  • Song Search 🎧 (NEW)")
     print("  • Admin Tools 👑")
     print("  • Girl-like Personality 👧")
     print("  • Time-based Greetings 🕒")
