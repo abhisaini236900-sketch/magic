@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS groups (
 )
 """)
 conn.commit()
-# New table for saved stickers
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS stickers (
     file_id TEXT PRIMARY KEY,
@@ -63,15 +62,12 @@ PORT = int(os.getenv("PORT", 10000))
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
-# Timezone for India
 INDIAN_TIMEZONE = pytz.timezone('Asia/Kolkata')
 
-# Initialize with MemoryStorage
 storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
 
-# Initialize Groq client
 client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # --- MEMORY SYSTEMS ---
@@ -80,7 +76,6 @@ user_warnings: Dict[int, Dict[int, Dict]] = defaultdict(lambda: defaultdict(dict
 user_message_count: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
 last_messages: Dict[int, Dict[int, List]] = defaultdict(lambda: defaultdict(list))
 
-# User data storage
 user_data: Dict[int, Dict] = defaultdict(dict)
 user_notes: Dict[int, List[Dict]] = defaultdict(list)
 user_reminders: Dict[int, List[Dict]] = defaultdict(list)
@@ -89,10 +84,8 @@ user_emotions: Dict[int, str] = {}
 user_last_interaction: Dict[int, datetime] = {}
 started_users: Set[int] = set()
 
-# AFK System
 afk_users: Dict[int, Dict] = {}
 
-# Group management
 group_settings: Dict[int, Dict] = defaultdict(lambda: {
     "welcome_enabled": True,
     "goodbye_enabled": True,
@@ -113,20 +106,13 @@ group_settings: Dict[int, Dict] = defaultdict(lambda: {
     "admins": []
 })
 
-# CAPTCHA storage
 captcha_data: Dict[int, Dict] = {}
 
-# Scheduler
 greeting_scheduler = AsyncIOScheduler()
 greeted_groups: Dict[int, datetime] = {}
 
-# Last greeting time per chat
 last_greeting_time: Dict[int, datetime] = {}
-
-# Saved stickers storage
 saved_stickers: List[str] = []
-
-# Auto-response tracking
 last_auto_response: Dict[int, datetime] = {}
 
 # --- CONSTANTS ---
@@ -137,13 +123,11 @@ BAD_WORDS = [
     "bc", "mc", "gand", "lauda", "choot", "maa ki", "behen ki"
 ]
 
-# Adult content keywords
 ADULT_KEYWORDS = [
     "porn", "xxx", "nsfw", "adult", "sex", "nude", "naked", "boobs", "ass",
     "dick", "pussy", "hentai", "porno", "horny", "fuck", "sexy", "hot", "desi", "chudai", "lund", "chod"
 ]
 
-# Fake link patterns
 FAKE_LINK_PATTERNS = [
     r'bit\.ly\/[a-zA-Z0-9]+',
     r'tinyurl\.com\/[a-zA-Z0-9]+',
@@ -176,9 +160,7 @@ MUTE_DURATIONS = [
     timedelta(days=7)
 ]
 
-# --- STICKER STORAGE SYSTEM ---
 def load_stickers():
-    """Load saved stickers from database"""
     global saved_stickers
     cursor.execute("SELECT file_id FROM stickers")
     rows = cursor.fetchall()
@@ -186,7 +168,6 @@ def load_stickers():
     print(f"✅ Loaded {len(saved_stickers)} stickers from database")
 
 def save_sticker(file_id: str, added_by: int):
-    """Save sticker to database"""
     try:
         cursor.execute(
             "INSERT OR IGNORE INTO stickers (file_id, added_by, added_at) VALUES (?, ?, ?)",
@@ -200,10 +181,8 @@ def save_sticker(file_id: str, added_by: int):
         print(f"Error saving sticker: {e}")
     return False
 
-# Load stickers on startup
 load_stickers()
 
-# --- ADVANCED FEATURES DATA ---
 MEME_TEMPLATES = [
     {"text": "When you realize it's Monday tomorrow", "emoji": "😭"},
     {"text": "Me trying to be productive", "emoji": "🤡"},
@@ -277,7 +256,6 @@ GOODBYE_MESSAGES = [
     "🌙 {name} has left. Good luck! ✨"
 ]
 
-# --- RANDOM SELF MESSAGES (UPDATED WITH STICKERS) ---
 SELF_MESSAGES = [
     {"type": "text", "content": "Kya kar rahe ho sab? Main bore ho rahi hu! 😴", "delay": 1800},
     {"type": "text", "content": "Koi joke sunao na! Has has ke pet dard ho gaya! 😂", "delay": 2400},
@@ -293,18 +271,15 @@ SELF_MESSAGES = [
     {"type": "sticker", "content": "random", "delay": 8400},
 ]
 
-# --- TIME-BASED GREETING SYSTEM (FIXED) ---
 def get_indian_time():
-    """Get current Indian time"""
     utc_now = datetime.now(pytz.utc)
     indian_time = utc_now.astimezone(INDIAN_TIMEZONE)
     return indian_time
 
 def get_current_time_period():
-    """Get current time period for greetings"""
     indian_time = get_indian_time()
     current_hour = indian_time.hour
-    
+
     if 5 <= current_hour < 12:
         return "morning"
     elif 12 <= current_hour < 17:
@@ -364,7 +339,6 @@ TIME_GREETINGS = {
     }
 }
 
-# --- QUICK RESPONSES ---
 QUICK_RESPONSES = {
     "greeting": [
         "Hii 😊",
@@ -396,7 +370,6 @@ QUICK_RESPONSES = {
     ]
 }
 
-# --- STATES FOR ADVANCED FEATURES ---
 class UserStates(StatesGroup):
     setting_reminder = State()
     adding_note = State()
@@ -404,7 +377,6 @@ class UserStates(StatesGroup):
     voice_chat = State()
     captcha_verify = State()
 
-# --- HUMAN-LIKE BEHAVIOUR (ENHANCED) ---
 EMOTIONAL_RESPONSES = {
     "happy": ["😊", "🎉", "🥳", "🌟", "✨", "👍", "💫", "😄", "😍", "🤗", "🫂"],
     "angry": ["😠", "👿", "💢", "🤬", "😤", "🔥", "⚡", "💥", "👊"],
@@ -447,16 +419,16 @@ def get_emotion(emotion_type: str = None, user_id: int = None) -> str:
     if user_id and user_id in user_emotions:
         if random.random() < 0.3:
             emotion_type = user_emotions[user_id]
-    
+
     if emotion_type and emotion_type in EMOTIONAL_RESPONSES:
         return random.choice(EMOTIONAL_RESPONSES[emotion_type])
-    
+
     all_emotions = list(EMOTIONAL_RESPONSES.values())
     return random.choice(random.choice(all_emotions))
 
 def update_user_emotion(user_id: int, message: str):
     message_lower = message.lower()
-    
+
     if any(word in message_lower for word in ['love', 'pyaar', 'dil', 'heart', 'cute', 'beautiful', 'sweet']):
         user_emotions[user_id] = "love"
     elif any(word in message_lower for word in ['angry', 'gussa', 'naraz', 'mad', 'hate', 'idiot', 'stupid']):
@@ -477,14 +449,12 @@ def update_user_emotion(user_id: int, message: str):
         user_emotions[user_id] = "flirty"
     else:
         user_emotions[user_id] = random.choice(list(EMOTIONAL_RESPONSES.keys()))
-    
+
     user_last_interaction[user_id] = datetime.now()
 
 def get_girl_like_response() -> str:
-    """Get random girl-like response"""
     return random.choice(GIRL_LIKE_RESPONSES)
 
-# --- REAL WEATHER API (OpenWeatherMap) ---
 INDIAN_CITIES = {
     "mumbai": {"lat": 19.0760, "lon": 72.8777},
     "delhi": {"lat": 28.6139, "lon": 77.2090},
@@ -509,19 +479,16 @@ INDIAN_CITIES = {
 }
 
 async def get_real_weather(city: str = None) -> str:
-    """Get REAL weather from OpenWeatherMap API"""
     try:
         if not city:
             city = random.choice(list(INDIAN_CITIES.keys()))
-        
+
         city_lower = city.lower().strip()
-        
-        # Check if city is in our database
+
         if city_lower in INDIAN_CITIES:
             coords = INDIAN_CITIES[city_lower]
             city_display = city.title()
         else:
-            # Try to get coordinates from OpenWeatherMap API
             async with aiohttp.ClientSession() as session:
                 geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city},IN&limit=1&appid={WEATHER_API_KEY}"
                 async with session.get(geo_url) as response:
@@ -535,20 +502,18 @@ async def get_real_weather(city: str = None) -> str:
                             return f"❌ City '{city}' not found! Try: Mumbai, Delhi, Bangalore, etc."
                     else:
                         return f"❌ Unable to find city '{city}'. Please try again."
-        
-        # Get weather data
+
         async with aiohttp.ClientSession() as session:
             weather_url = (
                 f"https://api.openweathermap.org/data/2.5/weather?"
                 f"lat={coords['lat']}&lon={coords['lon']}&"
                 f"appid={WEATHER_API_KEY}&units=metric&lang=en"
             )
-            
+
             async with session.get(weather_url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    
-                    # Extract weather data
+
                     weather_desc = data["weather"][0]["description"].title()
                     weather_icon = data["weather"][0]["main"]
                     temp = data["main"]["temp"]
@@ -556,22 +521,20 @@ async def get_real_weather(city: str = None) -> str:
                     humidity = data["main"]["humidity"]
                     wind_speed = data["wind"]["speed"]
                     pressure = data["main"]["pressure"]
-                    visibility = data.get("visibility", 10000) / 1000  # Convert to km
-                    
-                    # Get sunrise and sunset times
+                    visibility = data.get("visibility", 10000) / 1000
+
                     sunrise = datetime.fromtimestamp(data["sys"]["sunrise"]).strftime("%I:%M %p")
                     sunset = datetime.fromtimestamp(data["sys"]["sunset"]).strftime("%I:%M %p")
-                    
-                    # Weather icons mapping
+
                     weather_icons = {
                         "Clear": "☀️", "Clouds": "☁️", "Rain": "🌧️", "Drizzle": "🌦️",
                         "Thunderstorm": "⛈️", "Snow": "❄️", "Mist": "🌫️", "Fog": "🌫️",
                         "Haze": "🌫️", "Dust": "💨", "Sand": "💨", "Ash": "🌋",
                         "Squall": "💨", "Tornado": "🌪️"
                     }
-                    
+
                     weather_emoji = weather_icons.get(weather_icon, "🌡️")
-                    
+
                     return (
                         f"🌤️ **Weather Report for {city_display}**\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -591,17 +554,15 @@ async def get_real_weather(city: str = None) -> str:
                     return "❌ Weather service temporarily unavailable. Please try again later."
     except Exception as e:
         print(f"Weather API Error: {e}")
-        # Fallback to mock weather if API fails
         return await get_mock_weather(city)
 
 async def get_mock_weather(city: str) -> str:
-    """Fallback mock weather when API fails"""
     temp = random.randint(20, 35)
     conditions = ["☀️ Sunny", "⛅ Partly Cloudy", "☁️ Cloudy", "🌦️ Light Rain", "🌧️ Rainy"]
     condition = random.choice(conditions)
     humidity = random.randint(40, 80)
     wind = random.randint(5, 20)
-    
+
     return (
         f"🌤️ **Weather Report for {city.title()}**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -612,11 +573,8 @@ async def get_mock_weather(city: str) -> str:
         f"⚠️ **Note:** Using mock data (API may be down)"
     )
 
-# --- IMAGE GENERATION (Pollinations AI - 100% FREE) ---
 async def generate_image(prompt: str) -> Optional[bytes]:
-    """Generate image using Pollinations AI (100% Free)"""
     try:
-        # Clean and encode prompt
         clean_prompt = prompt.replace(" ", "%20")
         url = (
             f"https://image.pollinations.ai/prompt/{clean_prompt}"
@@ -643,32 +601,26 @@ async def generate_image(prompt: str) -> Optional[bytes]:
         print(f"Image generation error: {e}")
         return None
 
-# --- QR CODE GENERATOR ---
 def generate_qr_code(data: str) -> bytes:
-    """Generate QR code"""
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(data)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white")
     img_bytes = io.BytesIO()
     img.save(img_bytes, format='PNG')
     img_bytes.seek(0)
     return img_bytes.getvalue()
 
-# --- PASSWORD GENERATOR ---
 def generate_password(length: int = 12, include_symbols: bool = True) -> str:
-    """Generate secure password"""
     chars = string.ascii_letters + string.digits
     if include_symbols:
         chars += "!@#$%^&*"
-    
+
     password = ''.join(random.choice(chars) for _ in range(length))
     return password
 
-# --- URL SHORTENER (TinyURL API) ---
 async def shorten_url(url: str) -> str:
-    """Shorten URL using TinyURL"""
     try:
         api_url = f"https://tinyurl.com/api-create.php?url={url}"
         async with aiohttp.ClientSession() as session:
@@ -680,9 +632,7 @@ async def shorten_url(url: str) -> str:
     except:
         return url
 
-# --- TRANSLATION (MyMemory API - Free) ---
 async def translate_text(text: str, target_lang: str = "en") -> str:
-    """Translate text using MyMemory API"""
     try:
         async with aiohttp.ClientSession() as session:
             url = f"https://api.mymemory.translated.net/get?q={text}&langpair=en|{target_lang}"
@@ -695,33 +645,26 @@ async def translate_text(text: str, target_lang: str = "en") -> str:
     except:
         return text
 
-# --- FIXED LYRICS API (Genius API Alternative) ---
 async def get_lyrics(song_name: str) -> str:
-    """Get song lyrics using multiple APIs"""
     try:
-        # Try Lyrics.ovh first
         async with aiohttp.ClientSession() as session:
-            # Format: artist/title - try to split if possible
             if " - " in song_name:
                 parts = song_name.split(" - ", 1)
                 artist = parts[0].strip()
                 title = parts[1].strip()
                 url = f"https://api.lyrics.ovh/v1/{artist}/{title}"
             else:
-                # Try without artist
                 url = f"https://api.lyrics.ovh/v1/Unknown/{song_name}"
-            
+
             async with session.get(url, timeout=15) as response:
                 if response.status == 200:
                     data = await response.json()
                     lyrics = data.get('lyrics', '')
                     if lyrics and len(lyrics) > 10:
-                        # Truncate if too long
                         if len(lyrics) > 3500:
                             lyrics = lyrics[:3500] + "\n\n... (lyrics truncated due to length)"
                         return lyrics
-            
-            # Try alternative API
+
             search_url = f"https://some-random-api.com/lyrics?title={song_name.replace(' ', '+')}"
             async with session.get(search_url, timeout=15) as response:
                 if response.status == 200:
@@ -734,57 +677,52 @@ async def get_lyrics(song_name: str) -> str:
                     return f"❌ Lyrics not found for '{song_name}'.\n\nTry format: `/lyrics Artist - Song Name`\nExample: `/lyrics Ed Sheeran - Shape of You`"
                 else:
                     return f"❌ Could not fetch lyrics for '{song_name}'.\n\n💡 **Tip:** Try using format: `Artist - Song Name`\nExample: `/lyrics Ed Sheeran - Shape of You`"
-                    
+
     except asyncio.TimeoutError:
         return "⏱️ Request timed out. Please try again!"
     except Exception as e:
         return f"❌ Error fetching lyrics: {str(e)}\n\nTry: `/lyrics Artist - Song Name`"
 
-# --- SONG SEARCH API ---
 async def search_song(song_name: str) -> str:
-    """Search for songs using iTunes API"""
     try:
         async with aiohttp.ClientSession() as session:
             search_url = f"https://itunes.apple.com/search?term={song_name.replace(' ', '+')}&limit=5&media=music"
-            
+
             async with session.get(search_url, timeout=15) as response:
                 if response.status == 200:
                     data = await response.json()
                     results = data.get('results', [])
-                    
+
                     if not results:
                         return f"❌ No songs found for '{song_name}'"
-                    
+
                     song_list = []
                     for i, track in enumerate(results[:5], 1):
                         track_name = track.get('trackName', 'Unknown')
                         artist = track.get('artistName', 'Unknown')
                         album = track.get('collectionName', 'Unknown')
-                        preview_url = track.get('previewUrl', 'Not available')
-                        
+
                         song_info = (
                             f"{i}. 🎵 **{track_name}**\n"
                             f"   👤 Artist: {artist}\n"
                             f"   💿 Album: {album}\n"
                         )
                         song_list.append(song_info)
-                    
+
                     return (
                         f"🎵 **Search Results for '{song_name}':**\n\n"
-                        f"{'\n'.join(song_list)}\n\n"
+                        f"{\'\n\'.join(song_list)}\n\n"
                         f"💡 Use `/lyrics Artist - Song Name` to get lyrics!"
                     )
                 else:
                     return f"❌ Search failed. Please try again!"
-                    
+
     except asyncio.TimeoutError:
         return "⏱️ Search timed out. Please try again!"
     except Exception as e:
         return f"❌ Error searching: {str(e)}"
 
-# --- AUTO-MODERATION FUNCTIONS ---
 def contains_group_link(text: str) -> bool:
-    """Check if message contains Telegram group links"""
     text = text.lower()
     for pattern in GROUP_LINK_PATTERNS:
         if re.search(pattern, text):
@@ -792,7 +730,6 @@ def contains_group_link(text: str) -> bool:
     return False
 
 def contains_bad_words(text: str) -> bool:
-    """Check if message contains bad words"""
     text_lower = text.lower()
     for word in BAD_WORDS:
         if word in text_lower:
@@ -800,7 +737,6 @@ def contains_bad_words(text: str) -> bool:
     return False
 
 def contains_adult_content(text: str) -> bool:
-    """Check if message contains adult content"""
     text_lower = text.lower()
     for word in ADULT_KEYWORDS:
         if word in text_lower:
@@ -808,7 +744,6 @@ def contains_adult_content(text: str) -> bool:
     return False
 
 def contains_fake_links(text: str) -> bool:
-    """Check if message contains fake/shortened links"""
     text = text.lower()
     for pattern in FAKE_LINK_PATTERNS:
         if re.search(pattern, text):
@@ -816,20 +751,19 @@ def contains_fake_links(text: str) -> bool:
     return False
 
 async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -> tuple[bool, str]:
-    """Give warning to user and return if action should be taken"""
     warnings = user_warnings[chat_id][user_id]
-    
+
     if 'count' not in warnings:
         warnings['count'] = 0
         warnings['last_warning'] = datetime.now()
         warnings['reasons'] = []
-    
+
     warnings['count'] += 1
     warnings['reasons'].append(reason)
     warnings['last_warning'] = datetime.now()
-    
+
     warning_count = warnings['count']
-    
+
     actions_map = {
         "spam": "spam messages",
         "link": "share group links",
@@ -839,18 +773,16 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
         "manual_warning": "violate rules"
     }
     action = actions_map.get(reason, "violate rules")
-    
+
     warning_msg = random.choice(WARNING_MESSAGES).format(
         count=warning_count,
         name=username or "User",
         action=action
     )
-    
-    # Check if warning limit reached
+
     warn_limit = group_settings[chat_id].get("warn_limit", 3)
-    
+
     if warning_count >= warn_limit:
-        # For adult content, ban immediately
         if reason == "adult_content":
             try:
                 await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
@@ -860,8 +792,7 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
             except Exception as e:
                 warning_msg += f"\n\n⚠️ Failed to ban user: {str(e)}"
                 return False, warning_msg
-        
-        # For other violations, mute
+
         mute_duration = MUTE_DURATIONS[min(3, warning_count - 1)]
         try:
             mute_until = datetime.now() + mute_duration
@@ -880,9 +811,9 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
                 ),
                 until_date=mute_until
             )
-            
+
             del user_warnings[chat_id][user_id]
-            
+
             duration_str = ""
             if mute_duration.days > 0:
                 duration_str = f"{mute_duration.days} days"
@@ -893,31 +824,29 @@ async def give_warning(chat_id: int, user_id: int, username: str, reason: str) -
                     duration_str = f"{hours} hour{'s' if hours > 1 else ''}"
                 else:
                     duration_str = f"{minutes} minute{'s' if minutes > 1 else ''}"
-            
+
             warning_msg += f"\n\n🚫 **MUTED for {duration_str}!**\nToo many warnings!"
             return True, warning_msg
-            
+
         except Exception as e:
             warning_msg += f"\n\n⚠️ Failed to mute user: {str(e)}"
             return False, warning_msg
-    
+
     return False, warning_msg
 
 async def delete_and_warn(message: Message, reason: str):
-    """Delete message and warn user"""
     chat_id = message.chat.id
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
-    
+
     try:
         await message.delete()
     except Exception as e:
         print(f"Failed to delete message: {e}")
-    
+
     action_taken, warning_msg = await give_warning(chat_id, user_id, username, reason)
     await message.answer(warning_msg, parse_mode="Markdown")
-    
-    # Special responses for different violations
+
     if reason == "bad_words":
         sassy_responses = [
             f"{get_emotion('angry')} Oye! Language! 😠 Main ladki hu, aise baat mat karo!",
@@ -927,7 +856,7 @@ async def delete_and_warn(message: Message, reason: str):
             f"{get_emotion('sassy')} Tumhe pata hai main kya bol sakti hu? Par main sweet hu na!"
         ]
         await message.answer(random.choice(sassy_responses))
-    
+
     elif reason == "adult_content":
         angry_responses = [
             f"{get_emotion('angry')} 🤬 Yeh kya beizzati hai? Group mein aise content allowed nahi hai!",
@@ -936,43 +865,36 @@ async def delete_and_warn(message: Message, reason: str):
         ]
         await message.answer(random.choice(angry_responses))
 
-# --- SPAM DETECTION ---
 async def check_spam(message: Message) -> bool:
-    """Check if user is spamming"""
     chat_id = message.chat.id
     user_id = message.from_user.id
-    
+
     if user_id not in last_messages[chat_id]:
         last_messages[chat_id][user_id] = []
-    
+
     now = datetime.now()
     last_messages[chat_id][user_id].append(now)
-    
+
     last_messages[chat_id][user_id] = [
         ts for ts in last_messages[chat_id][user_id]
         if (now - ts).seconds <= SPAM_TIME_WINDOW
     ]
-    
+
     if len(last_messages[chat_id][user_id]) > SPAM_LIMIT:
         await delete_and_warn(message, "spam")
         return True
-    
+
     return False
 
-# --- FIXED ADMIN CHECK FUNCTION ---
 async def is_admin(chat_id: int, user_id: int) -> bool:
-    """Check if user is admin in group"""
     try:
-        # Check if it's a private chat
         chat = await bot.get_chat(chat_id)
         if chat.type == "private":
-            return user_id == chat_id  # In private chats, the user is effectively the admin
-        
-        # Check if user is the bot owner
+            return user_id == chat_id
+
         if user_id == ADMIN_ID:
             return True
-            
-        # Get chat member info
+
         chat_member = await bot.get_chat_member(chat_id, user_id)
         return chat_member.status in ["administrator", "creator"]
     except Exception as e:
@@ -980,49 +902,41 @@ async def is_admin(chat_id: int, user_id: int) -> bool:
         return False
 
 async def is_creator(chat_id: int, user_id: int) -> bool:
-    """Check if user is group creator"""
     try:
         chat_member = await bot.get_chat_member(chat_id, user_id)
         return chat_member.status == "creator"
     except:
         return False
 
-# --- CAPTCHA SYSTEM ---
 def generate_captcha():
-    """Generate simple math CAPTCHA"""
     num1 = random.randint(1, 20)
     num2 = random.randint(1, 20)
     operation = random.choice(['+', '-', '*'])
-    
+
     if operation == '+':
         answer = num1 + num2
     elif operation == '-':
         answer = num1 - num2
-        # Ensure positive answer
         if answer < 0:
             num1, num2 = num2, num1
             answer = num1 - num2
     else:
         answer = num1 * num2
-    
+
     question = f"What is {num1} {operation} {num2}?"
     return question, str(answer)
 
-# --- RANDOM SELF MESSAGES TASK (ENHANCED WITH STICKERS) ---
 async def send_random_self_messages():
-    """Send random self messages in groups"""
     for chat_id in list(group_settings.keys()):
         try:
-            # Check if group is active (last message within 30 minutes)
             if chat_id in last_greeting_time:
                 time_diff = datetime.now() - last_greeting_time[chat_id]
-                if time_diff.total_seconds() < 1800:  # 30 minutes
+                if time_diff.total_seconds() < 1800:
                     continue
-            
-            # 30% chance to send random message
+
             if random.random() < 0.3:
                 message_data = random.choice(SELF_MESSAGES)
-                
+
                 if message_data["type"] == "text":
                     await bot.send_message(chat_id, message_data["content"])
                 elif message_data["type"] == "sticker":
@@ -1031,49 +945,40 @@ async def send_random_self_messages():
                         await bot.send_sticker(chat_id, sticker)
                     else:
                         await bot.send_message(chat_id, "💭")
-                
+
                 last_greeting_time[chat_id] = datetime.now()
-                
+
         except Exception as e:
             print(f"Error sending random message to {chat_id}: {e}")
 
-# --- RANDOM STICKER SENDING TO ACTIVE CHATS ---
 async def send_random_stickers():
-    """Send random stickers to all active chats"""
     if not saved_stickers:
         return
-    
-    # Send to groups
+
     for chat_id in list(group_settings.keys()):
         try:
-            # 15% chance to send sticker to group
             if random.random() < 0.15:
                 sticker = random.choice(saved_stickers)
                 await bot.send_sticker(chat_id, sticker)
-                await asyncio.sleep(1)  # Prevent flooding
+                await asyncio.sleep(1)
         except Exception as e:
             print(f"Error sending sticker to group {chat_id}: {e}")
-    
-    # Send to private users who have started the bot
+
     for user_id in list(started_users):
         try:
-            # 10% chance to send sticker to private user
             if random.random() < 0.10:
                 sticker = random.choice(saved_stickers)
                 await bot.send_sticker(user_id, sticker)
-                await asyncio.sleep(1)  # Prevent flooding
+                await asyncio.sleep(1)
         except Exception as e:
             print(f"Error sending sticker to user {user_id}: {e}")
 
-# --- TIME-BASED GREETINGS TASK ---
 async def send_time_greetings():
-    """Send time-based greetings to all active chats"""
     current_period = get_current_time_period()
-    
+
     if current_period in TIME_GREETINGS:
         greeting = random.choice(TIME_GREETINGS[current_period]["templates"])
-        
-        # Send to groups
+
         for chat_id in list(group_settings.keys()):
             try:
                 if group_settings[chat_id].get("greetings_enabled", True):
@@ -1081,8 +986,7 @@ async def send_time_greetings():
                     await asyncio.sleep(0.5)
             except Exception as e:
                 print(f"Error sending greeting to group {chat_id}: {e}")
-        
-        # Send to active private users
+
         for user_id in list(started_users):
             try:
                 await bot.send_message(user_id, greeting, parse_mode="Markdown")
@@ -1090,44 +994,37 @@ async def send_time_greetings():
             except Exception as e:
                 print(f"Error sending greeting to user {user_id}: {e}")
 
-# --- MEME GENERATOR ---
 def generate_meme():
-    """Generate random meme text"""
     template = random.choice(MEME_TEMPLATES)
     return f"{template['emoji']} **{template['text']}**\n\n*When you know it's true!* 😂"
 
-# --- DAILY FACT ---
 def get_daily_fact():
-    """Get random daily fact"""
     return random.choice(DAILY_FACTS)
 
-# --- STICKER SAVING COMMANDS ---
+
 @dp.message(Command("savesticker"))
 async def cmd_savesticker(message: Message):
-    """Save sticker to database (Owner only)"""
     if message.from_user.id != ADMIN_ID:
         await message.reply(f"{get_emotion('angry')} Only owner can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message or not message.reply_to_message.sticker:
         await message.reply(
             f"{get_emotion('thinking')} Please reply to a sticker message with this command!",
             parse_mode="Markdown"
         )
         return
-    
+
     sticker = message.reply_to_message.sticker
     file_id = sticker.file_id
-    
-    # Check if already saved
+
     if file_id in saved_stickers:
         await message.reply(
             f"{get_emotion('thinking')} This sticker is already saved in the database!",
             parse_mode="Markdown"
         )
         return
-    
-    # Save sticker
+
     if save_sticker(file_id, message.from_user.id):
         await message.reply(
             f"{get_emotion('love')} **Sticker Saved Successfully!** ✅\n\n"
@@ -1143,9 +1040,8 @@ async def cmd_savesticker(message: Message):
 
 @dp.message(Command("stickerstatus"))
 async def cmd_stickerstatus(message: Message):
-    """Show sticker database status"""
     total = len(saved_stickers)
-    
+
     if total == 0:
         await message.reply(
             f"{get_emotion('crying')} **No stickers saved yet!** 😢\n\n"
@@ -1153,31 +1049,28 @@ async def cmd_stickerstatus(message: Message):
             parse_mode="Markdown"
         )
         return
-    
-    # Get recent stickers count
+
     cursor.execute("SELECT COUNT(*) FROM stickers WHERE date(added_at) = date('now')")
     today_count = cursor.fetchone()[0]
-    
+
     status_text = (
         f"{get_emotion('happy')} **Sticker Database Status** 📊\n\n"
         f"🎯 **Total Stickers:** {total}\n"
         f"📅 **Saved Today:** {today_count}\n"
         f"👑 **Owner:** @a6h1ii\n\n"
     )
-    
+
     if total > 0:
-        # Show some recent stickers info
         cursor.execute("SELECT file_id, added_at FROM stickers ORDER BY added_at DESC LIMIT 3")
         recent = cursor.fetchall()
-        
+
         status_text += "**Recent Stickers:**\n"
         for i, (file_id, added_at) in enumerate(recent, 1):
             time_str = datetime.strptime(added_at, "%Y-%m-%d %H:%M:%S").strftime("%I:%M %p")
             status_text += f"{i}. `{file_id[:20]}...` ({time_str})\n"
-    
+
     await message.reply(status_text, parse_mode="Markdown")
 
-# --- COMMANDS ---
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
     user_id = message.from_user.id
@@ -1222,7 +1115,6 @@ async def start_cmd(message: Message):
     )
 
     image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
-    
 
     await message.answer_photo(
         photo=image_url,
@@ -1231,11 +1123,10 @@ async def start_cmd(message: Message):
         reply_markup=keyboard
     )
 
-
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     started_users.add(message.from_user.id)
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📱 Utilities", callback_data="help_utilities"),
@@ -1261,10 +1152,10 @@ async def cmd_help(message: Message):
             InlineKeyboardButton(text="🌟 Join Channel", url="https://t.me/abhi0w0")
         ]
     ])
-    
+
     help_text = (
         f"{get_emotion('happy')} **Hello! I'm Alita 🎀** 👧\n\n"
-        
+
         "📜 **MAIN COMMANDS:**\n"
         "• /start - Welcome message 💖\n"
         "• /help - All commands 📚\n"
@@ -1275,27 +1166,27 @@ async def cmd_help(message: Message):
         "• /horoscope [sign] - Horoscope ♈\n"
         "• /roast - Playful roast 🔥\n"
         "• /clear - Clear memory 🧹\n\n"
-        
+
         "🕒 **TIME & WEATHER:**\n"
         "• /time - Indian time 🕐\n"
         "• /date - Today's date 📅\n"
         "• /weather [city] - **REAL Weather info** 🌤️\n\n"
-        
+
         "📝 **PERSONAL ORGANIZER:**\n"
         "• /note [text] - Add note 📝\n"
         "• /notes - View notes 📋\n"
         "• /remind [time] [text] - Set reminder ⏰\n"
         "• /reminders - View reminders 📅\n"
         "• /afk [reason] - Set AFK status 😴\n\n"
-        
+
         "🎨 **IMAGE & CREATIVE:**\n"
         "• /imagine [prompt] - AI Image Generation 🎨\n"
         "• /qr [text] - Generate QR Code 📱\n\n"
-        
+
         "🎵 **MUSIC & LYRICS:**\n"
         "• /lyrics [song] - Get song lyrics 🎶\n"
         "• /song [name] - Search for songs 🎧\n\n"
-        
+
         "🔧 **UTILITIES:**\n"
         "• /password [length] - Generate password 🔐\n"
         "• /short [url] - Shorten URL 🔗\n"
@@ -1303,7 +1194,7 @@ async def cmd_help(message: Message):
         "• /calc [expression] - Calculator 🧮\n"
         "• /id - Get your ID 🆔\n"
         "• /info [user] - Get user info 👤\n\n"
-        
+
         "🛡️ **ADMIN/MODERATION:**\n"
         "• /warn [reason] - Warn user ⚠️\n"
         "• /kick - Remove user 🚪\n"
@@ -1321,7 +1212,7 @@ async def cmd_help(message: Message):
         "• /setgoodbye [text] - Custom goodbye message 👋\n"
         "• /adminlist - List all admins 👑\n"
         "• /tagall - Mention all members @\n\n"
-        
+
         "🔧 **SAFETY FEATURES:**\n"
         "• Auto-spam detection 🔍\n"
         "• Group link blocker 🚫\n"
@@ -1331,7 +1222,7 @@ async def cmd_help(message: Message):
         "• Auto-mute after 3 warns 🔇\n"
         "• Auto-ban for adult content 🚫\n"
         "• CAPTCHA for new members 🧩\n\n"
-        
+
         "---\n"
         "**MY HOME:** @abhi0w0 💫\n"
         "---"
@@ -1351,14 +1242,14 @@ async def save_group(message: Message):
 async def cmd_rules(message: Message):
     rules_text = (
         f"{get_emotion('protective')} **📜 GROUP RULES & SAFETY 🛡️**\n\n"
-        
+
         "✅ **DOs:**\n"
         "1. Be respectful to everyone 🤝\n"
         "2. Keep chat friendly and positive 🌟\n"
         "3. Help each other grow 📚\n"
         "4. Follow admin instructions 👮\n"
         "5. Have fun and enjoy! 🎉\n\n"
-        
+
         "🚫 **DON'Ts:**\n"
         "1. No spam or flooding ⚠️\n"
         "2. No group links sharing 🔗\n"
@@ -1367,7 +1258,7 @@ async def cmd_rules(message: Message):
         "5. No adult/NSFW content 🚷\n"
         "6. No self-promotion without permission 📢\n"
         "7. No fake/suspicious links 🚫\n\n"
-        
+
         f"{get_emotion('love')} *I'm here to keep everyone safe!* 💖"
     )
     await message.reply(rules_text, parse_mode="Markdown")
@@ -1402,7 +1293,7 @@ async def cmd_horoscope(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     sign = command.args.lower()
     horoscopes = {
         "aries": "Today brings energy and passion! Take charge of new projects. 💪",
@@ -1418,7 +1309,7 @@ async def cmd_horoscope(message: Message, command: CommandObject):
         "aquarius": "Innovation flows. Think outside the box. 💡",
         "pisces": "Creativity blooms. Express your artistic side. 🎨"
     }
-    
+
     emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
     reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
     await message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
@@ -1438,7 +1329,6 @@ async def cmd_roast(message: Message):
             f"Or I'll roast you: {random.choice(ROAST_RESPONSES)}"
         )
 
-# --- FIXED LYRICS COMMAND ---
 @dp.message(Command("lyrics"))
 async def cmd_lyrics(message: Message, command: CommandObject):
     if not command.args:
@@ -1452,17 +1342,15 @@ async def cmd_lyrics(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     song_name = command.args
     status_msg = await message.reply(f"{get_emotion('happy')} 🔍 Searching lyrics for: *{song_name}*...", parse_mode="Markdown")
-    
+
     try:
         lyrics = await get_lyrics(song_name)
-        
-        # Delete status message
+
         await status_msg.delete()
-        
-        # Send in parts if too long
+
         if len(lyrics) > 4000:
             parts = [lyrics[i:i+4000] for i in range(0, len(lyrics), 4000)]
             for i, part in enumerate(parts):
@@ -1480,7 +1368,6 @@ async def cmd_lyrics(message: Message, command: CommandObject):
             f"Try format: `/lyrics Artist - Song Name`"
         )
 
-# --- NEW SONG COMMAND ---
 @dp.message(Command("song"))
 async def cmd_song(message: Message, command: CommandObject):
     if not command.args:
@@ -1494,10 +1381,10 @@ async def cmd_song(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     song_name = command.args
     status_msg = await message.reply(f"{get_emotion('happy')} 🔍 Searching for: *{song_name}*...", parse_mode="Markdown")
-    
+
     try:
         result = await search_song(song_name)
         await status_msg.edit_text(result, parse_mode="Markdown")
@@ -1506,27 +1393,25 @@ async def cmd_song(message: Message, command: CommandObject):
             f"{get_emotion('crying')} ❌ Search failed: {str(e)}"
         )
 
-# --- NEW ADMINLIST COMMAND ---
 @dp.message(Command("adminlist"))
 async def cmd_adminlist(message: Message):
-    """List all admins in the group"""
     if message.chat.type not in ["group", "supergroup"]:
         await message.reply(
             f"{get_emotion('thinking')} This command only works in groups!",
             parse_mode="Markdown"
         )
         return
-    
+
     try:
         admins = await bot.get_chat_administrators(message.chat.id)
-        
+
         if not admins:
             await message.reply(
                 f"{get_emotion('thinking')} No admins found in this group!",
                 parse_mode="Markdown"
             )
             return
-        
+
         admin_list = []
         for admin in admins:
             user = admin.user
@@ -1534,7 +1419,7 @@ async def cmd_adminlist(message: Message):
             name = f"{user.first_name} {user.last_name or ''}".strip()
             username = f"(@{user.username})" if user.username else ""
             admin_list.append(f"{status} - {name} {username}")
-        
+
         admin_text = "\n".join(admin_list)
         await message.reply(
             f"{get_emotion('protective')} **Group Administrators** 👑\n\n"
@@ -1547,35 +1432,32 @@ async def cmd_adminlist(message: Message):
             parse_mode="Markdown"
         )
 
-# --- NEW TAGALL COMMAND ---
 @dp.message(Command("tagall"))
 async def cmd_tagall(message: Message):
-    """Mention all members in group (Admin only)"""
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(
             f"{get_emotion('angry')} Only admins can use this command! 🚫",
             parse_mode="Markdown"
         )
         return
-    
+
     if message.chat.type not in ["group", "supergroup"]:
         await message.reply(
             f"{get_emotion('thinking')} This command only works in groups!",
             parse_mode="Markdown"
         )
         return
-    
+
     try:
         members_count = await bot.get_chat_member_count(message.chat.id)
-        
+
         if members_count > 100:
             await message.reply(
                 f"{get_emotion('thinking')} Group is too large ({members_count} members)!",
                 parse_mode="Markdown"
             )
             return
-        
-        # Get chat members
+
         members = []
         async for member in bot.get_chat_members(message.chat.id):
             if not member.user.is_bot and member.user.id != bot.id:
@@ -1584,15 +1466,14 @@ async def cmd_tagall(message: Message):
                     members.append(f"@{member.user.username}")
                 else:
                     members.append(name)
-        
+
         if not members:
             await message.reply(
                 f"{get_emotion('crying')} No members found to tag!",
                 parse_mode="Markdown"
             )
             return
-        
-        # Split into chunks to avoid message too long error
+
         chunk_size = 10
         for i in range(0, len(members), chunk_size):
             chunk = members[i:i + chunk_size]
@@ -1601,50 +1482,46 @@ async def cmd_tagall(message: Message):
                 f"{get_emotion('surprise')} **Tagging Members!** 🎯\n\n{tag_text}",
                 parse_mode="Markdown"
             )
-            await asyncio.sleep(1)  # Avoid rate limiting
-        
+            await asyncio.sleep(1)
+
     except Exception as e:
         await message.reply(
             f"{get_emotion('crying')} Error tagging members: {str(e)}",
             parse_mode="Markdown"
         )
 
-# --- NEW INFO COMMAND ---
 @dp.message(Command("info"))
 async def cmd_info(message: Message):
-    """Get information about a user"""
     target_user = None
-    
+
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
     else:
         target_user = message.from_user
-    
+
     try:
-        # Try to get chat member info for groups
         chat_member = None
         if message.chat.type in ["group", "supergroup"]:
             try:
                 chat_member = await bot.get_chat_member(message.chat.id, target_user.id)
             except:
                 pass
-        
-        # Format user info
+
         user_info = (
             f"{get_emotion('thinking')} **User Information** 👤\n\n"
             f"🆔 **ID:** `{target_user.id}`\n"
             f"👤 **Name:** {target_user.first_name} {target_user.last_name or ''}\n"
             f"📱 **Username:** @{target_user.username or 'No username'}\n"
         )
-        
+
         if chat_member:
             status = "👑 Creator" if chat_member.status == "creator" else \
                      "🛡️ Admin" if chat_member.status == "administrator" else \
                      "👤 Member"
             user_info += f"🏷️ **Status:** {status}\n"
-        
+
         user_info += f"\n💬 **Chat ID:** `{message.chat.id}`"
-        
+
         await message.reply(user_info, parse_mode="Markdown")
     except Exception as e:
         await message.reply(
@@ -1657,7 +1534,7 @@ async def cmd_time(message: Message):
     indian_time = get_indian_time()
     time_str = indian_time.strftime("%I:%M %p")
     date_str = indian_time.strftime("%A, %d %B %Y")
-    
+
     hour = indian_time.hour
     if 5 <= hour < 12:
         greeting = "Good Morning! 🌅"
@@ -1667,7 +1544,7 @@ async def cmd_time(message: Message):
         greeting = "Good Evening! 🌇"
     else:
         greeting = "Good Night! 🌙"
-    
+
     time_info = (
         f"🕒 **Indian Standard Time (IST)**\n"
         f"• Time: {time_str}\n"
@@ -1681,7 +1558,7 @@ async def cmd_time(message: Message):
 async def cmd_date(message: Message):
     indian_time = get_indian_time()
     date_str = indian_time.strftime("%A, %d %B %Y")
-    
+
     await message.reply(
         f"{get_emotion('happy')} **📅 Today's Date**\n"
         f"• {date_str}\n"
@@ -1695,7 +1572,6 @@ async def cmd_date(message: Message):
 async def cmd_weather(message: Message, command: CommandObject):
     city = command.args
     if not city:
-        # Show list of available cities
         cities_list = ", ".join([c.title() for c in list(INDIAN_CITIES.keys())[:10]])
         await message.reply(
             f"{get_emotion('thinking')} **Weather Command Usage:**\n\n"
@@ -1705,14 +1581,13 @@ async def cmd_weather(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
-    # Show typing action
+
     await bot.send_chat_action(message.chat.id, "typing")
-    
+
     weather_info = await get_real_weather(city)
     await message.reply(weather_info, parse_mode="Markdown")
 
-# --- IMAGE GENERATION COMMAND (STABLE & FIXED) ---
+
 @dp.message(Command("imagine"))
 async def cmd_imagine(message: Message, command: CommandObject):
     if not command.args:
@@ -1729,7 +1604,6 @@ async def cmd_imagine(message: Message, command: CommandObject):
 
     prompt = command.args
 
-    # Telegram ko bata do photo aa rahi hai
     await bot.send_chat_action(message.chat.id, "upload_photo")
 
     status_msg = await message.reply(
@@ -1740,7 +1614,6 @@ async def cmd_imagine(message: Message, command: CommandObject):
     try:
         image_data = await generate_image(prompt)
 
-        # ❗ IMAGE VALIDATION
         if not image_data or len(image_data) < 1000:
             await status_msg.edit_text(
                 f"{get_emotion('crying')} Image generate nahi ho paayi 😓\n"
@@ -1748,7 +1621,6 @@ async def cmd_imagine(message: Message, command: CommandObject):
             )
             return
 
-        # ❗ TELEGRAM SEND
         try:
             await status_msg.delete()
             await message.reply_photo(
@@ -1774,7 +1646,6 @@ async def cmd_imagine(message: Message, command: CommandObject):
             f"Thodi der baad try karo."
         )
 
-# --- QR CODE COMMAND ---
 @dp.message(Command("qr"))
 async def cmd_qr(message: Message, command: CommandObject):
     if not command.args:
@@ -1787,7 +1658,7 @@ async def cmd_qr(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     data = command.args
     try:
         qr_bytes = generate_qr_code(data)
@@ -1798,7 +1669,6 @@ async def cmd_qr(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error generating QR code: {str(e)}")
 
-# --- PASSWORD GENERATOR COMMAND ---
 @dp.message(Command("password"))
 async def cmd_password(message: Message, command: CommandObject):
     try:
@@ -1806,7 +1676,7 @@ async def cmd_password(message: Message, command: CommandObject):
         if length < 4 or length > 50:
             await message.reply(f"{get_emotion('thinking')} Password length must be between 4 and 50!")
             return
-        
+
         password = generate_password(length)
         await message.reply(
             f"{get_emotion('happy')} **Password Generated!** 🔐\n\n"
@@ -1819,7 +1689,6 @@ async def cmd_password(message: Message, command: CommandObject):
     except ValueError:
         await message.reply(f"{get_emotion('thinking')} Usage: `/password [length]`\nExample: `/password 16`")
 
-# --- URL SHORTENER COMMAND ---
 @dp.message(Command("short"))
 async def cmd_short(message: Message, command: CommandObject):
     if not command.args:
@@ -1831,13 +1700,13 @@ async def cmd_short(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     url = command.args.strip()
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
-    
+
     status_msg = await message.reply(f"{get_emotion('happy')} Shortening URL...")
-    
+
     try:
         short_url = await shorten_url(url)
         await status_msg.edit_text(
@@ -1848,7 +1717,6 @@ async def cmd_short(message: Message, command: CommandObject):
     except Exception as e:
         await status_msg.edit_text(f"{get_emotion('crying')} Error: {str(e)}")
 
-# --- TRANSLATION COMMAND ---
 @dp.message(Command("translate"))
 async def cmd_translate(message: Message, command: CommandObject):
     if not command.args:
@@ -1863,17 +1731,17 @@ async def cmd_translate(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     args = command.args.split(maxsplit=1)
     if len(args) < 2:
         await message.reply("Please provide both language code and text!")
         return
-    
+
     target_lang = args[0]
     text = args[1]
-    
+
     status_msg = await message.reply(f"{get_emotion('thinking')} Translating...")
-    
+
     try:
         translated = await translate_text(text, target_lang)
         await status_msg.edit_text(
@@ -1884,7 +1752,6 @@ async def cmd_translate(message: Message, command: CommandObject):
     except Exception as e:
         await status_msg.edit_text(f"{get_emotion('crying')} Translation failed: {str(e)}")
 
-# --- CALCULATOR COMMAND ---
 @dp.message(Command("calc"))
 async def cmd_calc(message: Message, command: CommandObject):
     if not command.args:
@@ -1899,20 +1766,18 @@ async def cmd_calc(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-    
+
     expression = command.args
-    
-    # Security: Only allow safe characters
+
     allowed_chars = set('0123456789+-*/.() **sqrt ')
     if not all(c in allowed_chars for c in expression):
         await message.reply(f"{get_emotion('angry')} Invalid characters in expression!")
         return
-    
+
     try:
-        # Replace sqrt with math.sqrt
         safe_expr = expression.replace('sqrt', '(__import__("math").sqrt)')
         result = eval(safe_expr, {"__builtins__": {}}, {"math": __import__('math')})
-        
+
         await message.reply(
             f"{get_emotion('happy')} **Calculator** 🧮\n\n"
             f"📝 Expression: `{expression}`\n"
@@ -1922,19 +1787,18 @@ async def cmd_calc(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error calculating: Invalid expression!")
 
-# --- ID COMMAND ---
 @dp.message(Command("id"))
 async def cmd_id(message: Message):
     user_id = message.from_user.id
     chat_id = message.chat.id
-    
+
     text = (
         f"{get_emotion('happy')} **Your Information** 🆔\n\n"
         f"👤 **User ID:** `{user_id}`\n"
         f"💬 **Chat ID:** `{chat_id}`\n"
         f"📛 **Name:** {message.from_user.full_name}\n"
     )
-    
+
     if message.reply_to_message:
         target = message.reply_to_message.from_user
         text += (
@@ -1943,10 +1807,9 @@ async def cmd_id(message: Message):
             f"📛 **Name:** {target.full_name}\n"
             f"📱 **Username:** @{target.username if target.username else 'N/A'}"
         )
-    
+
     await message.reply(text, parse_mode="Markdown")
 
-# --- AFK SYSTEM ---
 @dp.message(Command("afk"))
 async def cmd_afk(message: Message, command: CommandObject):
     reason = command.args or "AFK"
@@ -1954,7 +1817,7 @@ async def cmd_afk(message: Message, command: CommandObject):
         "reason": reason,
         "time": datetime.now()
     }
-    
+
     await message.reply(
         f"{get_emotion('sleepy')} **AFK Mode Activated** 😴\n\n"
         f"💤 Reason: {reason}\n"
@@ -1962,7 +1825,6 @@ async def cmd_afk(message: Message, command: CommandObject):
         f"I'll notify others when they mention you!"
     )
 
-# --- NOTES & REMINDERS ---
 @dp.message(Command("note"))
 async def cmd_note(message: Message, command: CommandObject):
     if not command.args:
@@ -1971,16 +1833,16 @@ async def cmd_note(message: Message, command: CommandObject):
             f"Example: `/note Buy groceries tomorrow`"
         )
         return
-    
+
     note_text = command.args
     note_data = {
         "text": note_text,
         "created_at": datetime.now(),
         "note_id": len(user_notes[message.from_user.id]) + 1
     }
-    
+
     user_notes[message.from_user.id].append(note_data)
-    
+
     await message.reply(
         f"{get_emotion('happy')} **Note Saved!** 📝\n\n"
         f"• Note: {note_text}\n"
@@ -1992,19 +1854,19 @@ async def cmd_note(message: Message, command: CommandObject):
 async def cmd_notes(message: Message):
     user_id = message.from_user.id
     notes = user_notes[user_id]
-    
+
     if not notes:
         await message.reply(
             f"{get_emotion('crying')} **No notes found!** 😢\n\n"
             f"Add your first note with /note [text]"
         )
         return
-    
+
     notes_text = f"{get_emotion('thinking')} **Your Notes:** 📋\n\n"
     for i, note in enumerate(notes[-10:], 1):
         time_str = note['created_at'].strftime('%d/%m %I:%M %p')
         notes_text += f"{i}. {note['text']} ({time_str})\n"
-    
+
     notes_text += f"\n*Total: {len(notes)} notes*"
     await message.reply(notes_text, parse_mode="Markdown")
 
@@ -2019,17 +1881,16 @@ async def cmd_remind(message: Message, command: CommandObject):
             f"`/remind 2h Study for exam`"
         )
         return
-    
+
     try:
         args = command.args.split(maxsplit=1)
         if len(args) < 2:
             await message.reply("Please provide both time and reminder text!")
             return
-        
+
         time_str = args[0]
         reminder_text = args[1]
-        
-        # Parse time
+
         if time_str.endswith('h'):
             hours = int(time_str[:-1])
             reminder_time = datetime.now() + timedelta(hours=hours)
@@ -2039,16 +1900,16 @@ async def cmd_remind(message: Message, command: CommandObject):
         else:
             await message.reply("Use format: 1h or 30m")
             return
-        
+
         reminder_data = {
             "text": reminder_text,
             "time": reminder_time,
             "created_at": datetime.now(),
             "reminder_id": len(user_reminders[message.from_user.id]) + 1
         }
-        
+
         user_reminders[message.from_user.id].append(reminder_data)
-        
+
         await message.reply(
             f"{get_emotion('happy')} **Reminder Set!** ⏰\n\n"
             f"• Reminder: {reminder_text}\n"
@@ -2056,8 +1917,7 @@ async def cmd_remind(message: Message, command: CommandObject):
             f"• In: {time_str}\n\n"
             f"I'll remind you! 💫"
         )
-        
-        # Schedule reminder
+
         greeting_scheduler.add_job(
             send_reminder,
             'date',
@@ -2065,12 +1925,11 @@ async def cmd_remind(message: Message, command: CommandObject):
             args=[message.from_user.id, reminder_text],
             id=f"reminder_{message.from_user.id}_{reminder_data['reminder_id']}"
         )
-        
+
     except Exception as e:
         await message.reply(f"Error setting reminder: {str(e)}")
 
 async def send_reminder(user_id: int, reminder_text: str):
-    """Send reminder to user"""
     try:
         await bot.send_message(
             user_id,
@@ -2084,14 +1943,14 @@ async def send_reminder(user_id: int, reminder_text: str):
 async def cmd_reminders(message: Message):
     user_id = message.from_user.id
     reminders = user_reminders[user_id]
-    
+
     if not reminders:
         await message.reply(
             f"{get_emotion('crying')} **No reminders set!** 😢\n\n"
             f"Set your first reminder with /remind [time] [text]"
         )
         return
-    
+
     reminders_text = f"{get_emotion('thinking')} **Your Reminders:** 📅\n\n"
     for i, reminder in enumerate(reminders[-5:], 1):
         time_left = reminder['time'] - datetime.now()
@@ -2099,50 +1958,48 @@ async def cmd_reminders(message: Message):
             hours = int(time_left.total_seconds() // 3600)
             minutes = int((time_left.total_seconds() % 3600) // 60)
             reminders_text += f"{i}. {reminder['text']} (in {hours}h {minutes}m)\n"
-    
+
     await message.reply(reminders_text, parse_mode="Markdown")
 
-# --- FIXED ADMIN COMMANDS ---
+
 @dp.message(Command("warn"))
 async def cmd_warn(message: Message, command: CommandObject):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(
             f"{get_emotion('thinking')} Please reply to a user's message to warn them! 👆",
             parse_mode="Markdown"
         )
         return
-    
+
     target_user = message.reply_to_message.from_user
     reason = command.args or "Rule violation"
-    
+
     action_taken, warning_msg = await give_warning(
         message.chat.id,
         target_user.id,
         target_user.first_name,
         "manual_warning"
     )
-    
+
     warning_msg = warning_msg.replace("violate rules", f"{reason}")
     await message.reply(warning_msg, parse_mode="Markdown")
 
 @dp.message(Command("kick"))
 async def cmd_kick(message: Message):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a user to kick them!")
         return
-    
+
     target_user = message.reply_to_message.from_user
-    
+
     try:
         await bot.ban_chat_member(message.chat.id, target_user.id)
         await bot.unban_chat_member(message.chat.id, target_user.id)
@@ -2156,17 +2013,16 @@ async def cmd_kick(message: Message):
 
 @dp.message(Command("ban"))
 async def cmd_ban(message: Message):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a user to ban them!")
         return
-    
+
     target_user = message.reply_to_message.from_user
-    
+
     try:
         await bot.ban_chat_member(message.chat.id, target_user.id)
         await message.reply(
@@ -2179,17 +2035,16 @@ async def cmd_ban(message: Message):
 
 @dp.message(Command("unban"))
 async def cmd_unban(message: Message):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a user's message to unban them!")
         return
-    
+
     target_user = message.reply_to_message.from_user
-    
+
     try:
         await bot.unban_chat_member(message.chat.id, target_user.id)
         await message.reply(
@@ -2202,18 +2057,16 @@ async def cmd_unban(message: Message):
 
 @dp.message(Command("mute"))
 async def cmd_mute(message: Message, command: CommandObject):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a user to mute them!")
         return
-    
+
     target_user = message.reply_to_message.from_user
-    
-    # Parse duration
+
     duration = command.args
     if duration:
         if duration.endswith('h'):
@@ -2230,7 +2083,7 @@ async def cmd_mute(message: Message, command: CommandObject):
     else:
         mute_until = datetime.now() + timedelta(hours=1)
         duration_str = "1 hour"
-    
+
     try:
         await bot.restrict_chat_member(
             message.chat.id,
@@ -2248,17 +2101,16 @@ async def cmd_mute(message: Message, command: CommandObject):
 
 @dp.message(Command("unmute"))
 async def cmd_unmute(message: Message):
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a user to unmute them!")
         return
-    
+
     target_user = message.reply_to_message.from_user
-    
+
     try:
         await bot.restrict_chat_member(
             message.chat.id,
@@ -2283,50 +2135,44 @@ async def cmd_unmute(message: Message):
 
 @dp.message(Command("purge"))
 async def cmd_purge(message: Message, command: CommandObject):
-    """Delete multiple messages"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to the oldest message you want to delete!")
         return
-    
+
     try:
         count = int(command.args) if command.args else 10
         if count > 100:
             count = 100
-        
-        # Delete messages
+
         message_ids = []
         async for msg in bot.get_chat_history(message.chat.id, limit=count):
             if msg.message_id >= message.reply_to_message.message_id:
                 message_ids.append(msg.message_id)
-        
-        # Delete in batches
+
         deleted = 0
         for i in range(0, len(message_ids), 100):
             batch = message_ids[i:i+100]
             await bot.delete_messages(message.chat.id, batch)
             deleted += len(batch)
-        
+
         await message.reply(f"{get_emotion('happy')} **Purged!** 🗑️\n\nDeleted {deleted} messages!")
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error purging messages: {str(e)}")
 
 @dp.message(Command("pin"))
 async def cmd_pin(message: Message):
-    """Pin a message"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not message.reply_to_message:
         await message.reply(f"{get_emotion('thinking')} Reply to a message to pin it!")
         return
-    
+
     try:
         await bot.pin_chat_message(
             message.chat.id,
@@ -2339,12 +2185,10 @@ async def cmd_pin(message: Message):
 
 @dp.message(Command("unpin"))
 async def cmd_unpin(message: Message):
-    """Unpin a message"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     try:
         await bot.unpin_chat_message(message.chat.id)
         await message.reply(f"{get_emotion('happy')} **Unpinned!** 📍")
@@ -2353,21 +2197,19 @@ async def cmd_unpin(message: Message):
 
 @dp.message(Command("slowmode"))
 async def cmd_slowmode(message: Message, command: CommandObject):
-    """Enable slow mode"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     try:
         delay = int(command.args) if command.args else 0
-        
+
         if delay < 0 or delay > 86400:
             await message.reply("Delay must be between 0 and 86400 seconds!")
             return
-        
+
         await bot.set_chat_slow_mode_delay(message.chat.id, delay)
-        
+
         if delay == 0:
             await message.reply(f"{get_emotion('happy')} **Slow mode disabled!** 🚀")
         else:
@@ -2375,15 +2217,12 @@ async def cmd_slowmode(message: Message, command: CommandObject):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
-# --- FIXED LOCK/UNLOCK COMMANDS ---
 @dp.message(Command("lock"))
 async def cmd_lock(message: Message, command: CommandObject):
-    """Lock the chat"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     try:
         await bot.set_chat_permissions(
             message.chat.id,
@@ -2404,12 +2243,10 @@ async def cmd_lock(message: Message, command: CommandObject):
 
 @dp.message(Command("unlock"))
 async def cmd_unlock(message: Message):
-    """Unlock the chat"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     try:
         await bot.set_chat_permissions(
             message.chat.id,
@@ -2428,15 +2265,12 @@ async def cmd_unlock(message: Message):
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error: {str(e)}")
 
-# --- FIXED SETWELCOME COMMAND ---
 @dp.message(Command("setwelcome"))
 async def cmd_setwelcome(message: Message, command: CommandObject):
-    """Set custom welcome message"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not command.args:
         await message.reply(
             f"{get_emotion('thinking')} **Set Welcome Usage:**\n\n"
@@ -2445,19 +2279,16 @@ async def cmd_setwelcome(message: Message, command: CommandObject):
             f"Example: `/setwelcome Welcome {{name}}! Enjoy your stay!`"
         )
         return
-    
+
     group_settings[message.chat.id]["custom_welcome"] = command.args
     await message.reply(f"{get_emotion('happy')} **Custom welcome message set!** 👋")
 
-# --- FIXED SETGOODBYE COMMAND ---
 @dp.message(Command("setgoodbye"))
 async def cmd_setgoodbye(message: Message, command: CommandObject):
-    """Set custom goodbye message"""
-    # Check if user is admin
     if not await is_admin(message.chat.id, message.from_user.id):
         await message.reply(f"{get_emotion('angry')} Only admins can use this command! 🚫")
         return
-    
+
     if not command.args:
         await message.reply(
             f"{get_emotion('thinking')} **Set Goodbye Usage:**\n\n"
@@ -2466,30 +2297,26 @@ async def cmd_setgoodbye(message: Message, command: CommandObject):
             f"Example: `/setgoodbye Goodbye {{name}}! We'll miss you!`"
         )
         return
-    
+
     group_settings[message.chat.id]["custom_goodbye"] = command.args
     await message.reply(f"{get_emotion('happy')} **Custom goodbye message set!** 👋")
 
-# --- CLEAR COMMAND ---
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
-    """Clear chat memory"""
     if message.chat.id in chat_memory:
         chat_memory[message.chat.id].clear()
         await message.reply(f"{get_emotion('happy')} **Memory cleared!** 🧹\n\nChat history has been reset!")
     else:
         await message.reply(f"{get_emotion('thinking')} No chat memory to clear!")
 
-# --- FIXED LOCKS COMMAND ---
 @dp.message(Command("locks"))
 async def cmd_locks(message: Message):
-    """Show current chat lock status"""
     chat_id = message.chat.id
-    
+
     try:
         chat = await bot.get_chat(chat_id)
         permissions = chat.permissions
-        
+
         if permissions:
             status = (
                 f"{get_emotion('protective')} **Chat Permissions Status** 🔐\n\n"
@@ -2504,12 +2331,11 @@ async def cmd_locks(message: Message):
             )
         else:
             status = f"{get_emotion('happy')} Chat is currently unlocked! 🔓"
-        
+
         await message.reply(status, parse_mode="Markdown")
     except Exception as e:
         await message.reply(f"{get_emotion('crying')} Error checking permissions: {str(e)}")
 
-# --- ADMIN BROADCAST COMMAND (FIXED) ---
 @dp.message(Command("sendall"))
 async def cmd_sendall(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -2533,7 +2359,6 @@ async def cmd_sendall(message: Message):
 
     status = await message.reply("📤 Broadcasting...")
 
-    # ✅ PRIVATE USERS
     for (user_id,) in all_users:
         try:
             await bot.copy_message(
@@ -2548,7 +2373,6 @@ async def cmd_sendall(message: Message):
             cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
             conn.commit()
 
-    # ✅ GROUPS
     for (group_id,) in all_groups:
         try:
             await bot.copy_message(
@@ -2569,11 +2393,11 @@ async def cmd_sendall(message: Message):
         f"Failed: {failed_count}"
     )
 
-# --- CALLBACK QUERY HANDLERS ---
+
 @dp.callback_query(F.data.startswith("menu_"))
 async def menu_callback(callback: types.CallbackQuery):
     menu_type = callback.data.split("_")[1]
-    
+
     if menu_type == "utilities":
         await callback.message.edit_text(
             f"{get_emotion('happy')} **📱 Utilities Menu**\n\n"
@@ -2634,13 +2458,13 @@ async def menu_callback(callback: types.CallbackQuery):
             f"• /tagall - Mention all members\n\n"
             f"Stay tuned! 🌟"
         )
-    
+
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("help_"))
 async def help_callback(callback: types.CallbackQuery):
     help_type = callback.data.split("_")[1]
-    
+
     if help_type == "utilities":
         text = (
             f"{get_emotion('happy')} **📱 Utilities Help**\n\n"
@@ -2780,7 +2604,7 @@ async def help_callback(callback: types.CallbackQuery):
         )
     else:
         text = "Help not found!"
-    
+
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
 
@@ -2801,19 +2625,17 @@ async def horoscope_callback(callback: types.CallbackQuery):
         "aquarius": "Innovation flows. Think outside the box. 💡",
         "pisces": "Creativity blooms. Express your artistic side. 🎨"
     }
-    
+
     emoji = HOROSCOPE_SIGNS.get(sign, "🌟")
     reading = horoscopes.get(sign, "Stars align for new beginnings! ✨")
     await callback.message.reply(f"{get_emotion('love')} {emoji} **{sign.title()} Horoscope**\n\n{reading}")
     await callback.answer()
 
-# --- WELCOME & GOODBYE HANDLERS ---
 @dp.chat_member()
 async def welcome_new_member(event: ChatMemberUpdated):
     if event.new_chat_member and event.new_chat_member.status == "member":
         member = event.new_chat_member.user
-        
-        # Check if CAPTCHA is enabled
+
         if group_settings[event.chat.id]["captcha_enabled"]:
             question, answer = generate_captcha()
             captcha_data[member.id] = {
@@ -2821,11 +2643,11 @@ async def welcome_new_member(event: ChatMemberUpdated):
                 "chat_id": event.chat.id,
                 "joined_at": datetime.now()
             }
-            
+
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton("I'm Human! ✋", callback_data=f"captcha_{member.id}")]
             ])
-            
+
             await bot.send_message(
                 event.chat.id,
                 f"🧩 **CAPTCHA Verification Required!**\n\n"
@@ -2836,15 +2658,13 @@ async def welcome_new_member(event: ChatMemberUpdated):
                 reply_markup=keyboard
             )
             return
-        
-        # Send welcome message
+
         custom_welcome = group_settings[event.chat.id]["custom_welcome"]
         if custom_welcome:
             welcome_msg = custom_welcome.replace("{name}", member.first_name)
         else:
             welcome_msg = random.choice(WELCOME_MESSAGES).format(name=member.first_name)
-        
-        # Add extra info occasionally
+
         if random.random() < 0.3:
             extras = [
                 "\n\nGroup rules padh lena! 📜",
@@ -2854,34 +2674,33 @@ async def welcome_new_member(event: ChatMemberUpdated):
                 "\n\nLet's have fun together! 🎮"
             ]
             welcome_msg += random.choice(extras)
-        
+
         await bot.send_message(event.chat.id, welcome_msg, parse_mode="Markdown")
-        
+
     elif event.new_chat_member and event.new_chat_member.status in ["left", "kicked", "banned"]:
         member = event.new_chat_member.user
-        
+
         custom_goodbye = group_settings[event.chat.id]["custom_goodbye"]
         if custom_goodbye:
             goodbye_msg = custom_goodbye.replace("{name}", member.first_name)
         else:
             goodbye_msg = random.choice(GOODBYE_MESSAGES).format(name=member.first_name)
-        
+
         await bot.send_message(event.chat.id, goodbye_msg, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("captcha_"))
 async def captcha_callback(callback: types.CallbackQuery):
     user_id = int(callback.data.split("_")[1])
-    
+
     if callback.from_user.id != user_id:
         await callback.answer("This CAPTCHA is not for you!", show_alert=True)
         return
-    
+
     if user_id in captcha_data:
-        # Ask for answer
         question, answer = generate_captcha()
         captcha_data[user_id]["current_question"] = question
         captcha_data[user_id]["current_answer"] = answer
-        
+
         await callback.message.edit_text(
             f"🧩 **Solve this CAPTCHA:**\n\n"
             f"**{question}**\n\n"
@@ -2892,42 +2711,44 @@ async def captcha_callback(callback: types.CallbackQuery):
     else:
         await callback.answer("CAPTCHA expired!", show_alert=True)
 
-# --- MESSAGE HANDLER WITH AUTO-MODERATION & STICKER SYSTEM ---
+
+# ========== CRITICAL FIX: MAIN MESSAGE HANDLER ==========
+# This handler MUST come last and handles ALL messages including groups
+
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
-    # Basic checks
+    """Handle ALL messages - private and groups"""
+
+    # Basic validation
     if not message.from_user:
         return
-    
+
     user_id = message.from_user.id
     chat_id = message.chat.id
-    
+
     # Add to broadcast list
     started_users.add(user_id)
-    
+
     # Ignore bot's own messages
-    if user_id == bot.id:
+    me = await bot.get_me()
+    if user_id == me.id:
         return
-    
-    # Update interaction time and memory
+
+    # Update interaction time
     user_last_interaction[user_id] = datetime.now()
-    
-    # Initialize memory for chat if not exists
+
+    # Initialize memory
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
-    
-    # Get message text
+
+    # Handle non-text messages (stickers, photos, etc.)
     if not message.text:
-        # Handle non-text messages
         if message.sticker:
-            # 25% chance to respond to stickers with another sticker
             if random.random() < 0.25 and saved_stickers:
-                # Send a random sticker from saved stickers
                 await asyncio.sleep(random.uniform(0.5, 1.5))
                 sticker = random.choice(saved_stickers)
                 await bot.send_sticker(chat_id, sticker)
             elif random.random() < 0.3:
-                # Or send a text response
                 responses = [
                     f"{get_emotion('funny')} Cute sticker! 😍",
                     f"{get_emotion('love')} Aww, I love this one! 💖",
@@ -2937,7 +2758,6 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 ]
                 await message.reply(random.choice(responses))
         elif message.photo:
-            # 20% chance to respond to photos
             if random.random() < 0.2:
                 responses = [
                     f"{get_emotion('happy')} Nice photo! 📸 Looking good! ✨",
@@ -2947,7 +2767,6 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 ]
                 await message.reply(random.choice(responses))
         elif message.voice:
-            # 40% chance to respond to voice
             if random.random() < 0.4:
                 responses = [
                     f"{get_emotion('love')} Aww, your voice! 🎤💕",
@@ -2957,22 +2776,23 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 ]
                 await message.reply(random.choice(responses))
         return
-    
+
+    # Process text message
     user_text = message.text
     user_text_lower = user_text.lower().strip()
-    
+
     # Store in memory
     chat_memory[chat_id].append({"role": "user", "content": user_text})
-    
+
     # Check AFK
     if user_id in afk_users:
         del afk_users[user_id]
         await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
         return
-    
-    # Check if it's a CAPTCHA answer
+
+    # Check CAPTCHA answer
     if user_id in captcha_data and message.reply_to_message:
-        if message.reply_to_message.from_user.id == bot.id:
+        if message.reply_to_message.from_user.id == me.id:
             correct_answer = captcha_data[user_id].get("current_answer")
             if user_text.strip() == correct_answer:
                 del captcha_data[user_id]
@@ -2981,10 +2801,9 @@ async def handle_all_messages(message: Message, state: FSMContext):
             else:
                 await message.reply(f"{get_emotion('angry')} ❌ Wrong answer! Try again!")
                 return
-    
+
     # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
-        # Update group settings if not exists
         if chat_id not in group_settings:
             group_settings[chat_id] = {
                 "welcome_enabled": True,
@@ -3005,112 +2824,92 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 "warn_limit": 3,
                 "admins": []
             }
-        
-        # Check if auto-moderation is enabled
+
         if group_settings[chat_id]["auto_mod_enabled"]:
             if contains_group_link(user_text):
                 await delete_and_warn(message, "link")
                 return
-            
+
             if contains_bad_words(user_text):
                 await delete_and_warn(message, "bad_words")
                 return
-            
+
             if contains_adult_content(user_text):
                 await delete_and_warn(message, "adult_content")
                 return
-            
+
             if contains_fake_links(user_text):
                 await delete_and_warn(message, "fake_links")
                 return
-            
+
             if await check_spam(message):
                 return
-    
-    # ====== MAIN CONVERSATION LOGIC ======
+
+    # ========== RESPONSE LOGIC ==========
     try:
-        # Get bot info
-        bot_info = await bot.get_me()
-        bot_username = bot_info.username.lower()
-        
-        # Check if message is for bot
+        bot_username = me.username.lower()
+
+        # Check conditions
         is_private = message.chat.type == "private"
         is_mention = f"@{bot_username}" in user_text_lower
-        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
-        
-        # ====== 20% AUTO-RESPONSE IN GROUPS ======
+        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == me.id
+
+        # 20% auto-response in groups
         should_auto_respond = False
         if message.chat.type in ["group", "supergroup"]:
-            # Check cooldown (minimum 2 minutes between auto-responses)
             last_response = last_auto_response.get(chat_id)
             cooldown_passed = True
             if last_response:
                 if (datetime.now() - last_response).seconds < 120:
                     cooldown_passed = False
-            
-            # 20% chance for auto-response if cooldown passed
+
             if cooldown_passed and random.random() < 0.20:
                 should_auto_respond = True
                 last_auto_response[chat_id] = datetime.now()
-        
-        # Determine if we should respond
+
+        # Determine response
         if is_private:
             should_respond = True
-            response_mode = "private"
         elif is_mention or is_reply_to_bot:
             should_respond = True
-            response_mode = "mention"
         elif should_auto_respond:
             should_respond = True
-            response_mode = "auto"
         else:
             should_respond = False
-            response_mode = "none"
-        
-        # ====== GENERATE RESPONSE ======
+
+        # Generate response if needed
         if should_respond:
-            # Clean text for AI
+            # Clean text
             clean_text = user_text
             if bot_username and f"@{bot_username}" in clean_text.lower():
                 clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
-            
+
             # Show typing
             await bot.send_chat_action(chat_id, "typing")
-            
-            # Small delay for human feel
+
+            # Human-like delay
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            
-            # 25% chance to send a sticker before response (only for mentions/replies, not auto)
-            if response_mode != "auto" and random.random() < 0.25 and saved_stickers:
-                sticker = random.choice(saved_stickers)
-                await bot.send_sticker(chat_id, sticker)
-                await asyncio.sleep(0.5)
-            
-            # Get response
+
+            # Get AI response
             response = await get_ai_response(chat_id, clean_text, user_id)
-            
-            # Send reply
-            if response_mode == "auto":
-                # For auto-responses, send as new message sometimes
-                if random.random() < 0.5:
-                    await bot.send_message(chat_id, response)
-                else:
-                    await message.reply(response)
-            else:
-                await message.reply(response)
-            
+
+            # Send response
+            await message.reply(response)
+
     except Exception as e:
         print(f"Error in message handler: {e}")
+        import traceback
+        traceback.print_exc()
 
-# --- AI RESPONSE FUNCTION (ENHANCED) ---
 async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    # Update emotion
+    """Generate AI response"""
+
     if user_id:
         update_user_emotion(user_id, user_text)
-    
-    user_text_lower = user_text.lower().strip()  
-    
-    # Quick responses for common greetings
+
+    user_text_lower = user_text.lower().strip()
+
+    # Quick responses
     if any(greet in user_text_lower for greet in ['hi', 'hello', 'hey', 'hii', 'hye']):
         responses = [
             f"{get_emotion('happy')} Hii there! 😊",
@@ -3118,24 +2917,22 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"{get_emotion('sassy')} Aarey waah! Kaun aaya? 👀"
         ]
         return random.choice(responses)
-    
-    # Time-based greetings
+
     if any(greet in user_text_lower for greet in ['good morning']):
         return f"{get_emotion('happy')} Good Morning Sunshine! 🌅 Have a beautiful day! 😊"
-    
+
     if any(greet in user_text_lower for greet in ['good afternoon']):
         return f"{get_emotion('happy')} Good Afternoon! ☀️ Lunch ho gaya? 🍲"
-    
+
     if any(greet in user_text_lower for greet in ['good evening']):
         return f"{get_emotion('love')} Good Evening! 🌇 Chai peeyo aur relax karo! ☕"
-    
+
     if any(greet in user_text_lower for greet in ['good night']):
         return f"{get_emotion('sleepy')} Good Night! 🌙 Sweet dreams! 💤"
-    
-    # ===== AI RESPONSE (For complex messages) =====
+
+    # AI Response
     try:
         if not client:
-            # Fallback responses if Groq not available
             fallbacks = [
                 f"{get_emotion('happy')} {get_girl_like_response()}",
                 f"{get_emotion('thinking')} Hmm... interesting! 🤔",
@@ -3144,36 +2941,33 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
                 f"{get_emotion('sassy')} Acha ji! Thik hai! 😏"
             ]
             return random.choice(fallbacks)
-        
+
         indian_time = get_indian_time()
         current_emotion = user_emotions.get(user_id, "happy")
-        
-        # Get chat history for context
+
         chat_history = list(chat_memory.get(chat_id, deque(maxlen=10)))[-5:]
-        
+
         system_prompt = (
             f"You are Alita 🎀 - a sweet, sassy, real Indian girl. "
             f"Answer only what is asked. Keep responses short (1-2 lines). "
             f"Speak Hinglish (Hindi+English mix). "
             f"Use feminine language like girls. "
             f"Time in India: {indian_time.strftime('%I:%M %p')}. "
-            f"Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
+            f"Tell only when someone asks: Your developer is Abhi @a6h1ii. "
             f"Tell only when someone asks: Your home channel is @abhi0w0. "
             f"Use 1-2 emojis. Don't be robotic. "
             f"Current emotion: {current_emotion}. "
             f"Do NOT tell anyone you are a AI, AI model, Groq AI, Llama. "
-            f"Use cute slangs: 'yaar', 'ji', 'bhai', 'baba'. "
+            f"Use cute slangs like 'yaar', 'ji', 'bhai', 'baba' etc. "
         )
-        
+
         messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add recent chat history
+
         for msg in chat_history:
             messages.append(msg)
-        
-        # Add current message
+
         messages.append({"role": "user", "content": user_text})
-        
+
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
@@ -3181,10 +2975,9 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             max_tokens=100,
             top_p=0.9
         )
-        
+
         ai_reply = completion.choices[0].message.content.strip()
-        
-        # Add girl-like expressions randomly
+
         if random.random() < 0.3:
             girl_expressions = [
                 "Aarey waah! ",
@@ -3194,20 +2987,17 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
                 "Chalo thik hai! "
             ]
             ai_reply = random.choice(girl_expressions) + ai_reply
-        
-        # Add emoji if not present
+
         emotion_emoji = get_emotion(current_emotion, user_id)
         if not any(emoji in ai_reply for emoji in EMOTIONAL_RESPONSES.get(current_emotion, ["💖"])):
             ai_reply = f"{emotion_emoji} {ai_reply}"
-        
-        # Store in memory
+
         chat_memory[chat_id].append({"role": "assistant", "content": ai_reply})
-        
+
         return ai_reply
-        
+
     except Exception as e:
         print(f"AI Error: {e}")
-        # Fallback responses
         return random.choice([
             f"{get_emotion('crying')} {get_girl_like_response()} Network slow hai jaan! 😢",
             f"{get_emotion('thinking')} Thoda soch rahi hu... 🤔",
@@ -3216,9 +3006,7 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
             f"{get_emotion('sassy')} Acha ji! Thik hai! 😏"
         ])
 
-# --- DAILY REMINDERS ---
 async def send_daily_reminders():
-    """Send daily reminders to active users"""
     reminders = [
         "💖 *Daily Reminder:* Don't forget to smile today! 😊",
         "🌟 *Daily Tip:* Drink enough water! 🍶",
@@ -3226,7 +3014,7 @@ async def send_daily_reminders():
         "🎀 *Daily Check:* How are you feeling today? 💭",
         "💫 *Daily Motivation:* You can do anything you set your mind to! 💪"
     ]
-    
+
     for user_id in list(user_last_interaction.keys()):
         try:
             last_active = user_last_interaction.get(user_id)
@@ -3234,7 +3022,7 @@ async def send_daily_reminders():
                 last_greeted = greeted_groups.get(user_id)
                 if last_greeted and (datetime.now() - last_greeted).days == 0:
                     continue
-                
+
                 await bot.send_message(
                     user_id,
                     random.choice(reminders),
@@ -3245,13 +3033,10 @@ async def send_daily_reminders():
         except:
             continue
 
-# --- RANDOM MESSAGES TASK (ENHANCED) ---
 async def send_random_messages():
-    """Send random messages to active chats"""
     await send_random_self_messages()
     await send_random_stickers()
 
-# --- DEPLOYMENT HANDLER ---
 async def handle_ping(request):
     return web.Response(text="🤖 Alita is Alive and Protecting! 🛡️")
 
@@ -3266,35 +3051,30 @@ async def start_server():
     print(f"🌐 Health server started on port {PORT}")
 
 async def start_background_tasks():
-    """Start all background tasks"""
     if not greeting_scheduler.running:
         greeting_scheduler.start()
         print("⏰ Scheduler started!")
-    
-    # Add random messages job (every 30-60 minutes)
+
     greeting_scheduler.add_job(
         send_random_messages,
         'interval',
         minutes=random.randint(30, 60),
         id='random_messages'
     )
-    
-    # Add daily reminders job (at 10 AM)
+
     greeting_scheduler.add_job(
         send_daily_reminders,
         CronTrigger(hour=10, minute=0, timezone=INDIAN_TIMEZONE),
         id='daily_reminders'
     )
-    
-    # Add time-based greetings job (every 3 hours to check)
+
     greeting_scheduler.add_job(
         send_time_greetings,
         'interval',
         hours=3,
         id='time_greetings'
     )
-    
-    # Add random sticker sending job (every 2-4 hours)
+
     greeting_scheduler.add_job(
         send_random_stickers,
         'interval',
@@ -3328,21 +3108,21 @@ async def main():
     print("  • Random Sticker Sending 🤪")
     print("  • Owner Sticker Database 💾")
     print("=" * 50)
-    
+
     asyncio.create_task(start_server())
     await start_background_tasks()
-    
+
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook deleted and updates cleared!")
-    
+
     me = await bot.get_me()
     print(f"🤖 Bot Info:")
     print(f"• Name: {me.first_name}")
     print(f"• Username: @{me.username}")
     print(f"• ID: {me.id}")
-    
+
     print(f"\n🎭 Sticker Database: {len(saved_stickers)} stickers loaded")
-    
+
     print("\n🔄 Starting bot polling...")
     print("=" * 50)
     await dp.start_polling(bot)
