@@ -711,7 +711,7 @@ async def search_song(song_name: str) -> str:
 
                     return (
                         f"🎵 **Search Results for '{song_name}':**\n\n"
-                        f"{\'\n\'.join(song_list)}\n\n"
+                        f"{songs_text}\n\n"
                         f"💡 Use `/lyrics Artist - Song Name` to get lyrics!"
                     )
                 else:
