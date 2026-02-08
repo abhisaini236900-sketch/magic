@@ -2257,17 +2257,25 @@ async def daily_reminders():
 
 def setup_scheduler():
     """Setup scheduled jobs"""
-    # Time-based greetings every 6 hours
-    scheduler.add_job(send_time_greetings, 'interval', hours=6, id='greetings')
-    
-    # Random stickers every 4 hours
-    scheduler.add_job(send_random_stickers, 'interval', hours=4, id='stickers')
-    
-    # Daily reminders at 9 AM
-    scheduler.add_job(daily_reminders, CronTrigger(hour=9, minute=0, timezone=INDIAN_TIMEZONE), id='daily')
-    
-    scheduler.start()
-    logger.info("⏰ Scheduler started")
+    try:
+        sched = AsyncIOScheduler()
+        
+        # Time-based greetings every 6 hours
+        sched.add_job(send_time_greetings, 'interval', hours=6, id='greetings')
+        
+        # Random stickers every 4 hours
+        sched.add_job(send_random_stickers, 'interval', hours=4, id='stickers')
+        
+        # Daily reminders at 9 AM
+        sched.add_job(daily_reminders, CronTrigger(hour=9, minute=0, timezone=INDIAN_TIMEZONE), id='daily')
+        
+        sched.start()
+        logger.info("⏰ Scheduler started")
+        return sched
+    except Exception as e:
+        logger.error(f"Scheduler error: {e}")
+        return None
+
 
 # ========== MAIN ==========
 
@@ -2288,6 +2296,9 @@ async def main():
         logger.info("✅ Web server started")
         
         # Setup scheduler
+        # Line 226 ke aas paas
+        global scheduler
+        scheduler = AsyncIOScheduler()
         setup_scheduler()
         logger.info("✅ Scheduler started")
         
