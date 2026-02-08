@@ -646,7 +646,7 @@ async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
         # AI completion
         messages = [{
             "role": "system",
-            "content"= ("You are Alita 🎀 - a real Indian girl. "
+            "content": ("You are Alita 🎀 - a real Indian girl. "
             "Answer only what is asked. Keep responses short (1-2 lines). "
             "Speak Hinglish (Hindi+English mix). "
             "Use feminine language like girls. "
