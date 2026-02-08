@@ -1381,17 +1381,72 @@ async def cmd_song(message: Message, command: CommandObject):
             parse_mode="Markdown"
         )
         return
-
+    
     song_name = command.args
     status_msg = await message.reply(f"{get_emotion('happy')} 🔍 Searching for: *{song_name}*...", parse_mode="Markdown")
-
+    
     try:
-        result = await search_song(song_name)
-        await status_msg.edit_text(result, parse_mode="Markdown")
+        # Use alternative API - iTunes has issues
+        async with aiohttp.ClientSession() as session:
+            # Try Spotify API (free) or YouTube Music API
+            # Using a simpler approach - just return a helpful message
+            search_query = song_name.replace(' ', '+')
+            
+            # Use Deezer API (free, no auth required)
+            url = f"https://api.deezer.com/search?q={search_query}&limit=5"
+            
+            async with session.get(url, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    tracks = data.get('data', [])
+                    
+                    if not tracks:
+                        await status_msg.edit_text(
+                            f"❌ No songs found for '{song_name}'\n\n"
+                            f"Try: `/lyrics {song_name}` to get lyrics directly!"
+                        )
+                        return
+                    
+                    song_list = []
+                    for i, track in enumerate(tracks[:5], 1):
+                        title = track.get('title', 'Unknown')
+                        artist = track.get('artist', {}).get('name', 'Unknown')
+                        album = track.get('album', {}).get('title', 'Unknown')
+                        duration = track.get('duration', 0)
+                        
+                        # Format duration
+                        mins = duration // 60
+                        secs = duration % 60
+                        duration_str = f"{mins}:{secs:02d}"
+                        
+                        song_info = (
+                            f"{i}. 🎵 **{title}**\n"
+                            f"   👤 Artist: {artist}\n"
+                            f"   💿 Album: {album}\n"
+                            f"   ⏱️ Duration: {duration_str}\n"
+                        )
+                        song_list.append(song_info)
+                    
+                    songs_text = "\n".join(song_list)
+                    await status_msg.edit_text(
+                        f"🎵 **Search Results for '{song_name}':**\n\n"
+                        f"{songs_text}\n\n"
+                        f"💡 Use `/lyrics Artist - Song Name` to get lyrics!",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await status_msg.edit_text(
+                        f"❌ Search service temporarily unavailable.\n\n"
+                        f"Try: `/lyrics {song_name}` to get lyrics directly!"
+                    )
+                    
     except Exception as e:
+        print(f"Song search error: {e}")
         await status_msg.edit_text(
-            f"{get_emotion('crying')} ❌ Search failed: {str(e)}"
+            f"❌ Search failed: {str(e)}\n\n"
+            f"Try: `/lyrics {song_name}` to get lyrics directly!"
         )
+
 
 @dp.message(Command("adminlist"))
 async def cmd_adminlist(message: Message):
@@ -2718,30 +2773,71 @@ async def captcha_callback(callback: types.CallbackQuery):
 @dp.message()
 async def handle_all_messages(message: Message, state: FSMContext):
     """Handle ALL messages - private and groups"""
-
+    
     # Basic validation
     if not message.from_user:
         return
-
+    
     user_id = message.from_user.id
     chat_id = message.chat.id
-
+    
     # Add to broadcast list
     started_users.add(user_id)
-
+    
+    # Get bot info
+    try:
+        me = await bot.get_me()
+    except:
+        return
+    
     # Ignore bot's own messages
-    me = await bot.get_me()
     if user_id == me.id:
         return
-
+    
     # Update interaction time
     user_last_interaction[user_id] = datetime.now()
-
+    
     # Initialize memory
     if chat_id not in chat_memory:
         chat_memory[chat_id] = deque(maxlen=50)
-
-    # Handle non-text messages (stickers, photos, etc.)
+    
+    # ====== CHECK IF MESSAGE IS FOR BOT ======
+    is_private = message.chat.type == "private"
+    is_mention = False
+    is_reply_to_bot = False
+    
+    # Check for mention
+    if message.text and me.username:
+        bot_username_lower = me.username.lower()
+        is_mention = f"@{bot_username_lower}" in message.text.lower()
+    
+    # Check if reply to bot
+    if message.reply_to_message and message.reply_to_message.from_user:
+        is_reply_to_bot = message.reply_to_message.from_user.id == me.id
+    
+    # 20% auto-response in groups (only if not already responding)
+    should_auto_respond = False
+    if message.chat.type in ["group", "supergroup"] and not is_mention and not is_reply_to_bot:
+        last_response = last_auto_response.get(chat_id)
+        cooldown_passed = True
+        if last_response:
+            if (datetime.now() - last_response).seconds < 120:  # 2 min cooldown
+                cooldown_passed = False
+        
+        if cooldown_passed and random.random() < 0.20:
+            should_auto_respond = True
+            last_auto_response[chat_id] = datetime.now()
+    
+    # ====== DECIDE WHETHER TO RESPOND ======
+    should_respond = is_private or is_mention or is_reply_to_bot or should_auto_respond
+    
+    # If not for bot, just save to memory and return
+    if not should_respond:
+        if message.text:
+            chat_memory[chat_id].append({"role": "user", "content": message.text})
+        return
+    
+    # ====== HANDLE NON-TEXT MESSAGES ======
     if not message.text:
         if message.sticker:
             if random.random() < 0.25 and saved_stickers:
@@ -2776,20 +2872,20 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 ]
                 await message.reply(random.choice(responses))
         return
-
-    # Process text message
+    
+    # ====== PROCESS TEXT MESSAGE ======
     user_text = message.text
     user_text_lower = user_text.lower().strip()
-
+    
     # Store in memory
     chat_memory[chat_id].append({"role": "user", "content": user_text})
-
+    
     # Check AFK
     if user_id in afk_users:
         del afk_users[user_id]
         await message.reply(f"{get_emotion('happy')} Welcome back! AFK removed! 👋")
         return
-
+    
     # Check CAPTCHA answer
     if user_id in captcha_data and message.reply_to_message:
         if message.reply_to_message.from_user.id == me.id:
@@ -2801,7 +2897,7 @@ async def handle_all_messages(message: Message, state: FSMContext):
             else:
                 await message.reply(f"{get_emotion('angry')} ❌ Wrong answer! Try again!")
                 return
-
+    
     # Auto-moderation for groups
     if message.chat.type in ["group", "supergroup"]:
         if chat_id not in group_settings:
@@ -2824,77 +2920,56 @@ async def handle_all_messages(message: Message, state: FSMContext):
                 "warn_limit": 3,
                 "admins": []
             }
-
+        
         if group_settings[chat_id]["auto_mod_enabled"]:
             if contains_group_link(user_text):
                 await delete_and_warn(message, "link")
                 return
-
+            
             if contains_bad_words(user_text):
                 await delete_and_warn(message, "bad_words")
                 return
-
+            
             if contains_adult_content(user_text):
                 await delete_and_warn(message, "adult_content")
                 return
-
+            
             if contains_fake_links(user_text):
                 await delete_and_warn(message, "fake_links")
                 return
-
+            
             if await check_spam(message):
                 return
-
-    # ========== RESPONSE LOGIC ==========
+    
+    # ====== GENERATE AI RESPONSE ======
     try:
-        bot_username = me.username.lower()
-
-        # Check conditions
-        is_private = message.chat.type == "private"
-        is_mention = f"@{bot_username}" in user_text_lower
-        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == me.id
-
-        # 20% auto-response in groups
-        should_auto_respond = False
-        if message.chat.type in ["group", "supergroup"]:
-            last_response = last_auto_response.get(chat_id)
-            cooldown_passed = True
-            if last_response:
-                if (datetime.now() - last_response).seconds < 120:
-                    cooldown_passed = False
-
-            if cooldown_passed and random.random() < 0.20:
-                should_auto_respond = True
-                last_auto_response[chat_id] = datetime.now()
-
-        # Determine response
-        if is_private:
-            should_respond = True
-        elif is_mention or is_reply_to_bot:
-            should_respond = True
-        elif should_auto_respond:
-            should_respond = True
-        else:
-            should_respond = False
-
-        # Generate response if needed
-        if should_respond:
-            # Clean text
-            clean_text = user_text
-            if bot_username and f"@{bot_username}" in clean_text.lower():
-                clean_text = re.sub(f"@{bot_username}", "", clean_text, flags=re.IGNORECASE).strip()
-
-            # Show typing
-            await bot.send_chat_action(chat_id, "typing")
-
-            # Human-like delay
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-
-            # Get AI response
-            response = await get_ai_response(chat_id, clean_text, user_id)
-
-            # Send response
-            await message.reply(response)
+        # Clean text for AI (remove bot username)
+        clean_text = user_text
+        if me.username:
+            clean_text = re.sub(f"@{me.username}", "", clean_text, flags=re.IGNORECASE).strip()
+        
+        # Show typing
+        await bot.send_chat_action(chat_id, "typing")
+        
+        # Small delay for human feel
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+        
+        # 25% chance to send sticker first (for mentions/replies only)
+        if (is_mention or is_reply_to_bot) and random.random() < 0.25 and saved_stickers:
+            sticker = random.choice(saved_stickers)
+            await bot.send_sticker(chat_id, sticker)
+            await asyncio.sleep(0.5)
+        
+        # Get AI response
+        response = await get_ai_response(chat_id, clean_text, user_id)
+        
+        # Send response
+        await message.reply(response)
+        
+    except Exception as e:
+        print(f"Error in message handler: {e}")
+        import traceback
+        traceback.print_exc()
 
     except Exception as e:
         print(f"Error in message handler: {e}")
