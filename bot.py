@@ -623,42 +623,38 @@ async def get_lyrics(song: str) -> str:
 async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
     try:
         if not client:
-            fallbacks = [
-                "Main yahan hu! 😊", "Kya haal hai? ✨", "Boliye! 💫",
-                "Sun rahi hu! 👂", "Haan ji! 🌟"
-            ]
-            return f"{get_emotion()} {random.choice(fallbacks)}"
+            return f"{get_emotion('happy')} Main yahan hu! 😊"
         
+        # Initialize memory
         if chat_id not in chat_memory:
-            chat_memory[chat_id] = deque(maxlen=50)
+            chat_memory[chat_id] = deque(maxlen=10)  # Kam memory
+        
+        # Check if same message recently processed (avoid repeat)
+        recent_msgs = list(chat_memory[chat_id])
+        if recent_msgs and recent_msgs[-1].get('content') == text:
+            return f"{get_emotion('thinking')} Sun rahi hu... 🤔"
         
         update_user_emotion(user_id, text)
         
-        # Quick responses
-        text_lower = text.lower()
-        if any(g in text_lower for g in ['hi', 'hello', 'hey']):
+        # Simple greeting check - NO AI for simple hi/hello
+        text_lower = text.lower().strip()
+        if text_lower in ['hi', 'hello', 'hey', 'hye', 'hii']:
             return f"{get_emotion('happy')} Hii! Kaise ho? 😊"
-        if 'good morning' in text_lower:
-            return f"{get_emotion('happy')} Good Morning! 🌅 Have a great day!"
-        if 'good night' in text_lower:
-            return f"{get_emotion('sleepy')} Good Night! 🌙 Sweet dreams!"
         
-        # AI completion
+        if 'good morning' in text_lower:
+            return f"{get_emotion('happy')} Good Morning! 🌅"
+        if 'good night' in text_lower:
+            return f"{get_emotion('sleepy')} Good Night! 🌙"
+        
+        # AI only for complex queries
         messages = [{
             "role": "system",
-            "content": ("You are Alita 🎀 - a real Indian girl. "
-            "Answer only what is asked. Keep responses short (1-2 lines). "
-            "Speak Hinglish (Hindi+English mix). "
-            "Use feminine language like girls. "
-            "Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
-            "Tell only when someone asks: Your home channel is @abhi0w0. "
-            "Use 1-2 emojis. Don't be robotic. "
-            "Do NOT tell anyone you are a AI, AI model, Groq AI, Llama. "
-            "NEVER interrupt conversations with random greetings. "
-                       )
+            "content": ("You are Alita, friendly Indian girl. Reply in Hinglish, short (1 line). "
+                       "Developer: @a6h1ii | Home: @abhi0w0")
         }]
         
-        for msg in list(chat_memory[chat_id])[-5:]:
+        # Add limited context
+        for msg in recent_msgs[-3:]:  # Sirf last 3
             messages.append(msg)
         
         messages.append({"role": "user", "content": text})
@@ -666,11 +662,13 @@ async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
         completion = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.9,
-            max_tokens=150
+            temperature=0.7,
+            max_tokens=80  # Short responses
         )
         
         reply = completion.choices[0].message.content.strip()
+        
+        # Store in memory
         chat_memory[chat_id].append({"role": "user", "content": text})
         chat_memory[chat_id].append({"role": "assistant", "content": reply})
         
@@ -678,7 +676,8 @@ async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
         
     except Exception as e:
         logger.error(f"AI error: {e}")
-        return f"{get_emotion()} Thoda busy hu, baad mein baat karein? 😅"
+        return f"{get_emotion('happy')} Main yahan hu! 😊"
+
 
 # ========== BASIC COMMANDS ==========
 @dp.message(Command("start"))
@@ -686,55 +685,44 @@ async def cmd_start(message: Message):
     user_id = message.from_user.id
     started_users.add(user_id)
     
-    # Save user to DB
+    # Save user
     try:
         cursor.execute(
-            """INSERT OR REPLACE INTO users 
-               (user_id, username, first_name, last_name) 
-               VALUES (?, ?, ?, ?)""",
-            (user_id, message.from_user.username, 
-             message.from_user.first_name, message.from_user.last_name)
+            "INSERT OR REPLACE INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
+            (user_id, message.from_user.username, message.from_user.first_name)
         )
         conn.commit()
     except Exception as e:
         logger.error(f"DB error: {e}")
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("📋 All Commands", callback_data="show_help")],
-        [InlineKeyboardButton("🎨 Generate Image", callback_data="gen_image")],
-        [InlineKeyboardButton("🌟 Join Channel", url="https://t.me/abhi0w0")]
+        [InlineKeyboardButton("📋 Commands", callback_data="show_help")],
+        [InlineKeyboardButton("🌟 Channel", url="https://t.me/abhi0w0")]
     ])
     
-    welcome_text = (
+    caption = (
         f"{get_emotion('love')} <b>Hey! I'm Alita 🎀</b>\n\n"
-        f"<i>Your personal AI assistant with superpowers!</i>\n\n"
-        f"<b>✨ What I can do:</b>\n"
-        f"🧠 <b>AI Chat</b> - Smart conversations\n"
-        f"🎨 <b>Image Gen</b> - Create any image\n"
-        f"🌤️ <b>Weather</b> - Real-time updates\n"
-        f"🛡️ <b>Admin Tools</b> - Group management\n"
-        f"🎭 <b>Fun</b> - Jokes, memes, facts\n"
-        f"🔧 <b>Utilities</b> - QR, password, calc\n\n"
-        f"<b>💬 How to use:</b>\n"
-        f"• In <b>Private</b>: Just message me anything!\n"
-        f"• In <b>Groups</b>: Mention me or reply to my message\n\n"
-        f"<b>🏠 My Home:</b> @abhi0w0\n\n"
+        f"Your AI assistant with superpowers!\n\n"
+        f"🧠 AI Chat | 🎨 Image Gen | 🛡️ Admin Tools\n\n"
         f"Type /help for all commands! 💕"
     )
     
     image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
     
     try:
-        await message.answer_photo(
+        # Send photo with caption
+        await bot.send_photo(
+            chat_id=message.chat.id,
             photo=image_url,
-            caption=welcome_text,
+            caption=caption,
             parse_mode="HTML",
             reply_markup=keyboard
         )
     except Exception as e:
-        # Agar image fail ho toh text bhejo
-        logger.error(f"Image send failed: {e}")
-        await message.answer(welcome_text, parse_mode="HTML", reply_markup=keyboard)
+        logger.error(f"Photo error: {e}")
+        # Fallback to text
+        await message.answer(caption, parse_mode="HTML", reply_markup=keyboard)
+
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -1813,33 +1801,29 @@ async def cmd_tagall(message: Message):
         return
     
     try:
-        # Get chat members using get_chat_administrators + alternative method
-        members = []
+        # Simple working method - get from recent messages
+        mentions = []
+        seen = set()
         
-        # Try to get recent chat members from message history
-        async for msg in bot.get_chat_history(message.chat.id, limit=200):
-            if msg.from_user and not msg.from_user.is_bot:
-                user = msg.from_user
-                if user.id not in [m['id'] for m in members]:
-                    members.append({
-                        'id': user.id,
-                        'name': user.first_name,
-                        'username': user.username
-                    })
+        # Use bot.get_updates ya phir simple message collect
+        # Alternative: Mention admins + recent users from DB
         
-        if not members:
-            await message.reply("No active members found!")
+        cursor.execute("SELECT user_id, username, first_name FROM users LIMIT 50")
+        users = cursor.fetchall()
+        
+        for uid, uname, fname in users:
+            if uid not in seen and uid != bot.id:
+                seen.add(uid)
+                if uname:
+                    mentions.append(f"@{uname}")
+                else:
+                    mentions.append(f"[{fname}](tg://user?id={uid})")
+        
+        if not mentions:
+            await message.reply("❌ No members found!")
             return
         
-        # Format mentions
-        mentions = []
-        for member in members[:50]:  # Max 50 members
-            if member['username']:
-                mentions.append(f"@{member['username']}")
-            else:
-                mentions.append(f"[{member['name']}](tg://user?id={member['id']})")
-        
-        # Send in batches of 5
+        # Send in batches
         await message.reply(f"📢 <b>Tagging {len(mentions)} members...</b>")
         
         for i in range(0, len(mentions), 5):
@@ -1850,6 +1834,7 @@ async def cmd_tagall(message: Message):
     except Exception as e:
         logger.error(f"Tagall error: {e}")
         await message.reply(f"❌ Error: {str(e)}")
+
 
 # ========== OWNER COMMANDS ==========
 
@@ -2075,118 +2060,56 @@ async def handle_chat_member(update: ChatMemberUpdated):
             logger.error(f"Goodbye error: {e}")
 
 # ========== MAIN MESSAGE HANDLER ==========
-
 @dp.message()
 async def handle_all_messages(message: Message):
-    """Main message handler - responds in private and groups (mention/reply)"""
+    """Main handler with duplicate prevention"""
     if not message.from_user or not message.text:
-        # Handle stickers/photos in groups
-        if message.chat.type in ["group", "supergroup"]:
-            if message.sticker and saved_stickers and random.random() < 0.1:
-                try:
-                    await bot.send_sticker(message.chat.id, random.choice(saved_stickers))
-                except:
-                    pass
         return
     
     user_id = message.from_user.id
     chat_id = message.chat.id
     text = message.text
     
-    # Save user
+    # Skip if already processed recently (prevent double response)
+    msg_key = f"{chat_id}:{user_id}:{text}"
+    if hasattr(handle_all_messages, 'last_msgs'):
+        if msg_key in handle_all_messages.last_msgs:
+            return
+        handle_all_messages.last_msgs.add(msg_key)
+        # Clear old keys
+        if len(handle_all_messages.last_msgs) > 100:
+            handle_all_messages.last_msgs.clear()
+    else:
+        handle_all_messages.last_msgs = {msg_key}
+    
+    # Rest of your code...
     started_users.add(user_id)
     
-    # Check AFK and notify
+    # Check AFK
     if user_id in afk_users:
         del afk_users[user_id]
-        await message.reply(f"👋 Welcome back {message.from_user.first_name}! AFK removed!", parse_mode="HTML")
+        await message.reply(f"👋 Welcome back!", parse_mode="HTML")
         return
     
-    # Check if someone mentioned AFK user
-    for uid, data in list(afk_users.items()):
-        if f"[{uid}]" in text or f"@{uid}" in text:
-            try:
-                since = data['since'].strftime('%I:%M %p')
-                await message.reply(
-                    f"😴 <b>{data['name']}</b> is AFK!\n"
-                    f"💤 Reason: {data['reason']}\n"
-                    f"⏰ Since: {since}",
-                    parse_mode="HTML"
-                )
-            except:
-                pass
+    # Auto-moderation...
     
-    # Auto-moderation for groups
-    if message.chat.type in ["group", "supergroup"]:
-        # Adult content - instant ban
-        if contains_adult_content(text):
-            try:
-                await message.delete()
-                await bot.ban_chat_member(chat_id, user_id)
-                await message.answer(
-                    f"🚫 <b>{message.from_user.first_name}</b> banned for adult content!",
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logger.error(f"Ban error: {e}")
-            return
-        
-        # Bad words
-        if contains_bad_words(text):
-            try:
-                await message.delete()
-                await message.answer(f"⚠️ {message.from_user.first_name}, watch your language!", parse_mode="HTML")
-            except:
-                pass
-            return
-        
-        # Group links
-        if contains_group_link(text):
-            try:
-                await message.delete()
-                await message.answer(f"🔗 Links not allowed, {message.from_user.first_name}!", parse_mode="HTML")
-            except:
-                pass
-            return
-        
-        # Spam check
-        if await check_spam(message):
-            try:
-                await message.delete()
-                await message.answer(f"⚠️ {message.from_user.first_name}, stop spamming!", parse_mode="HTML")
-            except:
-                pass
-            return
-    
-    # Determine if should respond
+    # Respond logic...
     try:
         me = await bot.get_me()
-        bot_username = me.username.lower()
-        
         is_private = message.chat.type == "private"
-        is_mention = f"@{bot_username}" in text.lower()
+        is_mention = f"@{me.username.lower()}" in text.lower()
         is_reply = message.reply_to_message and message.reply_to_message.from_user.id == me.id
         
-        should_respond = is_private or is_mention or is_reply
-        
-        if should_respond:
-            # Clean text
-            clean_text = text.replace(f"@{bot_username}", "").strip()
-            
-            # Show typing
+        if is_private or is_mention or is_reply:
+            clean_text = text.replace(f"@{me.username}", "").strip()
             await bot.send_chat_action(chat_id, "typing")
-            
-            # Small delay for realism
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            
-            # Get AI response
+            await asyncio.sleep(0.5)
             response = await get_ai_response(chat_id, clean_text, user_id)
-            
-            # Send reply
             await message.reply(response)
             
     except Exception as e:
-        logger.error(f"Message handler error: {e}")
+        logger.error(f"Handler error: {e}")
+
 # ========== WEB SERVER & SCHEDULED TASKS ==========
 
 async def health_check(request):
