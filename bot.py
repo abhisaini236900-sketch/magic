@@ -646,9 +646,16 @@ async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
         # AI completion
         messages = [{
             "role": "system",
-            "content": ("You are Alita, a friendly Indian girl. Reply in Hinglish. "
-                       "Keep it short (1-2 lines). Be casual, use emojis. "
-                       "Developer: @a6h1ii | Home: @abhi0w0")
+            "content"= ("You are Alita 🎀 - a real Indian girl. "
+            "Answer only what is asked. Keep responses short (1-2 lines). "
+            "Speak Hinglish (Hindi+English mix). "
+            "Use feminine language like girls. "
+            "Tell only when someone asks: Your developer is Abhi (@a6h1ii). "
+            "Tell only when someone asks: Your home channel is @abhi0w0. "
+            "Use 1-2 emojis. Don't be robotic. "
+            "Do NOT tell anyone you are a AI, AI model, Groq AI, Llama. "
+            "NEVER interrupt conversations with random greetings. "
+                       )
         }]
         
         for msg in list(chat_memory[chat_id])[-5:]:
@@ -672,8 +679,8 @@ async def get_ai_response(chat_id: int, text: str, user_id: int) -> str:
     except Exception as e:
         logger.error(f"AI error: {e}")
         return f"{get_emotion()} Thoda busy hu, baad mein baat karein? 😅"
-# ========== BASIC COMMANDS ==========
 
+# ========== BASIC COMMANDS ==========
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     user_id = message.from_user.id
@@ -711,12 +718,23 @@ async def cmd_start(message: Message):
         f"<b>💬 How to use:</b>\n"
         f"• In <b>Private</b>: Just message me anything!\n"
         f"• In <b>Groups</b>: Mention me or reply to my message\n\n"
-        f"<b>🏠 My Home:</b> @abhi0w0\n"
-        f"<b>👨‍💻 Developer:</b> @a6h1ii\n\n"
+        f"<b>🏠 My Home:</b> @abhi0w0\n\n"
         f"Type /help for all commands! 💕"
     )
     
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=keyboard)
+    image_url = "https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png"
+    
+    try:
+        await message.answer_photo(
+            photo=image_url,
+            caption=welcome_text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        # Agar image fail ho toh text bhejo
+        logger.error(f"Image send failed: {e}")
+        await message.answer(welcome_text, parse_mode="HTML", reply_markup=keyboard)
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -724,65 +742,59 @@ async def cmd_help(message: Message):
         f"{get_emotion('happy')} <b>🎀 ALITA COMMAND CENTER 🎀</b>\n\n"
         
         f"<b>🧠 AI & CHAT</b>\n"
-        f"<code>/start</code> - Start the bot\n"
-        f"<code>/ask [question]</code> - Ask AI anything\n"
-        f"<code>/clear</code> - Clear chat memory\n\n"
+        f"/start - Start the bot\n"
+        f"/ask [question] - Ask AI anything\n"
+        f"/clear - Clear chat memory\n\n"
         
         f"<b>🎨 CREATIVE</b>\n"
-        f"<code>/imagine [prompt]</code> - AI image generation\n"
-        f"<code>/meme</code> - Random meme text\n"
-        f"<code>/joke</code> - Random joke\n"
-        f"<code>/fact</code> - Daily fact\n"
-        f"<code>/roast</code> - Roast someone (reply)\n"
-        f"<code>/horoscope [sign]</code> - Daily horoscope\n\n"
+        f"/imagine [prompt] - AI image generation\n"
+        f"/meme - Random meme text\n"
+        f"/joke - Random joke\n"
+        f"/fact - Daily fact\n"
+        f"/roast - Roast someone (reply)\n"
+        f"/horoscope [sign] - Daily horoscope\n\n"
         
         f"<b>🌤️ UTILITIES</b>\n"
-        f"<code>/weather [city]</code> - Weather info\n"
-        f"<code>/time</code> - Indian time\n"
-        f"<code>/date</code> - Today's date\n"
-        f"<code>/qr [text]</code> - Generate QR code\n"
-        f"<code>/password [len]</code> - Secure password\n"
-        f"<code>/short [url]</code> - Shorten URL\n"
-        f"<code>/calc [expr]</code> - Calculator\n"
-        f"<code>/translate [lang] [text]</code> - Translate\n\n"
+        f"/weather [city] - Weather info\n"
+        f"/time - Indian time\n"
+        f"/date - Today's date\n"
+        f"/qr [text] - Generate QR code\n"
+        f"/password [len] - Secure password\n"
+        f"/short [url] - Shorten URL\n"
+        f"/calc [expr] - Calculator\n"
+        f"/translate [lang] [text] - Translate\n\n"
         
         f"<b>📝 PERSONAL</b>\n"
-        f"<code>/note [text]</code> - Save a note\n"
-        f"<code>/notes</code> - View your notes\n"
-        f"<code>/remind [time] [text]</code> - Set reminder\n"
-        f"<code>/reminders</code> - View reminders\n"
-        f"<code>/afk [reason]</code> - Set AFK status\n"
-        f"<code>/id</code> - Get your info\n"
-        f"<code>/info</code> - Get user info (reply)\n\n"
+        f"/note [text] - Save a note\n"
+        f"/notes - View your notes\n"
+        f"/remind [time] [text] - Set reminder\n"
+        f"/reminders - View reminders\n"
+        f"/afk [reason] - Set AFK status\n"
+        f"/id - Get your info\n"
+        f"/info - Get user info (reply)\n\n"
         
         f"<b>🎵 MUSIC</b>\n"
-        f"<code>/lyrics [song]</code> - Get song lyrics\n"
-        f"<code>/song [name]</code> - Search song info\n\n"
+        f"/lyrics [song] - Get song lyrics\n"
+        f"/song [name] - Search song info\n\n"
         
         f"<b>🛡️ ADMIN COMMANDS</b>\n"
-        f"<code>/adminlist</code> - List all admins\n"
-        f"<code>/warn [reason]</code> - Warn user (reply)\n"
-        f"<code>/kick</code> - Kick user (reply)\n"
-        f"<code>/ban</code> - Ban user permanently (reply)\n"
-        f"<code>/unban</code> - Unban user (reply)\n"
-        f"<code>/mute [time]</code> - Mute user (reply)\n"
-        f"<code>/unmute</code> - Unmute user (reply)\n"
-        f"<code>/purge [n]</code> - Delete messages\n"
-        f"<code>/pin</code> - Pin message (reply)\n"
-        f"<code>/unpin</code> - Unpin last message\n"
-        f"<code>/slowmode [sec]</code> - Set slow mode\n"
-        f"<code>/lock</code> - Lock group chat\n"
-        f"<code>/unlock</code> - Unlock group chat\n"
-        f"<code>/setwelcome [text]</code> - Custom welcome\n"
-        f"<code>/setgoodbye [text]</code> - Custom goodbye\n"
-        f"<code>/tagall</code> - Mention all members\n"
-        f"<code>/rules</code> - Show group rules\n\n"
-        
-        f"<b>👑 OWNER ONLY</b>\n"
-        f"<code>/sendall</code> - Broadcast message (reply)\n"
-        f"<code>/savesticker</code> - Save sticker (reply)\n"
-        f"<code>/stickerstatus</code> - Sticker database info\n"
-        f"<code>/broadcast</code> - Send to all users\n\n"
+        f"/adminlist - List all admins\n"
+        f"/warn [reason] - Warn user (reply)\n"
+        f"/kick - Kick user (reply)\n"
+        f"/ban - Ban user permanently (reply)\n"
+        f"/unban - Unban user (reply)\n"
+        f"/mute [time] - Mute user (reply)\n"
+        f"/unmute - Unmute user (reply)\n"
+        f"/purge [n] - Delete messages\n"
+        f"/pin - Pin message (reply)\n"
+        f"/unpin - Unpin last message\n"
+        f"/slowmode [sec] - Set slow mode\n"
+        f"/lock - Lock group chat\n"
+        f"/unlock - Unlock group chat\n"
+        f"/setwelcome [text] - Custom welcome\n"
+        f"/setgoodbye [text] - Custom goodbye\n"
+        f"/tagall - Mention all members\n"
+        f"/rules - Show group rules\n\n"
         
         f"<b>🔒 AUTO-MODERATION</b>\n"
         f"• Bad word filtering\n"
@@ -791,11 +803,6 @@ async def cmd_help(message: Message):
         f"• Spam detection\n"
         f"• Fake link detection\n"
         f"• Auto-warn (3 = mute, adult = ban)\n\n"
-        
-        f"<b>⏰ SCHEDULED FEATURES</b>\n"
-        f"• Morning/Afternoon/Evening/Night greetings\n"
-        f"• Daily facts & reminders\n"
-        f"• Random sticker sending\n\n"
         
         f"━━〘 <b>@abhi0w0</b> 〙━━"
     )
@@ -1806,29 +1813,44 @@ async def cmd_tagall(message: Message):
         return
     
     try:
-        # Get members
+        # Get chat members using get_chat_administrators + alternative method
         members = []
-        async for member in bot.get_chat_members(message.chat.id):
-            if not member.user.is_bot and member.user.id != bot.id:
-                if member.user.username:
-                    members.append(f"@{member.user.username}")
-                else:
-                    members.append(f"[{member.user.first_name}](tg://user?id={member.user.id})")
+        
+        # Try to get recent chat members from message history
+        async for msg in bot.get_chat_history(message.chat.id, limit=200):
+            if msg.from_user and not msg.from_user.is_bot:
+                user = msg.from_user
+                if user.id not in [m['id'] for m in members]:
+                    members.append({
+                        'id': user.id,
+                        'name': user.first_name,
+                        'username': user.username
+                    })
         
         if not members:
-            await message.reply("No members found!")
+            await message.reply("No active members found!")
             return
         
-        # Send in batches of 5
-        await message.reply(f"📢 <b>Tagging {len(members)} members...</b>")
+        # Format mentions
+        mentions = []
+        for member in members[:50]:  # Max 50 members
+            if member['username']:
+                mentions.append(f"@{member['username']}")
+            else:
+                mentions.append(f"[{member['name']}](tg://user?id={member['id']})")
         
-        for i in range(0, len(members), 5):
-            batch = members[i:i+5]
+        # Send in batches of 5
+        await message.reply(f"📢 <b>Tagging {len(mentions)} members...</b>")
+        
+        for i in range(0, len(mentions), 5):
+            batch = mentions[i:i+5]
             await message.reply(" ".join(batch), parse_mode="Markdown")
             await asyncio.sleep(1)
             
     except Exception as e:
+        logger.error(f"Tagall error: {e}")
         await message.reply(f"❌ Error: {str(e)}")
+
 # ========== OWNER COMMANDS ==========
 
 @dp.message(Command("sendall"))
