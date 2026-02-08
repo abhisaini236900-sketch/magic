@@ -43,6 +43,7 @@ conn.commit()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS groups (
     chat_id INTEGER PRIMARY KEY
+    )
 """)
 conn.commit()
 cursor.execute("""
