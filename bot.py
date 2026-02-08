@@ -9,6 +9,8 @@ import hashlib
 import string
 import qrcode
 import sqlite3
+import logging
+logging.basicConfig(level=logging.INFO)
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -2971,35 +2973,36 @@ async def start_background_tasks():
     )
 
 async def main():
-    print("=" * 50)
-    print("🎀 ALITA - FIXED & ADVANCED GROUP MANAGEMENT BOT")
-    print("=" * 50)
-    print("✨ Fixed Features:")
-    print("  • Works in ALL groups (mention/reply only)")
-    print("  • Works in PRIVATE (all messages)")
-    print("  • NO annoying mid-chat greetings")
-    print("  • Proper admin checks (owner + creator + admin)")
-    print("  • Auto-moderation working")
-    print("  • Scheduled greetings only")
-    print("=" * 50)
-    
-    asyncio.create_task(start_server())
-    await start_background_tasks()
-    
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook deleted and updates cleared!")
-    
-    me = await bot.get_me()
-    print(f"🤖 Bot Info:")
-    print(f"• Name: {me.first_name}")
-    print(f"• Username: @{me.username}")
-    print(f"• ID: {me.id}")
-    
-    print(f"\n🎭 Sticker Database: {len(saved_stickers)} stickers loaded")
-    
-    print("\n🔄Starting bot polling...")
-    print("=" * 50)
-    await dp.start_polling(bot)
+    try:
+        print("=" * 50)
+        print("ALITA BOT STARTING")
+        print("=" * 50)
+        
+        # Check env vars
+        if not TOKEN:
+            print("ERROR: BOT_TOKEN not set!")
+            return
+        if not GROQ_API_KEY:
+            print("WARNING: GROQ_API_KEY not set!")
+        
+        print(f"Admin ID: {ADMIN_ID}")
+        
+        asyncio.create_task(start_server())
+        await start_background_tasks()
+        
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("Webhook deleted!")
+        
+        me = await bot.get_me()
+        print(f"Bot: @{me.username}")
+        
+        print("Starting polling...")
+        await dp.start_polling(bot)
+        
+    except Exception as e:
+        print(f"FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
     
     if _name_ == "__main_ ":
         asyncio.run(main())
