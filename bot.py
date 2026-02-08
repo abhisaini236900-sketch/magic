@@ -2996,4 +2996,9 @@ async def main():
     
     print(f"\n🎭 Sticker Database: {len(saved_stickers)} stickers loaded")
     
-    print("\n🔄 Starting ‌‍
+    print("\n🔄Starting bot polling...")
+    print("=" * 50)
+    await dp.start_polling(bot)
+    
+    if _name_ == "__main_ ":
+        asyncio.run(main())
