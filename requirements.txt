@@ -4,6 +4,4 @@ aiohttp
 pytz
 Pillow
 qrcode
-motor
 apscheduler
-requests
