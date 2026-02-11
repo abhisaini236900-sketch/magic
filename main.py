@@ -738,15 +738,15 @@ async def tera_handler(message: Message):
         await message.reply("Invalid TeraBox link.")
         return
 
-    processing = await message.reply("Processing your link...")
+    processing = await message.reply("Extracting video...")
 
-    direct_link = await extract_terabox_link(url)
+    direct_link = await extract_terabox_video(url)
 
     if not direct_link:
-        await processing.edit_text("Failed to fetch video.")
+        await processing.edit_text("Failed to extract video.")
         return
 
-    # Send as watch button (safe method)
+    # Send watch button (safe method)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🎥 Watch Online", url=direct_link)]
@@ -754,7 +754,7 @@ async def tera_handler(message: Message):
     )
 
     await processing.edit_text(
-        "Click below to watch your video:",
+        "Video Ready:",
         reply_markup=kb
     )
 
@@ -2219,24 +2219,55 @@ async def send_random_stickers():
             except:
                 pass
 
-async def extract_terabox_link(url: str):
+async def extract_terabox_video(url: str):
     try:
+        short_code = url.split("/s/")[-1].split("?")[0]
+
         headers = {
-            "User-Agent": "Mozilla/5.0"
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.terabox.com/"
         }
 
-        r = requests.get(url, headers=headers, allow_redirects=True)
-        
-        if r.status_code != 200:
-            return None
+        async with aiohttp.ClientSession(headers=headers) as session:
 
-        # Basic parsing attempt (lightweight method)
-        if "dlink" in r.text:
-            return url  # fallback
-        
-        return None
+            # Step 1: Get share page
+            async with session.get(url) as resp:
+                text = await resp.text()
 
-    except Exception:
+            # Extract uk & shareid using regex
+            uk_match = re.search(r'"uk":(\d+)', text)
+            shareid_match = re.search(r'"shareid":(\d+)', text)
+
+            if not uk_match or not shareid_match:
+                return None
+
+            uk = uk_match.group(1)
+            shareid = shareid_match.group(1)
+
+            # Step 2: Call internal API
+            api_url = "https://www.terabox.com/share/list"
+
+            params = {
+                "app_id": "250528",
+                "shorturl": short_code,
+                "root": "1"
+            }
+
+            async with session.get(api_url, params=params) as api_resp:
+                data = await api_resp.json()
+
+            if "list" not in data:
+                return None
+
+            file_data = data["list"][0]
+
+            if "dlink" not in file_data:
+                return None
+
+            return file_data["dlink"]
+
+    except Exception as e:
+        print("Terabox error:", e)
         return None
 
 async def daily_reminders():
