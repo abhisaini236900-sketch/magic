@@ -724,7 +724,7 @@ async def cmd_start(message: Message):
         # Fallback to text
         await message.answer(caption, parse_mode="HTML", reply_markup=keyboard)
 
-@router.message(Command("tera"))
+@dp.message(Command("tera"))
 async def tera_handler(message: Message):
     parts = message.text.split()
 
