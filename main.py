@@ -1312,8 +1312,8 @@ async def message_handler(message: Message):
             user_text = re.sub(f"@{BOT_USERNAME}", "", user_text, flags=re.IGNORECASE).strip()
         if not user_text:
             user_text = "Hii"
-        # 15% chance to send sticker before reply
-        if saved_stickers and random.random() < 0.15:
+        # 20% chance to send sticker before reply
+        if saved_stickers and random.random() < 0.20:
             sticker = random.choice(saved_stickers)
             await bot.send_sticker(message.chat.id, sticker)
             await asyncio.sleep(0.3)
@@ -1464,7 +1464,7 @@ async def main():
     scheduler.add_job(send_time_greetings, CronTrigger(hour=12, minute=0, timezone=INDIAN_TZ), id="afternoon")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=18, minute=0, timezone=INDIAN_TZ), id="evening")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=22, minute=0, timezone=INDIAN_TZ), id="night")
-    scheduler.add_job(send_random_sticker_job, CronTrigger(minute="*/30"), id="random_sticker")  # every 30 min
+    scheduler.add_job(send_random_sticker_job, CronTrigger(hour="*/3", minute="0"), id="random_sticker")  # every 30 min
     scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")  # every 30 sec
     scheduler.start()
 
