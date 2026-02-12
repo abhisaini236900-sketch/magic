@@ -1,7 +1,10 @@
 aiogram
-groq
 aiohttp
+apscheduler
 pytz
 Pillow
 qrcode
-apscheduler
+sympy
+psutil
+groq
+g4f
