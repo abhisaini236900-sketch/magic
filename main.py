@@ -877,7 +877,7 @@ async def help_cmd(message: Message):
 🧠 **AI & CHAT**
 /ask [question] – Kuch bhi pucho (Hinglish)
 /clear – Memory clear
-/providers – AI provider change karo (groq, gemini, addy, g4f)
+/providers – AI provider change karo
 /mood – Mera mood change karo
 /creative [topic] – Creative writing, story, poem
 /analyze [code/text] – Analyse karo
@@ -885,7 +885,7 @@ async def help_cmd(message: Message):
 /explain [topic] – Simple mein samjhao
 
 🎨 **CREATIVE**
-/imagine [prompt] – AI se photo banao (Pollinations)
+/imagine [prompt] – AI se photo banao
 /fact – Daily fact
 /horoscope [sign] – Rashifal
 /lyrics [song] – Song lyrics
