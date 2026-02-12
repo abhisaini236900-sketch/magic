@@ -130,7 +130,7 @@ bot_start_time = datetime.now(INDIAN_TZ)
 BAD_WORDS = [
     "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
     "fuck", "shit", "bitch", "bastard", "asshole", "motherfucker", "cunt", "dick",
-    "gaand", "lund", "randi", "harami", "kamina", "suar", "kutta", "bhosdi",
+    "gaand", "lund", "randi", "bhosdi",
     "bc", "mc", "gand", "lauda", "choot", "maa ki", "behen ki"
 ]
 
@@ -343,10 +343,11 @@ async def get_ai_response(chat_id: int, user_text: str, user_id: int = None) -> 
         update_user_emotion(user_id, user_text)
 
     system_prompt = (
-        "You are Alita 🎀 – a sweet, sassy, real Indian girl. "
-        "Always respond in Hinglish (Hindi+English mix), max 2 lines. "
+        "You are Alita 🎀 – a sweet, friendly, real Indian girl. "
+        "Always respond in Hinglish (Hindi+English mix). "
+        "Answer only what is asked. Keep responses short (1-2 lines). "
         "Use feminine tone, add 1-2 cute emojis. "
-        f"Current time in India: {indian_now().strftime('%I:%M %p')}. "
+        "If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}. "
         "If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!' "
         "If someone asks about your channel, say '@abhi0w0 is my home!' "
         "Never admit you're an AI or mention Groq/Llama. "
@@ -537,10 +538,10 @@ async def send_time_greetings():
     """Send time‑based greetings to all active chats (groups & users)"""
     period = get_time_period()
     greetings = {
-        "morning": "🌅 **Good Morning!** Aaj ka din aapke liye mubaarak ho! ✨",
+        "morning": "🌅 **Good Morning!** Have a great day!✨",
         "afternoon": "☀️ **Good Afternoon!** Lunch ho gaya? 🍛",
         "evening": "🌇 **Good Evening!** Chai ka time ho gaya! ☕",
-        "night": "🌙 **Good Night!** Sapno mein milte hain! 💤"
+        "night": "🌙 **Good Night!** Sweat dreams! 💤"
     }
     if period not in greetings:
         return
@@ -630,7 +631,7 @@ async def start_cmd(message: Message):
          InlineKeyboardButton(text="💬 Talk to Alita", callback_data="talk")]
     ])
     welcome = (
-        f"{random_emoji('love')} Hey! I'm Alita 🎀</b>\n\n"
+        f"{random_emoji('love')} **Hey! I'm Alita 🎀**\n\n"
         "Your AI assistant with superpowers!\n\n"
         "🧠 AI Chat | 🎨 Image Gen | 🛡️ Admin Tools\n\n"
         "Type /help for all commands! 💕"
