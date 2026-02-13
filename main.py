@@ -113,7 +113,10 @@ USE_MONGODB = MONGODB_AVAILABLE and MONGODB_URI is not None
 
 if USE_MONGODB:
     mongo_client = MongoClient(MONGODB_URI)
+    try:
     db = mongo_client.get_default_database()
+except:
+    db = mongo_client.get_database("alita_db")
     # Collections
     users_col = db.users
     groups_col = db.groups
