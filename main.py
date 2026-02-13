@@ -1254,9 +1254,11 @@ async def is_raid_mode(chat_id: int) -> bool:
     return group and group.get('anti_raid_enabled', 0) == 1
 
 # -------------------- Moderation Helpers --------------------
-async def delete_and_warn(message: Message, reason: str):
-    from aiogram.types import Message, ChatPermissions
+async def delete_and_warn(message, reason: str):
+    from aiogram.types import ChatPermissions
     from datetime import timedelta
+    import random
+    
     try:
         await message.delete()
     except:
