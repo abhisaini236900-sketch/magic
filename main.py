@@ -1455,19 +1455,22 @@ async def start_cmd(message: Message):
         "username": user.username
     })
 
-    # Channel check for private chat
+    # ✅ OWNER BYPASS: Agar owner hai to channel check skip
     if message.chat.type == "private" and REQUIRED_CHANNEL:
-        is_member = await is_user_in_channel(user.id, REQUIRED_CHANNEL)
-        if not is_member:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔔 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")],
-                [InlineKeyboardButton(text="✅ I've Joined", callback_data="check_join")]
-            ])
-            await message.reply(
-                f"❌ <b>{user.first_name}</b>, is bot ko use karne ke liye pehle hamare channel ko join karo!\n\n👉 {REQUIRED_CHANNEL}",
-                reply_markup=keyboard
-            )
-            return
+        if message.from_user.id != ADMIN_ID:  # owner nahi hai tabhi check karo
+            is_member = await is_user_in_channel(user.id, REQUIRED_CHANNEL)
+            if not is_member:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔔 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")],
+                    [InlineKeyboardButton(text="✅ I've Joined", callback_data="check_join")]
+                ])
+                await message.reply(
+                    f"❌ <b>{user.first_name}</b>, is bot ko use karne ke liye pehle hamare channel ko join karo!\n\n👉 {REQUIRED_CHANNEL}",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                return
+        # owner hai to kuch mat kar, seedha aage badh
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")],
@@ -1484,7 +1487,8 @@ async def start_cmd(message: Message):
         f"{random_emoji('love')} <b>Hey! I'm Alita 🎀</b>\n\n"
         "Your AI assistant with superpowers!\n\n"
         "🧠 AI Chat | 🎨 Image Gen | 🛡️ Admin Tools | 🎮 Gaming\n"
-        "💰 Casino | 🎲 Quizzes | 📚 Wikipedia | 💱 Currency\n\n"
+        "💰 Casino | 🎲 Quizzes | 📚 Wikipedia | 💱 Currency\n"
+        "🆓 100% FREE – No API keys required!\n\n"
         "Type /help for all commands! 💕"
     )
     await message.reply_photo(
@@ -2941,17 +2945,18 @@ async def message_handler(message: Message):
 
     # Private chat channel check
     if is_private and REQUIRED_CHANNEL:
-        if not await is_user_in_channel(message.from_user.id, REQUIRED_CHANNEL):
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔔 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")],
-                [InlineKeyboardButton(text="✅ I've Joined", callback_data="check_join")]
-            ])
-            await message.reply(
-                f"❌ <b>{message.from_user.first_name}</b>, is bot ko use karne ke liye pehle hamare channel ko join karo!\n\n👉 {REQUIRED_CHANNEL}",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-            return
+        if message.from_user.id != ADMIN_ID:  # ✅ OWNER BYPASS
+            if not await is_user_in_channel(message.from_user.id, REQUIRED_CHANNEL):
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔔 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")],
+                    [InlineKeyboardButton(text="✅ I've Joined", callback_data="check_join")]
+                ])
+                await message.reply(
+                    f"❌ <b>{message.from_user.first_name}</b>, is bot ko use karne ke liye pehle hamare channel ko join karo!\n\n👉 {REQUIRED_CHANNEL}",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                return
 
     if is_private or is_reply_to_bot or is_mention:
         await bot.send_chat_action(message.chat.id, "typing")
