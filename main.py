@@ -1255,7 +1255,7 @@ async def is_raid_mode(chat_id: int) -> bool:
 
 # -------------------- Moderation Helpers --------------------
 async def delete_and_warn(message: Message, reason: str):
-    from aiogram.types import ChatPermissions
+    from aiogram.types import Message, ChatPermissions
     from datetime import timedelta
     try:
         await message.delete()
