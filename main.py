@@ -111,12 +111,22 @@ bot_start_time = datetime.now(INDIAN_TZ)
 # -------------------- Database (MongoDB or SQLite) --------------------
 USE_MONGODB = MONGODB_AVAILABLE and MONGODB_URI is not None
 
+# -------------------- SAFE MONGODB CONNECTION --------------------
 if USE_MONGODB:
-    mongo_client = MongoClient(MONGODB_URI)
     try:
-    db = mongo_client.get_default_database()
-except:
-    db = mongo_client.get_database("alita_db")
+        mongo_client = MongoClient(MONGODB_URI)
+        # Check if URI already has database name
+        if '/' in MONGODB_URI.split('@')[-1]:
+            db = mongo_client.get_default_database()
+        else:
+            db = mongo_client['alita_db']  # explicitly set database name
+        # Test connection
+        mongo_client.admin.command('ping')
+        print("✅ MongoDB connected successfully!")
+    except Exception as e:
+        print(f"❌ MongoDB connection failed: {e}")
+        print("⚠️ Falling back to SQLite...")
+        USE_MONGODB = False
     # Collections
     users_col = db.users
     groups_col = db.groups
