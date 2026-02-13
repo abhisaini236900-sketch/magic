@@ -1423,6 +1423,7 @@ async def check_reminders():
         conn.commit()
 
 # -------------------- Bot Initialization --------------------
+# -------------------- Bot Initialization --------------------
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
@@ -1434,9 +1435,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.client.default import DefaultBotProperties 
 
 storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher(storage=storage)
 
 # -------------------- Command Handlers --------------------
