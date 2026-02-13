@@ -7,4 +7,9 @@ qrcode
 sympy
 psutil
 groq
-g4f
+g4f>=0.3.1.9
+pymongo>=4.6.0
+yt-dlp>=2024.8.6
+pypdf>=4.0.0
+python-docx>=0.8.11
+feedparser>=6.0.10
