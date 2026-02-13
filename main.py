@@ -1255,12 +1255,12 @@ async def update_casino(user_id: int, chips: int = None, **kwargs):
         conn.commit()
 
 # -------------------- Anti-Raid --------------------
-async def is_raid_mode(chat_id: int) -> bool:
-    group = await db_get_group(chat_id)
-    return group and group.get('anti_raid_enabled', 0) == 1
-
-# -------------------- Moderation Helpers --------------------
-async def delete_and_warn(message: Message, reason: str):
+async def delete_and_warn(message, reason: str):
+    # Local import to avoid any scope/NameError
+    from aiogram.types import Message, ChatPermissions
+    from datetime import timedelta
+    import random
+    
     try:
         await message.delete()
     except:
