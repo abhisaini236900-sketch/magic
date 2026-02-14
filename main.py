@@ -2530,7 +2530,7 @@ async def message_handler(message: Message):
     # NEW: Random 60% chance in groups (excluding commands and messages that are already triggered)
     random_chance = False
     if message.chat.type in ('group','supergroup') and message.text and not message.text.startswith('/'):
-        if random.random() < 0.6:  # 60% chance
+        if random.random() < 0.35:  # 35% chance
             random_chance = True
 
     if is_private or is_reply_to_bot or is_mention or contains_alita or random_chance:
