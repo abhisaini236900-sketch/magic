@@ -705,14 +705,21 @@ async def call_groq(prompt: str, system_prompt: str = None) -> Optional[str]:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
     try:
-        completion = await groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.9,
-            max_tokens=500
+        completion = await asyncio.wait_for(
+            groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.9,
+                max_tokens=500
+            ),
+            timeout=8
         )
         return completion.choices[0].message.content.strip()
-    except:
+    except asyncio.TimeoutError:
+        logging.warning("Groq API timeout")
+        return None
+    except Exception as e:
+        logging.error(f"Groq error: {e}")
         return None
 
 async def call_addy_chatgpt(user_message: str, system_prompt: str = None) -> Optional[str]:
@@ -786,28 +793,53 @@ async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, h
     return "Main thoda busy hoon, thodi der mein baat karte hain! 😊"
 
 async def generate_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    if user_id:
-        # Update mood
-        for mood, triggers in MOOD_TRIGGERS.items():
-            if any(t in user_text.lower() for t in triggers):
-                user_mood[user_id]["mood"] = mood
-                await db_set_user_pref(user_id, "mood", mood)
-                break
-    mood = user_mood.get(user_id, {}).get("mood", "neutral")
-    system_prompt = get_alita_prompt_with_mood(mood, "AI response")
-    # Get recent conversation history from DB
-    history = await db_get_recent_conversations(chat_id, 20)
-    pref = user_ai_preference.get(user_id, "groq")
-    if pref == "groq" and groq_client:
-        resp = await call_groq(user_text, system_prompt)
-        if resp: return resp
-    resp = await call_g4f(user_text, user_id, system_prompt, history)
-    if resp: return resp
-    return f"{random.choice(['😊','😅','🤔'])} Haan ji, main hoon! Kya baat karni hai?"
-
-def random_emoji(emotion: str = None) -> str:
-    emojis = ["😊", "🎉", "🥳", "🌟", "✨", "😄", "💖", "❤️", "🥰", "😎"]
-    return random.choice(emojis)
+    try:
+        if user_id:
+            # Update mood
+            for mood, triggers in MOOD_TRIGGERS.items():
+                if any(t in user_text.lower() for t in triggers):
+                    user_mood[user_id]["mood"] = mood
+                    await db_set_user_pref(user_id, "mood", mood)
+                    break
+        mood = user_mood.get(user_id, {}).get("mood", "neutral")
+        system_prompt = get_alita_prompt_with_mood(mood, "AI response")
+        
+        # Get recent conversation history from DB
+        history = await db_get_recent_conversations(chat_id, 20)
+        pref = user_ai_preference.get(user_id, "groq")
+        
+        # Try groq first with timeout
+        if pref == "groq" and groq_client:
+            try:
+                resp = await asyncio.wait_for(call_groq(user_text, system_prompt), timeout=10)
+                if resp: 
+                    return resp
+            except asyncio.TimeoutError:
+                logging.warning("Groq timeout, trying g4f...")
+            except Exception as e:
+                logging.error(f"Groq error: {e}")
+        
+        # Try g4f with timeout
+        try:
+            resp = await asyncio.wait_for(call_g4f(user_text, user_id, system_prompt, history), timeout=15)
+            if resp: 
+                return resp
+        except asyncio.TimeoutError:
+            logging.warning("g4f timeout")
+        except Exception as e:
+            logging.error(f"g4f error: {e}")
+        
+        # Ultimate fallback
+        return random.choice([
+            "😊 Haan ji, main sun rahi hoon! Thodi der mein jawab dungi.",
+            "🤔 Achha, main soch rahi hoon...",
+            "😅 Arey yaar, network thoda slow hai, lekin main hoon!",
+            "💬 Kya baat karni hai? Bolo na!",
+            "🎀 Main hoon na! Kuch bhi pucho."
+        ])
+    except Exception as e:
+        logging.error(f"generate_ai_response critical error: {e}")
+        return "😊 Kuch technical issue aa gaya, thodi der mein baat karte hain!"
 
 # -------------------- External Services with Mock Fallback --------------------
 async def get_weather(city: str) -> str:
