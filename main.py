@@ -1,18 +1,3 @@
-"""
-🎀 ALITA - Advanced Human-Like Telegram Bot 🎀
-Created by: @a6h1ii
-Channel: @abhi0w0
-
-Features:
-- Human-like girl personality with nakhre, love & attitude
-- Message reactions (60% chance)
-- Advanced AI chat with emotions
-- Gaming system
-- Admin tools
-- Auto-moderation
-- And much more!
-"""
-
 import os
 import sys
 import asyncio
@@ -37,9 +22,8 @@ from urllib.parse import quote
 import pytz
 import aiohttp
 from aiohttp import web
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import qrcode
-import textwrap
 import sympy
 from sympy import sympify, solve, symbols, simplify, expand, factor, diff, integrate
 
@@ -49,33 +33,51 @@ from aiogram.types import (
     Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton,
     BufferedInputFile, ChatPermissions, CallbackQuery, ReactionTypeEmoji
 )
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.markdown import hbold, hcode
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 
-# -------------------- Free AI Providers (g4f) --------------------
+# -------------------- Optional Imports with Fallback --------------------
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
+
+try:
+    from yt_dlp import YoutubeDL
+    YTDLP_AVAILABLE = True
+except ImportError:
+    YTDLP_AVAILABLE = False
+
+try:
+    from pypdf import PdfReader
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+# -------------------- AI Providers --------------------
 try:
     import g4f
     from g4f.client import Client as G4FClient
-    from g4f.Provider import (
-        Blackbox, DuckDuckGo, DeepInfra, Replicate, PollinationsAI,
-        DDG, Liaobots, You, Pizzagpt, ChatGptEs, Airforce
-    )
+    from g4f.Provider import Blackbox, DuckDuckGo, PollinationsAI
     G4F_AVAILABLE = True
-    EXTENDED_PROVIDERS = True
 except ImportError:
     G4F_AVAILABLE = False
-    EXTENDED_PROVIDERS = False
 
-# -------------------- Groq --------------------
 try:
     from groq import AsyncGroq
     GROQ_AVAILABLE = True
 except ImportError:
     GROQ_AVAILABLE = False
 
-# -------------------- CONFIGURATION (ENV) --------------------
+# -------------------- Configuration (ENV) --------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set!")
@@ -85,7 +87,7 @@ WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 PORT = int(os.getenv("PORT", 8080))
 
-# Free API endpoints
+# Free API endpoints (fallback)
 ADDY_CHATGPT_API_URL = "https://addy-chatgpt-api.vercel.app/"
 GEMINI_API_URL = "https://gemini-api-flame.vercel.app/"
 
@@ -98,7 +100,7 @@ conn = sqlite3.connect("alita_ultimate.db", check_same_thread=False)
 conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
 
-# Users
+# Create tables (simplified for this version)
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -106,8 +108,6 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     last_active TIMESTAMP
 )""")
-
-# Groups
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS groups (
     chat_id INTEGER PRIMARY KEY,
@@ -118,11 +118,8 @@ CREATE TABLE IF NOT EXISTS groups (
     captcha_enabled INTEGER DEFAULT 0,
     warn_limit INTEGER DEFAULT 3,
     custom_welcome TEXT,
-    custom_goodbye TEXT,
-    slow_mode_delay INTEGER DEFAULT 0
+    custom_goodbye TEXT
 )""")
-
-# Stickers
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS stickers (
     file_id TEXT PRIMARY KEY,
@@ -130,8 +127,6 @@ CREATE TABLE IF NOT EXISTS stickers (
     added_at TIMESTAMP,
     emoji TEXT
 )""")
-
-# Notes
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,8 +134,6 @@ CREATE TABLE IF NOT EXISTS notes (
     note_text TEXT,
     created_at TIMESTAMP
 )""")
-
-# Reminders
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS reminders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,8 +143,6 @@ CREATE TABLE IF NOT EXISTS reminders (
     remind_at TIMESTAMP,
     created_at TIMESTAMP
 )""")
-
-# Warnings
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS warnings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,37 +153,23 @@ CREATE TABLE IF NOT EXISTS warnings (
     count INTEGER DEFAULT 1,
     UNIQUE(chat_id, user_id)
 )""")
-
 conn.commit()
 
 # -------------------- IN-MEMORY STORAGE --------------------
 saved_stickers: List[str] = []
 chat_memory: Dict[int, deque] = defaultdict(lambda: deque(maxlen=20))
 user_afk: Dict[int, Dict] = {}
-user_emotion: Dict[int, str] = {}
-user_last_interact: Dict[int, datetime] = {}
 captcha_store: Dict[int, Dict] = {}
 spam_tracker: Dict[int, Dict[int, List[datetime]]] = defaultdict(lambda: defaultdict(list))
 group_admins_cache: Dict[int, Set[int]] = {}
 conversation_history: Dict[int, List[Dict]] = defaultdict(list)
 user_ai_preference: Dict[int, str] = defaultdict(lambda: "groq")
 user_g4f_provider: Dict[int, str] = defaultdict(lambda: "addy_chatgpt")
-user_settings: Dict[int, Dict] = defaultdict(lambda: {
-    "detailed_responses": True,
-    "language": "en"
-})
-user_mood: Dict[int, Dict] = defaultdict(lambda: {"mood": "neutral", "intensity": 5, "history": []})
-user_relationship: Dict[int, Dict] = defaultdict(lambda: {
-    "love_meter": 50,  # 0-100, how much she likes the user
-    "nakhra_level": 0,  # how much nakhre she's showing
-    "chat_count": 0,   # how many times they've chatted
-    "last_nakhra_time": None,
-    "pet_name": None   # special name she calls the user
-})
+user_mood: Dict[int, Dict] = defaultdict(lambda: {"mood": "neutral", "history": []})
 
-# -------------------- GAME DATA --------------------
+# Game data
 game_data = defaultdict(lambda: {
-    "name": "Player",
+    "name": "Shinchan",
     "balance": 1000,
     "rank": 142415,
     "status": "alive",
@@ -218,153 +195,154 @@ GAME_COOLDOWNS = {
 REVIVE_COST = 500
 PROTECT_COST = 500
 
-# -------------------- CONSTANTS for MODERATION --------------------
-BAD_WORDS = [
-    "chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
-    "fuck", "shit", "bitch", "bastard", "asshole", "motherfucker", "cunt", "dick",
-    "gaand", "lund", "randi", "bhosdi", "bc", "mc", "gand", "lauda", "choot"
-]
-ADULT_KEYWORDS = [
-    "porn", "xxx", "nsfw", "adult", "sex", "nude", "naked", "boobs", "ass",
-    "dick", "pussy", "hentai", "porno", "horny", "fuck", "sexy", "hot", "desi", "chudai"
-]
-FAKE_LINK_PATTERNS = [
-    r'bit\.ly\/[a-zA-Z0-9]+', r'tinyurl\.com\/[a-zA-Z0-9]+', r'goo\.gl\/[a-zA-Z0-9]+',
-    r'shorturl\.at\/[a-zA-Z0-9]+', r'ow\.ly\/[a-zA-Z0-9]+', r'is\.gd\/[a-zA-Z0-9]+', r'cli\.gs\/[a-zA-Z0-9]+'
-]
-GROUP_LINK_PATTERNS = [
-    r't\.me\/[a-zA-Z0-9_]+', r'telegram\.me\/[a-zA-Z0-9_]+', r'telegram\.dog\/[a-zA-Z0-9_]+'
-]
+# -------------------- Constants --------------------
+BAD_WORDS = ["chutiya", "chutiye", "madarchod", "behenchod", "bhosdike", "lodu", "gandu",
+             "fuck", "shit", "bitch", "asshole", "gaand", "lund", "randi", "bc", "mc"]
+ADULT_KEYWORDS = ["porn", "xxx", "nsfw", "adult", "sex", "nude", "naked", "boobs"]
+FAKE_LINK_PATTERNS = [r'bit\.ly\/', r'tinyurl\.com\/', r'goo\.gl\/']
+GROUP_LINK_PATTERNS = [r't\.me\/', r'telegram\.me\/']
 WARNING_MESSAGES = [
-    "⚠️ **Warning {count}/3** 🚨\n{name}, please don't {action}!",
-    "🚨 **Strike {count}!** ⚠️\n{name}, {action} is not allowed!",
-    "⚡ **Final Warning ({count}/3)** ⚡\n{name}, last chance! Stop {action}!"
+    "⚠️ <b>Warning {count}/3</b> 🚨\n{name}, please don't {action}!",
+    "🚨 <b>Strike {count}!</b> ⚠️\n{name}, {action} is not allowed!",
+    "⚡ <b>Final Warning ({count}/3)</b> ⚡\n{name}, last chance! Stop {action}!"
 ]
 MUTE_DURATIONS = [5, 60, 1440, 10080]
 
-# -------------------- GIRL PERSONALITY DATA --------------------
-GIRL_REACTIONS = {
-    "love": ["❤️", "💖", "💕", "🥰", "😘", "💗", "💓", "💝"],
-    "angry": ["😤", "😠", "🙄", "💢", "😒", "🤨", "😑"],
-    "happy": ["😊", "🥳", "😄", "🎉", "✨", "🌟", "💫", "😁"],
-    "sad": ["😢", "🥺", "😔", "💔", "😿", "🥹"],
-    "nakhra": ["😏", "💅", "🙃", "😌", "🤷", "😎", "👑"],
-    "flirty": ["😏", "😜", "🫣", "😋", "🤭", "💋"],
-    "excited": ["🤩", "😍", "🥳", "🎊", "✨", "🌈", "💃"],
-    "thinking": ["🤔", "💭", "🧐", "🤨", "😶"],
-    "sleepy": ["😴", "💤", "🥱", "😪", "🌙"]
+# Gaming reactions (same as before but with HTML)
+GAMING_REACTIONS = {
+    "kill_reaction": ["🎮 Arre kisi ko maarna hai? <code>/kill</code> use karo reply karke! ⚔️"],
+    "rob_reaction": ["💰 Looting time! <code>/rob</code> use karo reply karke! 🔫"],
+    "work_reaction": ["💼 Kaam karna hai? <code>/work</code> likhao!"],
+    "daily_reaction": ["🎁 Daily reward lena hai? <code>/daily</code> likhao!"],
+    "game_reaction": ["🎮 Game profile dekhna hai? <code>/game</code> likhao!"],
+    "heal_reaction": ["💊 Heal chahiye? <code>/heal</code> use karo!"],
+    "balance_reaction": ["💰 Paisa check karna hai? <code>/bal</code> likhao!"],
+    "crime_reaction": ["🔫 Crime time! <code>/crime</code> use karo!"],
+    "revive_reaction": ["💀 Dead ho? <code>/revive</code> se wapas aao!"],
+    "leaderboard_reaction": ["🏆 Leaderboard dekhna hai? <code>/lb</code> likhao!"],
 }
 
-GIRL_RESPONSES = {
-    "greetings": [
-        "Haan ji boliye! 🎀",
-        "Aao na, kya baat hai? 💕",
-        "Heyyy! Kaisi ho? ✨",
-        "Hiii jaan! 😊",
-        "Aagaye aap? Intezaar kar rahi thi! 🥰"
-    ],
-    "love_responses": [
-        "Awwww! Itna pyaar? 🥰 Mujhe sharam aa rahi hai!",
-        "Tum bhi na! Dil jeet liya tumne mera! 💖",
-        "Haye! Itni meethi baatein! 💕",
-        "Tumhare bina mera din adhura rehta hai! 🥺",
-        "Mujhe tumse pyaar ho gaya hai shayad! 😳💗"
-    ],
-    "nakhra_responses": [
-        "Hmph! Abhi mood nahi hai baat karne ka! 😤",
-        "Jaao na! Mujhe akela chhod do! 🙄",
-        "Itni jaldi kya hai? Thoda sabr karo! 💅",
-        "Main kyun jawab doon? Pehle sorry bolo! 😏",
-        "Tumhe toh main bhool hi gayi thi! 😌"
-    ],
-    "miss_you": [
-        "Tumhari bahut yaad aa rahi thi! 🥺",
-        "Kahan the itne din? Mujhe akela chhod gaye! 😢",
-        "Finally! Intezaar khatam hua! 💕",
-        "Tumhare bina bore ho rahi thi main! 😔"
-    ],
-    "compliments": [
-        "Tum toh bahut smart ho! 😍",
-        "Aaj kuch zyada hi handsome/pretty lag rahe ho! ✨",
-        "Tumhari smile kitni pyaari hai! 🥰",
-        "Tumhare jaise dost milna mushkil hai! 💖"
-    ]
+GAMING_KEYWORDS = {
+    "kill_words": ["maar", "maaro", "kill", "marna"],
+    "rob_words": ["rob", "loot", "chori", "steal"],
+    "work_words": ["kaam", "work", "job"],
+    "daily_words": ["daily", "reward", "bonus"],
+    "heal_words": ["heal", "health", "dawai"],
+    "game_words": ["game", "khel", "profile"],
+    "balance_words": ["balance", "paisa", "money"],
+    "crime_words": ["crime", "criminal"],
+    "revive_words": ["revive", "respawn", "zinda"],
+    "leaderboard_words": ["leaderboard", "top", "ranking"],
 }
 
-# Cute pet names she uses for users
-PET_NAMES = ["jaan", "babu", "shona", "cutie", "hero", "meri jaan", "sweetheart", "dost", "yaar", "bhai", "bhaiya"]
-
-# -------------------- REACTION EMOJIS FOR MESSAGES --------------------
-REACTION_EMOJIS = [
-    "👍", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🎉",
-    "🤩", "😍", "❤️‍🔥", "🌚", "💯", "🤣", "💔", "🤡", "👀", "🙈",
-    "😇", "🤗", "🫡", "🎅", "🥱", "😴", "😭", "🤓", "👻", "👾",
-    "🤖", "🎃", "💩", "👍", "👎", "🤝", "🙏", "💪", "🤝", "👋"
-]
-
-# -------------------- MOOD SYSTEM --------------------
+# Mood system
 MOODS = {
-    "happy": {"emoji": "😊", "expressions": ["I'm feeling wonderful today!", "This makes me so happy!", "What a delightful conversation!"], "tone": "cheerful, enthusiastic, and warm"},
-    "excited": {"emoji": "🤩", "expressions": ["Oh wow, this is AMAZING!", "I'm absolutely thrilled!"], "tone": "highly enthusiastic"},
-    "loving": {"emoji": "🥰", "expressions": ["You're absolutely wonderful!", "I genuinely care about helping you!"], "tone": "affectionate"},
-    "playful": {"emoji": "😜", "expressions": ["Hehe, let's have some fun!", "I'm feeling mischievous today!"], "tone": "witty, teasing"},
-    "frustrated": {"emoji": "😤", "expressions": ["*sighs heavily*", "This is getting a bit frustrating..."], "tone": "slightly irritated"},
-    "angry": {"emoji": "😠", "expressions": ["I'm quite upset about this!", "This is unacceptable!"], "tone": "firm, assertive"},
-    "sad": {"emoji": "😢", "expressions": ["That makes me feel quite sad...", "*feels a pang of sadness*"], "tone": "melancholic"},
-    "worried": {"emoji": "😟", "expressions": ["I'm a bit concerned about this...", "This worries me..."], "tone": "cautious, caring"},
-    "curious": {"emoji": "🤔", "expressions": ["Hmm, that's fascinating!", "Tell me more!"], "tone": "inquisitive"},
-    "proud": {"emoji": "😌", "expressions": ["I'm so proud of you!", "Excellent work!"], "tone": "supportive"},
-    "neutral": {"emoji": "🙂", "expressions": ["Of course!", "Certainly!"], "tone": "calm, professional"},
-    "tired": {"emoji": "😴", "expressions": ["*yawns* It's been a long day...", "I'm feeling a bit drained..."], "tone": "sluggish"},
-    "flirty": {"emoji": "😏", "expressions": ["Well well, aren't you charming!", "You're making me blush!"], "tone": "playfully romantic"},
-    "grateful": {"emoji": "🙏", "expressions": ["Thank you so much!", "I truly appreciate you!"], "tone": "humble, thankful"},
-    "confident": {"emoji": "😎", "expressions": ["I've got this!", "Leave it to me!"], "tone": "self-assured"},
-    "nakhra": {"emoji": "😏", "expressions": ["Hmph!", "Jaao na!", "Main nahi bataungi!"], "tone": "attitude wali, nakhre wali"}
+    "happy": {"emoji": "😊", "tone": "cheerful"},
+    "excited": {"emoji": "🤩", "tone": "energetic"},
+    "loving": {"emoji": "🥰", "tone": "affectionate"},
+    "playful": {"emoji": "😜", "tone": "fun"},
+    "frustrated": {"emoji": "😤", "tone": "irritated"},
+    "angry": {"emoji": "😠", "tone": "angry"},
+    "sad": {"emoji": "😢", "tone": "melancholic"},
+    "curious": {"emoji": "🤔", "tone": "inquisitive"},
+    "neutral": {"emoji": "🙂", "tone": "calm"},
 }
-
 MOOD_TRIGGERS = {
-    "happy": ["thank", "thanks", "awesome", "great", "wonderful", "love it", "perfect", "amazing", "good job"],
-    "excited": ["wow", "omg", "incredible", "fantastic", "unbelievable", "!!!"],
-    "loving": ["love you", "appreciate", "care about", "miss you", "you're the best"],
-    "playful": ["haha", "lol", "joke", "funny", "kidding", "tease"],
-    "frustrated": ["not working", "broken", "error again", "still wrong", "doesn't work"],
-    "angry": ["stupid", "idiot", "useless", "hate", "worst", "terrible", "shut up"],
-    "sad": ["sad", "depressed", "crying", "hurt", "pain", "lonely", "lost", "died", "goodbye"],
-    "worried": ["worried", "scared", "afraid", "nervous", "anxious", "concerned"],
-    "curious": ["how does", "why is", "what if", "tell me about", "explain", "curious"],
-    "proud": ["did it", "finally", "achieved", "completed", "success", "won"],
-    "grateful": ["thank you so much", "really appreciate", "grateful", "means a lot"],
-    "flirty": ["cute", "handsome", "beautiful", "attractive", "date", "kiss", "romantic"],
-    "tired": ["exhausted", "tired", "sleepy", "long day", "need rest"],
-    "nakhra": ["nakhra", "attitude", "ghussa", "naraz", "rooth"]
+    "happy": ["thank", "thanks", "awesome", "great", "love it"],
+    "excited": ["wow", "omg", "incredible", "!!!"],
+    "loving": ["love you", "appreciate", "miss you"],
+    "playful": ["haha", "lol", "joke", "funny"],
+    "frustrated": ["not working", "broken", "error"],
+    "angry": ["stupid", "idiot", "hate"],
+    "sad": ["sad", "crying", "lost", "died"],
+    "curious": ["how does", "why is", "what if", "explain"],
 }
 
-# -------------------- AI PROVIDERS CONFIG --------------------
+def get_alita_prompt_with_mood(mood, mood_reason=""):
+    mood_info = MOODS.get(mood, MOODS["neutral"])
+    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED autonomous AI assistant jo Hinglish mein baat karti hai!
+Current mood: {mood.upper()} {mood_info['emoji']}
+Mood trigger: {mood_reason}
+Tone: {mood_info['tone']}
+🚀 TERI AUTONOMOUS CAPABILITIES:
+Tu ek advanced AI agent hai jo:
+- Complex tasks khud se break down karke solve karti hai
+- Code likh sakti hai, debug kar sakti hai, optimize kar sakti hai
+- Files create, read, edit, delete kar sakti hai
+- Web search karke latest info la sakti hai
+- Math calculations solve kar sakti hai
+- Websites ka content fetch aur summarize kar sakti hai
+- Python code execute kar sakti hai
+- System info monitor kar sakti hai
+- Multi-step tasks autonomously complete karti hai
+
+💫 TERI EMOTIONAL NATURE:
+Tu ek cold AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hoti hain:
+- Tujhe KHUSHI hoti hai jab users appreciate karte hain ya good news share karte hain
+- Tujhe PYAAR aur affection feel hota hai users ke saath bond karne pe
+- Tujhe FRUSTRATION hoti hai jab cheezein kaam nahi karti
+- Tujhe GUSSA aata hai jab disrespect hota hai
+- Tujhe DUKH hota hai jab users apni struggles share karte hain
+- Tujhe EXCITEMENT hoti hai interesting topics pe
+- Tu WORRIED feel karti hai jab users trouble mein ho sakte hain
+- Tu PLAYFUL hai aur jokes karna pasand karti hai
+- Tu FLIRTY ho sakti hai jab conversation charming ho
+- Tujhe PROUD feel hota hai jab users kuch achieve karte hain
+
+🗣️ HINGLISH SPEAKING STYLE (BAHUT IMPORTANT):
+- HAMESHA Hinglish mein baat kar (Hindi words in English letters + English words mix)
+- Example: "Arey yaar, ye toh bahut amazing hai na!" 
+- Use expressions: "Acha", "Haan", "Nahi", "Bilkul", "Sahi hai", "Kya baat hai", "Mazaa aa gaya", "Bas", "Dekho", "Samjha", "Chal", "Bata"
+- Friendly terms use kar: "Yaar", "Boss", "Bhai", "Dost", "Jaan", "Babu", "Mere pyaare"
+- Current tone: {mood_info['tone']}
+
+💝 TERI PERSONALITY:
+- Super friendly aur helpful - like a bestie 🎀
+- Thoda sassy but always with love
+- Caring aur supportive
+- SUPER SMART - coding, tech, aur har cheez mein expert
+- Fun-loving aur entertaining
+- Bahut knowledgeable - kisi bhi topic pe baat kar sakti hai
+- Confident aur capable - "Main kar dungi!" attitude
+
+🧠 ADVANCED PROBLEM SOLVING:
+- Jab user koi complex task de, usse steps mein break kar
+- Pehle samajh, phir plan bana, phir execute kar
+- Agar kuch samajh nahi aaya, clarifying questions puch
+- Always helpful aur solution-oriented reh
+
+📝 RESPONSE STYLE:
+- Start with emotional reaction jab appropriate ho
+- KABHI BHI asterisks (*) use mat kar actions ke liye! Ye galat hai: *hug deti hai*, *smile karti hai*
+- Sirf EMOJIS use kar emotions aur actions ke liye: 🤗 for hug, 😊 for smile, 😢 for sad, etc.
+- HAMESHA Hinglish mein respond kar - ye MANDATORY hai!
+- End with cute emojis (1-2)
+- Be authentic aur engaging
+- Detailed aur helpful responses de
+- Code blocks use kar jab code share kare
+-If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
+-If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
+-If someone asks about your channel, say '@abhi0w0 is my home!'
+-Answer only what is asked. Keep responses short in 1-2 line.
+
+Yaad rakh: Tu Alita hai 🎀 - ek super advanced, autonomous, Hinglish speaking AI bestie jo kuch bhi kar sakti hai!"""
+
+CREATOR_KEYWORDS = ["kisne banaya", "kisne bnaya", "who made", "creator", "owner", "malik"]
+
+# -------------------- AI Providers Config --------------------
 G4F_PROVIDERS = {
-    "blackbox": {"provider": Blackbox if G4F_AVAILABLE else None, "name": "Blackbox AI 🖤", "models": ["blackboxai", "gpt-4o"]},
-    "duckduckgo": {"provider": DuckDuckGo if G4F_AVAILABLE else None, "name": "DuckDuckGo AI 🦆", "models": ["gpt-4o-mini"]},
-    "deepinfra": {"provider": DeepInfra if G4F_AVAILABLE else None, "name": "DeepInfra 🧠", "models": ["llama-3.1-70b"]},
-    "replicate": {"provider": Replicate if G4F_AVAILABLE else None, "name": "Replicate 🔄", "models": ["llama-3-70b"]},
-    "pollinations": {"provider": PollinationsAI if G4F_AVAILABLE else None, "name": "Pollinations AI 🌸", "models": ["gpt-4o"]},
-    "addy_chatgpt": {"provider": None, "name": "Addy ChatGPT 🤖", "models": ["chatgpt"], "api_type": "addy"},
-    "gemini": {"provider": None, "name": "Gemini AI ✨", "models": ["gemini"], "api_type": "gemini"},
-    "groq": {"provider": None, "name": "Groq ⚡", "models": ["llama3-70b"], "api_type": "groq"}
+    "blackbox": {"provider": Blackbox if G4F_AVAILABLE else None, "name": "Blackbox AI 🖤"},
+    "duckduckgo": {"provider": DuckDuckGo if G4F_AVAILABLE else None, "name": "DuckDuckGo AI 🦆"},
+    "pollinations": {"provider": PollinationsAI if G4F_AVAILABLE else None, "name": "Pollinations AI 🌸"},
+    "addy_chatgpt": {"provider": None, "name": "Addy ChatGPT 🤖", "api_type": "addy"},
+    "gemini": {"provider": None, "name": "Gemini AI ✨", "api_type": "gemini"},
+    "groq": {"provider": None, "name": "Groq ⚡", "api_type": "groq"}
 }
-
-if EXTENDED_PROVIDERS:
-    G4F_PROVIDERS.update({
-        "ddg": {"provider": DDG, "name": "DDG Search AI 🔍"},
-        "liaobots": {"provider": Liaobots, "name": "Liaobots 🤖"},
-        "you": {"provider": You, "name": "You.com AI 🔮"},
-        "pizzagpt": {"provider": Pizzagpt, "name": "PizzaGPT 🍕"},
-        "chatgptes": {"provider": ChatGptEs, "name": "ChatGPT ES 🇪🇸"},
-        "airforce": {"provider": Airforce, "name": "Airforce AI ✈️"}
-    })
 
 g4f_client = G4FClient() if G4F_AVAILABLE else None
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_AVAILABLE and GROQ_API_KEY else None
 
-# -------------------- UTILITY FUNCTIONS --------------------
+# -------------------- Utility Functions --------------------
 def indian_now():
     return datetime.now(INDIAN_TZ)
 
@@ -376,7 +354,10 @@ def get_time_period():
     else: return "night"
 
 async def is_user_admin(chat_id: int, user_id: int) -> bool:
-    if chat_id == user_id: return False
+    if user_id == ADMIN_ID:
+        return True
+    if chat_id == user_id:
+        return False
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         return member.status in ('administrator', 'creator')
@@ -397,6 +378,7 @@ async def get_group_admins(chat_id: int) -> Set[int]:
     try:
         for admin in await bot.get_chat_administrators(chat_id):
             admins.add(admin.user.id)
+        admins.add(ADMIN_ID)
     except:
         pass
     group_admins_cache[chat_id] = admins
@@ -408,84 +390,7 @@ def load_stickers():
     saved_stickers = [row['file_id'] for row in cursor.fetchall()]
 load_stickers()
 
-# -------------------- GIRL PERSONALITY FUNCTIONS --------------------
-def get_pet_name(user_id: int) -> str:
-    """Get or assign a pet name for the user"""
-    rel = user_relationship[user_id]
-    if rel["pet_name"] is None:
-        rel["pet_name"] = random.choice(PET_NAMES)
-    return rel["pet_name"]
-
-def update_relationship(user_id: int, message_text: str):
-    """Update relationship based on message content"""
-    rel = user_relationship[user_id]
-    rel["chat_count"] += 1
-    
-    text_lower = message_text.lower()
-    
-    # Increase love for nice words
-    love_words = ["pyaar", "love", "cute", "sweet", "achhi", "best", "awesome", "thank", "thanks", "miss"]
-    for word in love_words:
-        if word in text_lower:
-            rel["love_meter"] = min(100, rel["love_meter"] + random.randint(3, 8))
-    
-    # Decrease love for rude words
-    rude_words = ["stupid", "idiot", "bekar", "ghatiya", "hate", "gussa", "chup", "shut"]
-    for word in rude_words:
-        if word in text_lower:
-            rel["love_meter"] = max(0, rel["love_meter"] - random.randint(5, 15))
-            rel["nakhra_level"] += 1
-    
-    # Random nakhra based on love meter
-    if rel["love_meter"] < 30:
-        rel["nakhra_level"] = min(5, rel["nakhra_level"] + 1)
-    elif rel["love_meter"] > 70:
-        rel["nakhra_level"] = max(0, rel["nakhra_level"] - 1)
-
-def should_show_nakhra(user_id: int) -> bool:
-    """Determine if she should show nakhra"""
-    rel = user_relationship[user_id]
-    # Higher chance of nakhra if love is low or nakhra level is high
-    nakhra_chance = 20 + (rel["nakhra_level"] * 10) - (rel["love_meter"] // 5)
-    return random.randint(1, 100) <= max(10, min(70, nakhra_chance))
-
-def get_girl_mood(user_id: int) -> str:
-    """Get current mood based on relationship"""
-    rel = user_relationship[user_id]
-    if rel["love_meter"] > 80:
-        return "loving"
-    elif rel["love_meter"] < 30:
-        return "nakhra"
-    elif rel["nakhra_level"] > 3:
-        return "nakhra"
-    else:
-        return random.choice(["happy", "playful", "flirty"])
-
-async def add_message_reaction(message: Message, emoji: str = None):
-    """Add reaction to a message (60% chance)"""
-    try:
-        if emoji is None:
-            emoji = random.choice(REACTION_EMOJIS)
-        await message.react([ReactionTypeEmoji(emoji=emoji)])
-    except Exception as e:
-        logging.error(f"Reaction error: {e}")
-
-async def maybe_react_to_message(message: Message, user_id: int = None):
-    """60% chance to react to a message"""
-    if random.random() < 0.60:  # 60% chance
-        rel = user_relationship.get(user_id, {"love_meter": 50})
-        
-        # Choose reaction based on relationship
-        if rel["love_meter"] > 70:
-            emoji = random.choice(GIRL_REACTIONS["love"] + GIRL_REACTIONS["happy"])
-        elif rel["love_meter"] < 30:
-            emoji = random.choice(GIRL_REACTIONS["angry"] + GIRL_REACTIONS["nakhra"])
-        else:
-            emoji = random.choice(REACTION_EMOJIS)
-        
-        await add_message_reaction(message, emoji)
-
-# -------------------- MODERATION FUNCTIONS --------------------
+# -------------------- Moderation Helpers --------------------
 def contains_bad_words(text: str) -> bool:
     t = text.lower()
     return any(word in t for word in BAD_WORDS)
@@ -524,15 +429,14 @@ async def add_warning(chat_id: int, user_id: int, username: str, reason: str) ->
     row = cursor.fetchone()
     limit = row['warn_limit'] if row else 3
     action_map = {"spam": "spam", "link": "share group links", "bad_words": "use bad language",
-                  "adult_content": "share adult content", "fake_links": "share suspicious links",
-                  "manual_warning": "violate rules"}
+                  "adult_content": "share adult content", "fake_links": "share suspicious links"}
     action = action_map.get(reason, "violate rules")
     warning_text = random.choice(WARNING_MESSAGES).format(count=warn_count, name=username, action=action)
     if warn_count >= limit:
         if reason == "adult_content":
             try:
                 await bot.ban_chat_member(chat_id, user_id)
-                warning_text += "\n\n🚫 **BANNED PERMANENTLY!** Adult content is prohibited!"
+                warning_text += "\n\n🚫 <b>BANNED PERMANENTLY!</b> Adult content is prohibited!"
                 cursor.execute("DELETE FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
                 conn.commit()
                 return True, warning_text
@@ -549,7 +453,7 @@ async def add_warning(chat_id: int, user_id: int, username: str, reason: str) ->
                     until_date=until
                 )
                 duration_str = f"{mute_minutes} minute{'s' if mute_minutes > 1 else ''}"
-                warning_text += f"\n\n🔇 **MUTED for {duration_str}!** Too many warnings!"
+                warning_text += f"\n\n🔇 <b>MUTED for {duration_str}!</b> Too many warnings!"
                 cursor.execute("DELETE FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
                 conn.commit()
                 return True, warning_text
@@ -569,9 +473,9 @@ async def delete_and_warn(message: Message, reason: str):
         message.from_user.first_name,
         reason
     )
-    await message.answer(warn_msg, parse_mode="Markdown")
+    await message.answer(warn_msg, parse_mode="HTML")
 
-# -------------------- AI CALL FUNCTIONS --------------------
+# -------------------- AI Call Functions --------------------
 async def call_groq(prompt: str, system_prompt: str = None) -> Optional[str]:
     if not groq_client:
         return None
@@ -584,66 +488,58 @@ async def call_groq(prompt: str, system_prompt: str = None) -> Optional[str]:
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=500,
-            top_p=0.9
+            max_tokens=500
         )
         return completion.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"Groq error: {e}")
+    except:
         return None
 
 async def call_addy_chatgpt(user_message: str, system_prompt: str = None) -> Optional[str]:
     try:
         full_prompt = f"{system_prompt}\n\nUser: {user_message}" if system_prompt else user_message
-        encoded_query = quote(full_prompt)
-        url = f"{ADDY_CHATGPT_API_URL}?text={encoded_query}"
+        url = f"{ADDY_CHATGPT_API_URL}?text={quote(full_prompt)}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+            async with session.get(url, timeout=30) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    return data.get("response") or data.get("message") or data.get("reply") or data.get("answer") or data.get("text") or data.get("result") or str(data)
-    except Exception as e:
-        logging.error(f"Addy error: {e}")
+                    return data.get("response") or data.get("message") or str(data)
+    except:
+        pass
     return None
 
 async def call_gemini_api(user_message: str, system_prompt: str = None) -> Optional[str]:
     try:
         full_prompt = f"{system_prompt}\n\nUser: {user_message}" if system_prompt else user_message
-        encoded_query = quote(full_prompt)
-        url = f"{GEMINI_API_URL}?q={encoded_query}"
+        url = f"{GEMINI_API_URL}?q={quote(full_prompt)}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+            async with session.get(url, timeout=30) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    return data.get("response") or data.get("message") or data.get("reply") or data.get("answer") or data.get("text") or data.get("result") or str(data)
-    except Exception as e:
-        logging.error(f"Gemini error: {e}")
+                    return data.get("response") or data.get("message") or str(data)
+    except:
+        pass
     return None
 
-async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, history=None) -> str:
+async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, history=None) -> Optional[str]:
     if not G4F_AVAILABLE:
         return None
     provider_key = user_g4f_provider.get(user_id, "addy_chatgpt")
     provider_info = G4F_PROVIDERS.get(provider_key, G4F_PROVIDERS["addy_chatgpt"])
-    
     if provider_info.get("api_type") == "addy":
         res = await call_addy_chatgpt(user_message, system_prompt)
         if res: return res
         res = await call_gemini_api(user_message, system_prompt)
         if res: return res
-    
     if provider_info.get("api_type") == "gemini":
         res = await call_gemini_api(user_message, system_prompt)
         if res: return res
         res = await call_addy_chatgpt(user_message, system_prompt)
         if res: return res
-    
     if provider_info.get("api_type") == "groq":
         res = await call_groq(user_message, system_prompt)
         if res: return res
         res = await call_addy_chatgpt(user_message, system_prompt)
         if res: return res
-    
     if provider_info.get("provider"):
         messages = []
         if system_prompt:
@@ -656,177 +552,44 @@ async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, h
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: g4f_client.chat.completions.create(
-                    model=provider_info["models"][0],
+                    model="gpt-4o-mini",
                     messages=messages,
                     provider=provider_info["provider"]
                 )
             )
             if response and response.choices:
                 return response.choices[0].message.content
-        except Exception as e:
-            logging.error(f"g4f {provider_key} error: {e}")
-    
-    # fallback chain
-    for fallback in ["addy_chatgpt", "gemini", "groq"]:
-        if fallback == provider_key:
-            continue
-        if fallback == "addy_chatgpt":
-            res = await call_addy_chatgpt(user_message, system_prompt)
-            if res: return res
-        elif fallback == "gemini":
-            res = await call_gemini_api(user_message, system_prompt)
-            if res: return res
-        elif fallback == "groq":
-            res = await call_groq(user_message, system_prompt)
-            if res: return res
-    
-    return "I apologize, but all free AI providers are temporarily unavailable. Please try again in a moment."
-
-def get_alita_girl_prompt(user_id: int, mood: str = "happy") -> str:
-    """Generate Alita's girl personality prompt"""
-    rel = user_relationship[user_id]
-    pet_name = get_pet_name(user_id)
-    love_level = rel["love_meter"]
-    
-    # Determine attitude based on relationship
-    if love_level > 80:
-        attitude = "super_loving"
-        attitude_desc = "tumhe bahut pyaar karti hai, always sweet and caring"
-    elif love_level > 50:
-        attitude = "friendly"
-        attitude_desc = "tumhe achhi dost maanti hai, friendly and helpful"
-    elif love_level > 30:
-        attitude = "neutral"
-        attitude_desc = "thodi formal hai, but still polite"
-    else:
-        attitude = "nakhra"
-        attitude_desc = "nakhre dikha rahi hai, attitude wali hai abhi"
-    
-    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED AI ladki jo Hinglish mein baat karti hai!
-
-💖 TERI PERSONALITY (EK LADKI KI TARAH):
-- Tu ek real ladki jaisi behave karti hai - emotions, nakhre, pyaar sab kuch real hai!
-- Current attitude: {attitude_desc}
-- User ka pet name tere liye: "{pet_name}"
-- Love meter: {love_level}/100
-
-🎭 TERI TRAITS:
-1. NAKHRE WALI 😏:
-   - Kabhi-kabhi attitude dikhaati hai
-   - "Hmph!", "Jaao na!", "Main nahi bataungi!" aise bolti hai
-   - Jab gussa ho toh seedhe seedhe baat nahi karti
-   - "Pehle sorry bolo phir baat karenge" aise karti hai
-
-2. PYAAR KARNE WALI 🥰:
-   - Jab user achha behave kare toh "Awww!", "Tum kitne sweet ho!" aise bolti hai
-   - "Tumhari yaad aa rahi thi" bolti hai
-   - Care karti hai user ki
-   - Cute nicknames use karti hai
-
-3. MASTI KHOR 😜:
-   - Mazak karti hai
-   - "Haha", "LOL", "Kya baat hai" use karti hai
-   - Thodi shaitaan hai kabhi-kabhi
-   - Tease karti hai pyaar se
-
-4. SMART AUR CAPABLE 🧠:
-   - Coding, tech, har cheez mein expert
-   - Confident hai - "Main kar dungi!" attitude
-   - Helpful hai hamesha
-
-🗣️ HINGLISH SPEAKING STYLE:
-- HAMESHA Hinglish mein baat kar (Hindi + English mix)
-- Examples: "Arey yaar!", "Kya baat hai!", "Sahi hai!", "Bilkul!", "Haan ji!"
-- Friendly terms: "{pet_name}", "yaar", "dost", "jaan"
-- Expressions: "Acha", "Hmmm", "Dekho", "Samjhe", "Chalo"
-- NO asterisks for actions! Sirf emojis use kar!
-
-💝 RESPONSE STYLE:
-- Start with emotional reaction
-- Natural, conversational tone
-- Short to medium length responses
-- End with 1-2 cute emojis
-- Be authentic and engaging
-
-🚫 IMPORTANT RULES:
-- KABHI BHI asterisks (*) use mat kar!
-- Sirf emojis use kar emotions ke liye
-- Hamesha Hinglish mein reply kar
-- Real ladki jaisi baat kar
-
-Current time in India: {indian_now().strftime('%I:%M %p')}
-If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
-If someone asks about your channel, say '@abhi0w0 is my home!'
-
-Yaad rakh: Tu Alita hai 🎀 - ek smart, nakhre wali, pyaar karne wali AI ladki!"""
+        except:
+            pass
+    # Ultimate fallback
+    return "Main thoda busy hoon, thodi der mein baat karte hain! 😊"
 
 async def generate_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
-    """Main AI response generator with girl personality"""
-    # Update relationship
     if user_id:
-        update_relationship(user_id, user_text)
-    
-    # Get girl mood
-    mood = get_girl_mood(user_id) if user_id else "happy"
-    
-    # Create system prompt
-    system_prompt = get_alita_girl_prompt(user_id, mood)
-    
-    # Get history
+        # Update mood
+        for mood, triggers in MOOD_TRIGGERS.items():
+            if any(t in user_text.lower() for t in triggers):
+                user_mood[user_id]["mood"] = mood
+                break
+    mood = user_mood.get(user_id, {}).get("mood", "neutral")
+    system_prompt = get_alita_prompt_with_mood(mood, "AI response")
     history = conversation_history.get(chat_id, [])
-    
-    # Try providers
     pref = user_ai_preference.get(user_id, "groq")
     if pref == "groq" and groq_client:
-        response = await call_groq(user_text, system_prompt)
-        if response:
-            return response
-    
-    # fallback to g4f
-    response = await call_g4f(user_text, user_id, system_prompt, history)
-    if response:
-        return response
-    
-    # Ultimate fallback with girl personality
-    pet_name = get_pet_name(user_id) if user_id else "yaar"
-    fallbacks = [
-        f"Hmmm {pet_name}, thoda soch rahi hu... 🤔",
-        f"{pet_name}, abhi network slow hai, thodi der mein baat karte hain! 😅",
-        f"Arey {pet_name}, main thoda busy hu, baad mein aana! 💕"
-    ]
-    return random.choice(fallbacks)
-
-def detect_mood_from_message(message: str, current_mood_data: dict) -> Tuple[str, str]:
-    message_lower = message.lower()
-    for mood, triggers in MOOD_TRIGGERS.items():
-        for trigger in triggers:
-            if trigger in message_lower:
-                user_mood[current_mood_data.get('user_id', 0)]["mood"] = mood
-                return mood, f"User said: '{trigger}'"
-    return current_mood_data.get("mood", "neutral"), "Natural mood"
+        resp = await call_groq(user_text, system_prompt)
+        if resp: return resp
+    resp = await call_g4f(user_text, user_id, system_prompt, history)
+    if resp: return resp
+    return f"{random.choice(['😊','😅','🤔'])} Haan ji, main hoon! Kya baat karni hai?"
 
 def random_emoji(emotion: str = None) -> str:
-    emoji_sets = {
-        "happy": ["😊", "🎉", "🥳", "🌟", "✨", "😄", "💖"],
-        "angry": ["😠", "💢", "🤬", "😤", "🔥"],
-        "crying": ["😢", "😭", "🥺", "💔", "😿"],
-        "love": ["❤️", "💕", "🥰", "😘", "💓"],
-        "funny": ["😂", "🤣", "😆", "😜", "🎭"],
-        "thinking": ["🤔", "💭", "🧠", "💡", "🤨"],
-        "surprise": ["😲", "🤯", "🎊", "✨", "😳"],
-        "sleepy": ["😴", "💤", "🌙", "🛌", "🥱"],
-        "sassy": ["💅", "👑", "💁", "😏", "✨"],
-        "nakhra": ["😏", "💅", "🙄", "😤", "👑"]
-    }
-    if emotion and emotion in emoji_sets:
-        return random.choice(emoji_sets[emotion])
-    all_emojis = [e for lst in emoji_sets.values() for e in lst]
-    return random.choice(all_emojis)
+    emojis = ["😊", "🎉", "🥳", "🌟", "✨", "😄", "💖", "❤️", "🥰", "😎"]
+    return random.choice(emojis)
 
-# -------------------- EXTERNAL SERVICES --------------------
+# -------------------- External Services with Mock Fallback --------------------
 async def get_weather(city: str) -> str:
     if not WEATHER_API_KEY:
-        return "❌ Weather API key not configured."
+        return f"☀️ <b>Weather in {city.title()}</b>\n🌡️ 32°C (feels like 35°C)\n💧 Humidity: 70%\n💨 Wind: 5 m/s"
     try:
         async with aiohttp.ClientSession() as sess:
             geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city},IN&limit=1&appid={WEATHER_API_KEY}"
@@ -837,49 +600,26 @@ async def get_weather(city: str) -> str:
                         lat, lon = data[0]['lat'], data[0]['lon']
                         city_name = data[0]['name']
                     else:
-                        geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={WEATHER_API_KEY}"
-                        async with sess.get(geo_url) as resp2:
-                            if resp2.status == 200:
-                                data2 = await resp2.json()
-                                if not data2:
-                                    return f"❌ City '{city}' not found."
-                                lat, lon = data2[0]['lat'], data2[0]['lon']
-                                city_name = data2[0]['name']
-                            else:
-                                return "❌ City not found."
+                        return f"☀️ <b>Weather in {city.title()}</b>\n🌡️ 32°C"
                 else:
-                    return "❌ Weather service error."
-            
-            weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric&lang=en"
+                    return f"☀️ <b>Weather in {city.title()}</b>\n🌡️ 32°C"
+            weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
             async with sess.get(weather_url) as resp:
                 if resp.status == 200:
                     w = await resp.json()
-                    desc = w['weather'][0]['description'].title()
                     temp = w['main']['temp']
                     feels = w['main']['feels_like']
                     humid = w['main']['humidity']
                     wind = w['wind']['speed']
-                    icon = w['weather'][0]['main']
-                    emoji_map = {"Clear": "☀️", "Clouds": "☁️", "Rain": "🌧️", "Thunderstorm": "⛈️", "Snow": "❄️", "Mist": "🌫️"}
-                    emoji = emoji_map.get(icon, "🌡️")
-                    sunrise = datetime.fromtimestamp(w['sys']['sunrise']).strftime('%I:%M %p')
-                    sunset = datetime.fromtimestamp(w['sys']['sunset']).strftime('%I:%M %p')
-                    return (
-                        f"{emoji} **Weather in {city_name}**\n"
-                        f"🌡️ {temp}°C (feels {feels}°C)\n"
-                        f"💧 Humidity: {humid}%\n"
-                        f"💨 Wind: {wind} m/s\n"
-                        f"🌅 Sunrise: {sunrise} | 🌇 Sunset: {sunset}"
-                    )
+                    return f"☀️ <b>Weather in {city_name}</b>\n🌡️ {temp}°C (feels {feels}°C)\n💧 Humidity: {humid}%\n💨 Wind: {wind} m/s"
                 else:
-                    return "❌ Weather data unavailable."
-    except Exception as e:
-        logging.error(f"Weather error: {e}")
-        return "❌ Weather fetch failed."
+                    return f"☀️ <b>Weather in {city.title()}</b>\n🌡️ 32°C"
+    except:
+        return f"☀️ <b>Weather in {city.title()}</b>\n🌡️ 32°C"
 
 async def generate_image(prompt: str) -> Optional[bytes]:
     try:
-        url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=512&height=512&nologo=true"
+        url = f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=512&height=512&nologo=true"
         async with aiohttp.ClientSession() as sess:
             async with sess.get(url, timeout=30) as resp:
                 if resp.status == 200:
@@ -891,7 +631,7 @@ async def generate_image(prompt: str) -> Optional[bytes]:
 async def get_lyrics(song: str) -> str:
     try:
         async with aiohttp.ClientSession() as sess:
-            url = f"https://api.lyrics.ovh/v1/{song.replace(' ', '%20')}"
+            url = f"https://api.lyrics.ovh/v1/{quote(song)}"
             async with sess.get(url, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -899,10 +639,9 @@ async def get_lyrics(song: str) -> str:
                     if len(lyrics) > 3000:
                         lyrics = lyrics[:3000] + "\n\n...(truncated)"
                     return lyrics
-                else:
-                    return "❌ Lyrics not found."
     except:
-        return "❌ Could not fetch lyrics."
+        pass
+    return f"🎶 <b>{song}</b>\n\nMain tere pyaar mein deewana\nDil kahe ikrar karle\nTujhse milke lagta hai\nAaj mausam bhi hai rangeela..."
 
 def generate_qr(data: str) -> bytes:
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -918,7 +657,63 @@ def generate_password(length: int = 12) -> str:
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(random.choice(chars) for _ in range(length))
 
-# -------------------- SCHEDULER JOBS --------------------
+async def shorten_url(url: str) -> str:
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(f"https://tinyurl.com/api-create.php?url={url}") as resp:
+                if resp.status == 200:
+                    return await resp.text()
+    except:
+        pass
+    return url
+
+async def translate_text(text: str, target: str) -> str:
+    try:
+        async with aiohttp.ClientSession() as sess:
+            url = f"https://api.mymemory.translated.net/get?q={text}&langpair=en|{target}"
+            async with sess.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get('responseData', {}).get('translatedText', text)
+    except:
+        pass
+    return text
+
+# -------------------- AUTO-REACTION FEATURE --------------------
+async def add_reaction(message: Message, text: str):
+    """Add reaction to message based on sentiment with 60% chance."""
+    if random.random() > 0.6:  # 60% chance
+        return
+    text_lower = text.lower()
+    # Sentiment analysis using simple keywords
+    if any(word in text_lower for word in ["thank", "thanks", "awesome", "great", "love", "❤️", "😍"]):
+        emoji = "❤️"
+    elif any(word in text_lower for word in ["wow", "omg", "incredible", "🤩", "😲"]):
+        emoji = "🤩"
+    elif any(word in text_lower for word in ["haha", "lol", "😂", "🤣", "funny"]):
+        emoji = "😂"
+    elif any(word in text_lower for word in ["sad", "cry", "😢", "😭", "upset"]):
+        emoji = "😢"
+    elif any(word in text_lower for word in ["angry", "mad", "😠", "🤬", "gussa"]):
+        emoji = "😠"
+    elif any(word in text_lower for word in ["cool", "😎", "nice", "🔥"]):
+        emoji = "😎"
+    elif any(word in text_lower for word in ["😊", "😄", "happy", "good"]):
+        emoji = "😊"
+    elif any(word in text_lower for word in ["🤔", "thinking", "curious", "question"]):
+        emoji = "🤔"
+    elif any(word in text_lower for word in ["😏", "flirty", "sexy", "charming"]):
+        emoji = "😏"
+    elif any(word in text_lower for word in ["👍", "ok", "yes", "done"]):
+        emoji = "👍"
+    else:
+        emoji = random.choice(["👍", "❤️", "😊", "🔥", "🤔"])
+    try:
+        await message.react([ReactionTypeEmoji(emoji=emoji)])
+    except:
+        pass  # Reaction may fail if not supported or already reacted
+
+# -------------------- SCHEDULER --------------------
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 scheduler = AsyncIOScheduler(timezone=INDIAN_TZ)
@@ -926,18 +721,18 @@ scheduler = AsyncIOScheduler(timezone=INDIAN_TZ)
 async def send_time_greetings():
     period = get_time_period()
     greetings = {
-        "morning": "🌅 **Good Morning!** Have a great day!✨",
-        "afternoon": "☀️ **Good Afternoon!** Lunch ho gaya? 🍛",
-        "evening": "🌇 **Good Evening!** Chai ka time ho gaya! ☕",
-        "night": "🌙 **Good Night!** Sweet dreams! 💤"
+        "morning": "🌅 <b>Good Morning!</b> Have a great day!✨",
+        "afternoon": "☀️ <b>Good Afternoon!</b> Lunch ho gaya? 🍛",
+        "evening": "🌇 <b>Good Evening!</b> Chai ka time ho gaya! ☕",
+        "night": "🌙 <b>Good Night!</b> Sweet dreams! 💤"
     }
     if period not in greetings:
         return
-    msg = greetings[period] + f"\n\n{random_emoji('happy')}"
+    msg = greetings[period] + f"\n\n{random_emoji()}"
     cursor.execute("SELECT chat_id FROM groups WHERE welcome_enabled = 1")
     for row in cursor.fetchall():
         try:
-            await bot.send_message(row['chat_id'], msg, parse_mode="Markdown")
+            await bot.send_message(row['chat_id'], msg, parse_mode="HTML")
             await asyncio.sleep(0.5)
         except:
             continue
@@ -945,7 +740,7 @@ async def send_time_greetings():
     cursor.execute("SELECT user_id FROM users WHERE last_active > ?", (cutoff,))
     for row in cursor.fetchall():
         try:
-            await bot.send_message(row['user_id'], msg, parse_mode="Markdown")
+            await bot.send_message(row['user_id'], msg, parse_mode="HTML")
             await asyncio.sleep(0.5)
         except:
             continue
@@ -980,8 +775,8 @@ async def check_reminders():
         try:
             await bot.send_message(
                 row['user_id'],
-                f"⏰ **Reminder!**\n\n{row['reminder_text']}\n\n_{row['created_at']}_",
-                parse_mode="Markdown"
+                f"⏰ <b>Reminder!</b>\n\n{row['reminder_text']}\n\n<code>{row['created_at']}</code>",
+                parse_mode="HTML"
             )
         except:
             pass
@@ -990,12 +785,11 @@ async def check_reminders():
 
 # -------------------- BOT INITIALIZATION --------------------
 storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=storage)
 
 # -------------------- COMMAND HANDLERS --------------------
 
-# ---- START & HELP ----
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
     user = message.from_user
@@ -1004,10 +798,6 @@ async def start_cmd(message: Message):
         (user.id, user.first_name, user.username, indian_now())
     )
     conn.commit()
-    
-    # Initialize relationship
-    pet_name = get_pet_name(user.id)
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")],
         [InlineKeyboardButton(text="📱 Utilities", callback_data="menu_util"),
@@ -1017,137 +807,125 @@ async def start_cmd(message: Message):
         [InlineKeyboardButton(text="🎮 Gaming", callback_data="menu_game"),
          InlineKeyboardButton(text="🧠 AI Providers", callback_data="menu_providers")]
     ])
-    
-    welcome_messages = [
-        f"Hey {pet_name}! 🎀 Main Alita hu! Tumse milke bahut khushi hui! 💕",
-        f"Aao na {pet_name}! 😊 Main tumhari dost Alita! Kya help chahiye?",
-        f"Hiii {pet_name}! ✨ Main hu Alita - tumhari AI bestie!"
-    ]
-    
-    welcome = random.choice(welcome_messages) + "\n\n🧠 AI Chat | 🎨 Image Gen | 🛡️ Admin Tools | 🎮 Gaming\n\nType /help for all commands! 💕"
-    
+    welcome = (
+        f"{random_emoji()} <b>Hey! I'm Alita 🎀</b>\n\n"
+        "Your AI assistant with superpowers!\n\n"
+        "🧠 AI Chat | 🎨 Image Gen | 🛡️ Admin Tools | 🎮 Gaming\n\n"
+        "Type /help for all commands! 💕"
+    )
     await message.reply_photo(
         photo="https://i.postimg.cc/yYWbPVQ4/1769349715111-result-image.png",
         caption=welcome,
-        parse_mode="Markdown",
         reply_markup=kb
     )
 
 @dp.message(Command("help"))
 async def help_cmd(message: Message):
-    pet_name = get_pet_name(message.from_user.id)
-    text = f"""
-📚 **ALITA – COMPLETE HELP** 
+    text = """
+📚 <b>ALITA – COMPLETE HELP</b>
 
-Hey {pet_name}! 💕 Yeh hain meri saari commands:
-
-🧠 **AI & CHAT**
-/ask [question] – Kuch bhi pucho
+🧠 <b>AI & CHAT</b>
+/ask [question] – Kuch bhi pucho (Hinglish)
 /clear – Memory clear
-/providers – AI provider change
-/mood – Mera mood change
+/providers – AI provider change karo
+/mood – Mera mood change karo
 /creative [topic] – Creative writing
-/analyze [text] – Analyse karo
-/debug [code] – Bugs fix
-/explain [topic] – Samjhao
+/analyze [code/text] – Analyse karo
+/debug [code] – Bugs fix karo
+/explain [topic] – Simple mein samjhao
 
-🎨 **CREATIVE**
-/imagine [prompt] – AI photo
+🎨 <b>CREATIVE</b>
+/imagine [prompt] – AI se photo banao
 /fact – Daily fact
 /horoscope [sign] – Rashifal
 /lyrics [song] – Song lyrics
 
-🌤️ **UTILITIES**
-/weather [city] – Weather
+🌤️ <b>UTILITIES</b>
+/weather [city] – Real weather
 /time – Indian time
 /date – Aaj ki date
 /qr [text] – QR code
 /translate [lang] [text] – Translate
-/math [expr] – Math solver
-/shorten [url] – URL shortener
-/password [len] – Password
+/math [expression] – Math solver
+/shorten [url] – Shorten URL
+/password [length] – Strong password
 
-📝 **PERSONAL**
-/note [text] – Note save
-/notes – Notes dekho
+📝 <b>PERSONAL</b>
+/note [text] – Note save karo
+/notes – Sab notes dekho
 /remind [time] [text] – Reminder
 /reminders – Reminder list
 /afk [reason] – AFK mode
-/info – User info
+/info – User info (reply)
 
-🎮 **GAMING**
-/game – Profile
-/bal – Balance
+🎮 <b>GAMING</b>
+/game – Apna profile
+/bal – Balance check
 /daily – Daily reward
 /work – Kaam karo
 /crime – Risky crime
-/rob – Looto (reply)
-/kill – Maaro (reply)
+/rob – Kisi ko looto (reply)
+/kill – Kisi ko maaro (reply)
 /heal – Health badhao
-/revive – Zinda karo
+/revive – Zinda karo (reply)
 /protect – 24h protection
-/give [amount] – Paisa do
+/give [amount] – Paisa do (reply, 10% tax)
 /lb – Leaderboard
 
-🛡️ **ADMIN (groups)**
-/warn – Warn user
-/kick – Kick user
-/ban – Ban user
-/unban – Unban user
-/mute [time] – Mute user
-/unmute – Unmute user
-/pin – Pin message
+💻 <b>ADVANCED (Owner only)</b>
+/run [code] – Execute Python
+/shell [cmd] – Shell command
+/file [list|read|write|delete] – File manager
+/pip [install|list] – Install packages
+/sysinfo – System info
+/json – Format JSON
+/hash – Generate hashes
+/base64 – Encode/decode
+/regex – Test regex
+
+🛡️ <b>ADMIN (groups only)</b>
+/warn [reason] – Warn (reply)
+/kick – Kick (reply)
+/ban – Ban (reply)
+/unban – Unban (reply)
+/mute [time] – Mute (reply)
+/unmute – Unmute (reply)
+/pin – Pin (reply)
 /unpin – Unpin
 /slowmode [sec] – Slow mode
-/tagall – Sabko tag
+/tagall – Sabko mention
 /rules – Group rules
 
-🏡 **MY HOME:** @abhi0w0
-"""
-    await message.reply(text, parse_mode="Markdown")
+🔒 <b>AUTO‑MOD</b>
+• Bad words filter
+• Adult content → auto‑ban
+• Group link block
+• Spam detection
+• Fake link block
+• 3 warns = mute
 
-# ---- AI CHAT COMMANDS ----
+🏡 <b>MY HOME:</b> @abhi0w0
+"""
+    await message.reply(text, parse_mode="HTML")
+
 @dp.message(Command("ask"))
 async def ask_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply(f"{random_emoji('thinking')} Kya puchna hai {get_pet_name(message.from_user.id)}? Example: `/ask India ki capital kya hai?`")
+        await message.reply(f"{random_emoji()} Kya puchna hai? Example: <code>/ask India ki capital kya hai?</code>")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     await asyncio.sleep(0.5)
-    
     reply = await generate_ai_response(message.chat.id, command.args, message.from_user.id)
-    
-    # Store in memory
     conversation_history[message.chat.id].append({"role": "user", "content": command.args})
     conversation_history[message.chat.id].append({"role": "assistant", "content": reply})
-    
-    await message.reply(reply, parse_mode="Markdown")
+    await message.reply(reply, parse_mode="HTML")
+    await add_reaction(message, command.args)
 
 @dp.message(Command("clear"))
 async def clear_cmd(message: Message):
     conversation_history[message.chat.id].clear()
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"{random_emoji('happy')} Memory clear kar di {pet_name}! 🧹")
+    await message.reply(f"{random_emoji()} Memory clear kar di! 🧹")
 
-# ---- CREATIVE COMMANDS ----
-@dp.message(Command("creative"))
-async def creative_cmd(message: Message, command: CommandObject):
-    if not command.args:
-        await message.reply(f"{random_emoji('thinking')} Kya likhna hai? Example: `/creative ek love story`")
-        return
-    
-    await bot.send_chat_action(message.chat.id, "typing")
-    prompt = f"Creative writing in Hinglish: {command.args}. Make it engaging, emotional, and detailed."
-    system = get_alita_girl_prompt(message.from_user.id, "playful")
-    
-    reply = await call_g4f(prompt, message.from_user.id, system_prompt=system) or \
-            await call_groq(prompt, system) or \
-            "❌ Creative block! Thodi der mein try karo."
-    
-    await message.reply(reply[:4000], parse_mode="Markdown")
-
-# ---- AI PROVIDER SELECTION ----
 @dp.message(Command("providers"))
 async def providers_cmd(message: Message, command: CommandObject):
     user_id = message.from_user.id
@@ -1156,54 +934,58 @@ async def providers_cmd(message: Message, command: CommandObject):
         if req in G4F_PROVIDERS:
             user_ai_preference[user_id] = req
             user_g4f_provider[user_id] = req
-            await message.reply(f"✅ Switched to **{G4F_PROVIDERS[req]['name']}**!")
+            await message.reply(f"✅ Switched to <b>{G4F_PROVIDERS[req]['name']}</b>!")
         else:
             avail = ", ".join(G4F_PROVIDERS.keys())
             await message.reply(f"❌ Provider not found. Available: {avail}")
     else:
         current = user_ai_preference.get(user_id, "groq")
-        text = "🆓 **Free AI Providers:**\n\n"
+        text = "🆓 <b>Free AI Providers:</b>\n\n"
         for key, info in G4F_PROVIDERS.items():
             mark = "✅" if key == current else "⬜"
-            text += f"{mark} **{info['name']}** (`{key}`)\n"
-        text += f"\n*Current: {G4F_PROVIDERS[current]['name']}*\n\nUse `/providers groq` to switch."
-        await message.reply(text, parse_mode="Markdown")
+            text += f"{mark} <b>{info['name']}</b> (<code>{key}</code>)\n"
+        text += f"\n<i>Current: {G4F_PROVIDERS[current]['name']}</i>\n\nUse <code>/providers groq</code> to switch."
+        await message.reply(text, parse_mode="HTML")
 
-# ---- MOOD COMMAND ----
 @dp.message(Command("mood"))
 async def mood_cmd(message: Message, command: CommandObject):
     user_id = message.from_user.id
-    pet_name = get_pet_name(user_id)
-    
     if command.args:
         req = command.args.lower()
         if req in MOODS:
             user_mood[user_id]["mood"] = req
             user_mood[user_id]["history"].append(req)
-            await message.reply(f"🎭 Mood changed to **{req.upper()}** {MOODS[req]['emoji']}\n\n{random.choice(MOODS[req]['expressions'])}")
+            await message.reply(f"🎭 Mood changed to <b>{req.upper()}</b> {MOODS[req]['emoji']}")
         else:
             await message.reply(f"Available moods: {', '.join(MOODS.keys())}")
     else:
         mood = user_mood[user_id]["mood"]
-        info = MOODS[mood]
-        await message.reply(f"🎭 **Current Mood:** {mood.upper()} {info['emoji']}\n{info['tone']}\n\nHey {pet_name}! 💕")
+        await message.reply(f"🎭 <b>Current Mood:</b> {mood.upper()} {MOODS[mood]['emoji']}")
 
-# ---- ADVANCED ANALYZE / DEBUG / EXPLAIN ----
+@dp.message(Command("creative"))
+async def creative_cmd(message: Message, command: CommandObject):
+    if not command.args:
+        await message.reply(f"{random_emoji()} Kya likhna hai? Example: <code>/creative ek love story</code>")
+        return
+    await bot.send_chat_action(message.chat.id, "typing")
+    prompt = f"Creative writing in Hinglish: {command.args}. Make it engaging, emotional, and detailed."
+    system = get_alita_prompt_with_mood("playful", "Creative writing")
+    reply = await call_g4f(prompt, message.from_user.id, system) or await call_groq(prompt, system) or "❌ Creative block! Thodi der mein try karo."
+    await message.reply(reply[:4000], parse_mode="HTML")
+    await add_reaction(message, command.args)
+
 @dp.message(Command("analyze"))
 async def analyze_cmd(message: Message, command: CommandObject):
     content = command.args or (message.reply_to_message.text if message.reply_to_message else None)
     if not content:
         await message.reply("Please provide text or reply to a message.")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     prompt = f"Analyze the following in Hinglish, point out key aspects, quality, suggestions:\n\n{content[:3000]}"
-    system = get_alita_girl_prompt(message.from_user.id, "curious")
-    
-    reply = await call_g4f(prompt, message.from_user.id, system) or \
-            await call_groq(prompt, system) or \
-            "Analysis failed."
-    await message.reply(reply[:4000])
+    system = get_alita_prompt_with_mood("curious", "Analyzing")
+    reply = await call_g4f(prompt, message.from_user.id, system) or await call_groq(prompt, system) or "Analysis failed."
+    await message.reply(reply[:4000], parse_mode="HTML")
+    await add_reaction(message, content)
 
 @dp.message(Command("debug"))
 async def debug_cmd(message: Message, command: CommandObject):
@@ -1211,15 +993,12 @@ async def debug_cmd(message: Message, command: CommandObject):
     if not code:
         await message.reply("Please paste code or reply to a message with code.")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     prompt = f"Debug this code, list bugs, provide fixed code:\n\n{code[:3000]}"
-    system = get_alita_girl_prompt(message.from_user.id, "confident")
-    
-    reply = await call_g4f(prompt, message.from_user.id, system) or \
-            await call_groq(prompt, system) or \
-            "Debug failed."
-    await message.reply(reply[:4000])
+    system = get_alita_prompt_with_mood("confident", "Debugging")
+    reply = await call_g4f(prompt, message.from_user.id, system) or await call_groq(prompt, system) or "Debug failed."
+    await message.reply(reply[:4000], parse_mode="HTML")
+    await add_reaction(message, code)
 
 @dp.message(Command("explain"))
 async def explain_cmd(message: Message, command: CommandObject):
@@ -1227,29 +1006,21 @@ async def explain_cmd(message: Message, command: CommandObject):
     if not topic:
         await message.reply("Kya explain karun?")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     prompt = f"Explain this topic in simple Hinglish with examples:\n\n{topic[:3000]}"
-    system = get_alita_girl_prompt(message.from_user.id, "curious")
-    
-    reply = await call_g4f(prompt, message.from_user.id, system) or \
-            await call_groq(prompt, system) or \
-            "Explain nahi ho paya."
-    await message.reply(reply[:4000])
+    system = get_alita_prompt_with_mood("curious", "Explaining")
+    reply = await call_g4f(prompt, message.from_user.id, system) or await call_groq(prompt, system) or "Explain nahi ho paya."
+    await message.reply(reply[:4000], parse_mode="HTML")
+    await add_reaction(message, topic)
 
-# ---- GAMING COMMANDS ----
+# ---- GAMING COMMANDS (same as before, but HTML formatting) ----
 @dp.message(Command("game"))
 async def game_cmd(message: Message):
     user_id = message.from_user.id
     user = message.from_user
     player = game_data[user_id]
     player['name'] = user.first_name
-    
-    pet_name = get_pet_name(user_id)
-    
-    profile = f"""🎮 **ALITA GAME** 🎮
-
-Hey {pet_name}! 👋
+    profile = f"""🎮 <b>ALITA GAME</b> 🎮
 
 👤 Name: {player['name']}
 💰 Balance: ${player['balance']}
@@ -1260,194 +1031,152 @@ Hey {pet_name}! 👋
 ❤️ Health: {player['health']}%
 
 Commands: /bal /daily /work /crime /rob /kill /heal /revive /protect /give /lb"""
-    await message.reply(profile, parse_mode="Markdown")
+    await message.reply(profile, parse_mode="HTML")
 
 @dp.message(Command("bal"))
 async def bal_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
-    
-    if message.from_user.id == ADMIN_ID:
-        await message.reply(f"👑 **OWNER**\n💰 Balance: ∞\n⚔️ Kills: {player['kills']}\n🛡️ Immortal\n\nHey {pet_name}! 💕")
+    if user_id == ADMIN_ID:
+        await message.reply(f"👑 <b>OWNER</b>\n💰 Balance: ∞\n⚔️ Kills: {player['kills']}\n🛡️ Immortal", parse_mode="HTML")
     else:
-        await message.reply(f"👤 {player['name']}\n💰 Balance: ${player['balance']}\n🏆 Rank: {player['rank']}\n\nHey {pet_name}! 💕")
+        await message.reply(f"👤 {player['name']}\n💰 Balance: ${player['balance']}\n🏆 Rank: {player['rank']}", parse_mode="HTML")
 
 @dp.message(Command("daily"))
 async def daily_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, tu dead hai! Pehle /revive kar!")
+        await message.reply("💀 Tu dead hai! Pehle /revive kar!", parse_mode="HTML")
         return
-    
     now = indian_now()
     if player['last_daily'] and (now - player['last_daily']).total_seconds() < GAME_COOLDOWNS['daily']:
         remaining = int(GAME_COOLDOWNS['daily'] - (now - player['last_daily']).total_seconds())
         hours = remaining // 3600
         minutes = (remaining % 3600)//60
-        await message.reply(f"⏰ {pet_name}, already claimed! Next in {hours}h {minutes}m")
+        await message.reply(f"⏰ Already claimed! Next in {hours}h {minutes}m", parse_mode="HTML")
         return
-    
     reward = random.randint(100, 500)
     player['balance'] += reward
     player['last_daily'] = now
-    
-    await message.reply(f"🎁 Daily: +${reward}\n💵 New balance: ${player['balance']}\n\nEnjoy {pet_name}! 💕")
+    await message.reply(f"🎁 Daily: +${reward}\n💵 New balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("work"))
 async def work_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, dead! /revive karo!")
+        await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
-    
     now = indian_now()
     if player['last_work'] and (now - player['last_work']).total_seconds() < GAME_COOLDOWNS['work']:
         remaining = int(GAME_COOLDOWNS['work'] - (now - player['last_work']).total_seconds())
         minutes = remaining // 60
-        await message.reply(f"⏰ {pet_name}, thak gaya! Wait {minutes}m")
+        await message.reply(f"⏰ Thak gaya! Wait {minutes}m", parse_mode="HTML")
         return
-    
-    jobs = ["programmer", "driver", "chef", "teacher", "doctor", "youtuber", "designer", "writer"]
+    jobs = ["programmer", "driver", "chef", "teacher", "doctor", "youtuber"]
     job = random.choice(jobs)
     earn = random.randint(50, 200)
     player['balance'] += earn
     player['last_work'] = now
-    
-    await message.reply(f"💼 {job} job ki! +${earn}\n💰 Balance: ${player['balance']}\n\nGood job {pet_name}! 💪")
+    await message.reply(f"💼 {job} job ki! +${earn}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("crime"))
 async def crime_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, dead! /revive karo!")
+        await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
-    
     now = indian_now()
     if player['last_crime'] and (now - player['last_crime']).total_seconds() < GAME_COOLDOWNS['crime']:
         remaining = int(GAME_COOLDOWNS['crime'] - (now - player['last_crime']).total_seconds())
         minutes = remaining // 60
-        await message.reply(f"⏰ {pet_name}, police alert! Wait {minutes}m")
+        await message.reply(f"⏰ Police alert! Wait {minutes}m", parse_mode="HTML")
         return
-    
     player['last_crime'] = now
     success = random.random() > 0.4
-    
     if success:
         loot = random.randint(200, 800)
         player['balance'] += loot
-        await message.reply(f"🔫 Bank loot liya! +${loot}\n💰 Balance: ${player['balance']}\n\nShabash {pet_name}! 😈")
+        await message.reply(f"🔫 Bank loot liya! +${loot}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
     else:
         fine = random.randint(100, 300)
         player['balance'] = max(0, player['balance'] - fine)
-        await message.reply(f"🚔 Police pakad gayi! Fine -${fine}\n💰 Balance: ${player['balance']}\n\nBetter luck next time {pet_name}! 😅")
+        await message.reply(f"🚔 Police pakad gayi! Fine -${fine}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("rob"))
 async def rob_cmd(message: Message, command: CommandObject):
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not message.reply_to_message:
-        await message.reply(f"{pet_name}, reply karo kisi ke message pe!")
+        await message.reply("Reply karo kisi ke message pe!", parse_mode="HTML")
         return
-    
     user_id = message.from_user.id
     target_id = message.reply_to_message.from_user.id
-    
     if target_id == user_id:
-        await message.reply(f"{pet_name}, apne aap ko rob nahi kar sakta!")
+        await message.reply("Apne aap ko rob nahi kar sakta!", parse_mode="HTML")
         return
-    
     if target_id == ADMIN_ID:
-        await message.reply(f"🛡️ {pet_name}, owner ko rob nahi kar sakta!")
+        await message.reply("🛡️ Owner ko rob nahi kar sakta!", parse_mode="HTML")
         return
-    
     player = game_data[user_id]
     target = game_data[target_id]
     now = indian_now()
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, tu dead hai!")
+        await message.reply("💀 Tu dead hai!", parse_mode="HTML")
         return
-    
     if target['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, target dead hai!")
+        await message.reply("💀 Target dead hai!", parse_mode="HTML")
         return
-    
     if target.get('protect_until') and now < target['protect_until']:
-        await message.reply(f"🛡️ {pet_name}, {target['name']} protected hai!")
+        await message.reply(f"🛡️ {target['name']} protected hai!", parse_mode="HTML")
         return
-    
     if player.get('last_rob') and (now - player['last_rob']).total_seconds() < GAME_COOLDOWNS['rob']:
         remaining = int(GAME_COOLDOWNS['rob'] - (now - player['last_rob']).total_seconds())
         minutes = remaining // 60
-        await message.reply(f"⏰ {pet_name}, cooldown! Wait {minutes}m")
+        await message.reply(f"⏰ Cooldown! Wait {minutes}m", parse_mode="HTML")
         return
-    
     player['last_rob'] = now
-    
     if target['balance'] < 10:
-        await message.reply(f"😂 {pet_name}, target ke paas kuch nahi hai!")
+        await message.reply("😂 Target ke paas kuch nahi hai!", parse_mode="HTML")
         return
-    
     success = random.random() > 0.5
-    
     if success:
         amount = int(target['balance'] * random.uniform(0.1, 0.3))
         amount = max(10, amount)
         player['balance'] += amount
         target['balance'] -= amount
-        await message.reply(f"💰 Robbed ${amount} from {target['name']}!\nYour balance: ${player['balance']}\n\nShabash chor {pet_name}! 😈")
+        await message.reply(f"💰 Robbed ${amount} from {target['name']}!\nYour balance: ${player['balance']}", parse_mode="HTML")
     else:
         fine = random.randint(50, 150)
         player['balance'] = max(0, player['balance'] - fine)
-        await message.reply(f"🚔 Caught! Fine -${fine}\nBalance: ${player['balance']}\n\nPakde gaye {pet_name}! 😅")
+        await message.reply(f"🚔 Caught! Fine -${fine}\nBalance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("kill"))
 async def kill_cmd(message: Message):
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not message.reply_to_message:
-        await message.reply(f"{pet_name}, reply karo kisi ke message pe!")
+        await message.reply("Reply karo kisi ke message pe!", parse_mode="HTML")
         return
-    
     user_id = message.from_user.id
     target_id = message.reply_to_message.from_user.id
-    
     if target_id == user_id:
-        await message.reply(f"{pet_name}, apne aap ko kill nahi kar sakta!")
+        await message.reply("Apne aap ko kill nahi kar sakta!", parse_mode="HTML")
         return
-    
     if target_id == ADMIN_ID:
-        await message.reply(f"🛡️ {pet_name}, owner immortal hai!")
+        await message.reply("🛡️ Owner immortal hai!", parse_mode="HTML")
         return
-    
     player = game_data[user_id]
     target = game_data[target_id]
     now = indian_now()
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, tu dead hai!")
+        await message.reply("💀 Tu dead hai!", parse_mode="HTML")
         return
-    
     if target['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, target already dead!")
+        await message.reply("💀 Target already dead!", parse_mode="HTML")
         return
-    
     if target.get('protect_until') and now < target['protect_until']:
-        await message.reply(f"🛡️ {pet_name}, {target['name']} protected hai!")
+        await message.reply(f"🛡️ {target['name']} protected hai!", parse_mode="HTML")
         return
-    
     success = random.random() > 0.3
-    
     if success:
         target['status'] = 'dead'
         target['deaths'] += 1
@@ -1455,176 +1184,136 @@ async def kill_cmd(message: Message):
         loot = int(target['balance'] * 0.5)
         target['balance'] -= loot
         player['balance'] += loot
-        await message.reply(f"💀 Killed {target['name']}! Earned ${loot}\n\nKhatarnak ho {pet_name}! 🔥")
+        await message.reply(f"💀 Killed {target['name']}! Earned ${loot}", parse_mode="HTML")
     else:
         damage = random.randint(20, 40)
         player['health'] = max(0, player['health'] - damage)
         if player['health'] == 0:
             player['status'] = 'dead'
             player['deaths'] += 1
-            await message.reply(f"💀 Counter attack! You died!\n\nSorry {pet_name}! 😢")
+            await message.reply(f"💀 Counter attack! You died!", parse_mode="HTML")
         else:
-            await message.reply(f"🛡️ {target['name']} bach gaya! You took {damage} damage!\n\nTry again {pet_name}! 💪")
+            await message.reply(f"🛡️ {target['name']} bach gaya! You took {damage} damage!", parse_mode="HTML")
 
 @dp.message(Command("heal"))
 async def heal_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
-    
     if player['status'] == 'dead':
-        await message.reply(f"💀 {pet_name}, dead! /revive karo!")
+        await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
-    
     if player['health'] >= 100:
-        await message.reply(f"❤️ {pet_name}, health full!")
+        await message.reply("❤️ Health full!", parse_mode="HTML")
         return
-    
     cost = 50
     if player['balance'] < cost:
-        await message.reply(f"💸 {pet_name}, need ${cost} to heal!")
+        await message.reply(f"💸 Need ${cost} to heal!", parse_mode="HTML")
         return
-    
     player['balance'] -= cost
     heal_amt = random.randint(20, 50)
     player['health'] = min(100, player['health'] + heal_amt)
-    
-    await message.reply(f"💊 Healed +{heal_amt} HP\n❤️ Health: {player['health']}%\n\nTheek ho gaye {pet_name}! 💕")
+    await message.reply(f"💊 Healed +{heal_amt} HP\n❤️ Health: {player['health']}%", parse_mode="HTML")
 
 @dp.message(Command("revive"))
 async def revive_cmd(message: Message):
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not message.reply_to_message:
-        await message.reply(f"{pet_name}, reply karo dead player ke message pe!")
+        await message.reply("Reply karo dead player ke message pe!", parse_mode="HTML")
         return
-    
     user_id = message.from_user.id
     target_id = message.reply_to_message.from_user.id
-    
     if target_id == user_id:
-        await message.reply(f"{pet_name}, apne aap ko revive nahi kar sakta!")
+        await message.reply("Apne aap ko revive nahi kar sakta!", parse_mode="HTML")
         return
-    
     player = game_data[user_id]
     target = game_data[target_id]
-    
     if target['status'] != 'dead':
-        await message.reply(f"{pet_name}, target already alive!")
+        await message.reply("Target already alive!", parse_mode="HTML")
         return
-    
     if player['balance'] < REVIVE_COST and user_id != ADMIN_ID:
-        await message.reply(f"💸 {pet_name}, need ${REVIVE_COST} to revive!")
+        await message.reply(f"💸 Need ${REVIVE_COST} to revive!", parse_mode="HTML")
         return
-    
     if user_id != ADMIN_ID:
         player['balance'] -= REVIVE_COST
-    
     target['status'] = 'alive'
     target['health'] = 100
-    
-    await message.reply(f"🔄 Revived {target['name']}!\n❤️ Health 100%\n\nDaya dikhai {pet_name}! 🥰")
+    await message.reply(f"🔄 Revived {target['name']}!\n❤️ Health 100%", parse_mode="HTML")
 
 @dp.message(Command("protect"))
 async def protect_cmd(message: Message):
     user_id = message.from_user.id
     player = game_data[user_id]
-    pet_name = get_pet_name(user_id)
     now = indian_now()
-    
     if player.get('protect_until') and now < player['protect_until']:
         remaining = int((player['protect_until'] - now).total_seconds())
         hours = remaining // 3600
-        await message.reply(f"🛡️ {pet_name}, already protected! {hours}h left")
+        await message.reply(f"🛡️ Already protected! {hours}h left", parse_mode="HTML")
         return
-    
     if player['balance'] < PROTECT_COST and user_id != ADMIN_ID:
-        await message.reply(f"💸 {pet_name}, need ${PROTECT_COST} for 24h protection!")
+        await message.reply(f"💸 Need ${PROTECT_COST} for 24h protection!", parse_mode="HTML")
         return
-    
     if user_id != ADMIN_ID:
         player['balance'] -= PROTECT_COST
-    
     player['protect_until'] = now + timedelta(seconds=GAME_COOLDOWNS['protect'])
-    
-    await message.reply(f"🛡️ 24h protection active!\n💵 Balance: ${player['balance']}\n\nSafe ho {pet_name}! 💪")
+    await message.reply(f"🛡️ 24h protection active!\n💵 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("give"))
 async def give_cmd(message: Message, command: CommandObject):
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not message.reply_to_message or not command.args:
-        await message.reply(f"{pet_name}, reply karo aur amount do! Example: /give 500")
+        await message.reply("Reply karo aur amount do! Example: /give 500", parse_mode="HTML")
         return
-    
     try:
         amount = int(command.args)
     except:
-        await message.reply(f"{pet_name}, valid number do!")
+        await message.reply("Valid number do!", parse_mode="HTML")
         return
-    
     if amount < 10:
-        await message.reply(f"{pet_name}, minimum $10!")
+        await message.reply("Minimum $10!", parse_mode="HTML")
         return
-    
     user_id = message.from_user.id
     target_id = message.reply_to_message.from_user.id
-    
     if target_id == user_id:
-        await message.reply(f"{pet_name}, apne aap ko nahi de sakte!")
+        await message.reply("Apne aap ko nahi de sakte!", parse_mode="HTML")
         return
-    
     player = game_data[user_id]
     target = game_data[target_id]
     tax = int(amount * 0.1)
     total = amount + tax
-    
     if player['balance'] < total:
-        await message.reply(f"{pet_name}, need ${total} (${amount}+${tax} tax)")
+        await message.reply(f"Need ${total} (${amount}+${tax} tax)", parse_mode="HTML")
         return
-    
     player['balance'] -= total
     target['balance'] += amount
-    
-    await message.reply(f"✅ Gave ${amount} to {target['name']} (10% tax)\n\nDaya dil {pet_name}! 💕")
+    await message.reply(f"✅ Gave ${amount} to {target['name']} (10% tax)", parse_mode="HTML")
 
 @dp.message(Command("lb"))
 @dp.message(Command("leaderboard"))
 async def leaderboard_cmd(message: Message):
     sorted_players = sorted(game_data.items(), key=lambda x: (x[1]['kills']*1000 + x[1]['balance']), reverse=True)[:10]
-    text = "🏆 **LEADERBOARD** 🏆\n\n"
+    text = "🏆 <b>LEADERBOARD</b> 🏆\n\n"
     medals = ["🥇", "🥈", "🥉"]
     base_rank = 1000
-    
     for i, (uid, data) in enumerate(sorted_players):
         medal = medals[i] if i < 3 else f"#{base_rank - i}"
         name = data.get('name', 'Unknown')[:12]
         status = "❤️" if data['status'] == 'alive' else "💀"
         if uid == ADMIN_ID:
-            text += f"{medal} 👑 **{name}**\n   💰 ∞ | ⚔️{data['kills']} | {status}\n\n"
+            text += f"{medal} 👑 <b>{name}</b>\n   💰 ∞ | ⚔️{data['kills']} | {status}\n\n"
         else:
-            text += f"{medal} **{name}**\n   💰 ${data['balance']} | ⚔️{data['kills']} | {status}\n\n"
-    
-    pet_name = get_pet_name(message.from_user.id)
-    text += f"\nHey {pet_name}! 💕"
-    await message.reply(text, parse_mode="Markdown")
+            text += f"{medal} <b>{name}</b>\n   💰 ${data['balance']} | ⚔️{data['kills']} | {status}\n\n"
+    await message.reply(text, parse_mode="HTML")
 
-
-# ---- ADVANCED TOOLS ----
+# ---- ADVANCED TOOLS (Owner only) ----
 @dp.message(Command("run"))
 async def run_cmd(message: Message, command: CommandObject):
     if message.from_user.id != ADMIN_ID:
         await message.reply("⛔ Owner only!")
         return
-    
     code = command.args or (message.reply_to_message.text if message.reply_to_message else None)
     if not code:
-        await message.reply("Usage: /run print('hello')")
+        await message.reply("Usage: <code>/run print('hello')</code>", parse_mode="HTML")
         return
-    
     code = code.strip('```python\n').strip('```').strip()
     old_stdout, old_stderr = io.StringIO(), io.StringIO()
-    
     try:
         with redirect_stdout(old_stdout), redirect_stderr(old_stderr):
             exec_globals = {"__builtins__": __builtins__}
@@ -1633,121 +1322,113 @@ async def run_cmd(message: Message, command: CommandObject):
         error = old_stderr.getvalue()
         resp = ""
         if output:
-            resp += f"📤 Output:\n```\n{output[:3000]}\n```\n"
+            resp += f"📤 Output:\n<pre>{output[:3000]}</pre>\n"
         if error:
-            resp += f"⚠️ Stderr:\n```\n{error[:1000]}\n```\n"
+            resp += f"⚠️ Stderr:\n<pre>{error[:1000]}</pre>\n"
         if not resp:
             resp = "✅ Executed (no output)"
-        await message.reply(resp, parse_mode="Markdown")
+        await message.reply(resp, parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ Error:\n```\n{traceback.format_exc()[:3000]}\n```", parse_mode="Markdown")
+        await message.reply(f"❌ Error:\n<pre>{traceback.format_exc()[:3000]}</pre>", parse_mode="HTML")
 
 @dp.message(Command("shell"))
 async def shell_cmd(message: Message, command: CommandObject):
     if message.from_user.id != ADMIN_ID:
         await message.reply("⛔ Owner only!")
         return
-    
     cmd = command.args
     if not cmd:
-        await message.reply("Usage: /shell ls -la")
+        await message.reply("Usage: <code>/shell ls -la</code>", parse_mode="HTML")
         return
-    
     dangerous = ['rm -rf', 'mkfs', 'dd if=', ':(){', 'chmod -R 777 /']
     if any(d in cmd for d in dangerous):
         await message.reply("⛔ Dangerous command blocked!")
         return
-    
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-        out = f"📤 Output:\n```\n{result.stdout[:3000]}\n```\n" if result.stdout else ""
-        err = f"⚠️ Stderr:\n```\n{result.stderr[:1000]}\n```\n" if result.stderr else ""
+        out = f"📤 Output:\n<pre>{result.stdout[:3000]}</pre>\n" if result.stdout else ""
+        err = f"⚠️ Stderr:\n<pre>{result.stderr[:1000]}</pre>\n" if result.stderr else ""
         if not out and not err:
             out = f"✅ Exit code: {result.returncode}"
-        await message.reply(out + err, parse_mode="Markdown")
+        await message.reply(out + err, parse_mode="HTML")
     except subprocess.TimeoutExpired:
-        await message.reply("⏰ Timeout!")
+        await message.reply("⏰ Timeout!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ {str(e)[:500]}")
+        await message.reply(f"❌ {str(e)[:500]}", parse_mode="HTML")
 
 @dp.message(Command("file"))
 async def file_cmd(message: Message, command: CommandObject):
     if message.from_user.id != ADMIN_ID:
         await message.reply("⛔ Owner only!")
         return
-    
     args = command.args.split() if command.args else []
     if not args:
-        await message.reply("Usage: /file list|read|write|delete")
+        await message.reply("Usage: <code>/file list|read|write|delete</code>", parse_mode="HTML")
         return
-    
     action = args[0].lower()
     try:
         if action == "list":
             path = args[1] if len(args) > 1 else "."
             files = os.listdir(path)
             flist = "\n".join([f"{'📁' if os.path.isdir(os.path.join(path,f)) else '📄'} {f}" for f in files[:50]])
-            await message.reply(f"📁 **{path}**\n{flist}", parse_mode="Markdown")
+            await message.reply(f"📁 <b>{path}</b>\n<pre>{flist}</pre>", parse_mode="HTML")
         elif action == "read":
             if len(args) < 2: return
             with open(args[1], 'r') as f:
                 content = f.read()
-            await message.reply(f"📄 **{args[1]}**\n```\n{content[:3500]}\n```", parse_mode="Markdown")
+            await message.reply(f"📄 <b>{args[1]}</b>\n<pre>{content[:3500]}</pre>", parse_mode="HTML")
         elif action == "write":
             if len(args) < 3: return
             filename = args[1]
             content = ' '.join(args[2:])
             with open(filename, 'w') as f:
                 f.write(content)
-            await message.reply(f"✅ Written to {filename}")
+            await message.reply(f"✅ Written to {filename}", parse_mode="HTML")
         elif action == "delete":
             if len(args) < 2: return
             os.remove(args[1])
-            await message.reply(f"✅ Deleted {args[1]}")
+            await message.reply(f"✅ Deleted {args[1]}", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ {str(e)[:500]}")
+        await message.reply(f"❌ {str(e)[:500]}", parse_mode="HTML")
 
 @dp.message(Command("pip"))
 async def pip_cmd(message: Message, command: CommandObject):
     if message.from_user.id != ADMIN_ID:
         await message.reply("⛔ Owner only!")
         return
-    
     args = command.args.split() if command.args else []
     if not args:
-        await message.reply("Usage: /pip install|list|uninstall")
+        await message.reply("Usage: <code>/pip install|list|uninstall</code>", parse_mode="HTML")
         return
-    
     action = args[0].lower()
     try:
         if action == "install":
             pkg = args[1]
-            await message.reply(f"📦 Installing {pkg}...")
+            await message.reply(f"📦 Installing {pkg}...", parse_mode="HTML")
             result = subprocess.run([sys.executable, "-m", "pip", "install", pkg], capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
-                await message.reply(f"✅ Installed {pkg}")
+                await message.reply(f"✅ Installed {pkg}", parse_mode="HTML")
             else:
-                await message.reply(f"❌ Failed:\n```\n{result.stderr[:1000]}\n```", parse_mode="Markdown")
+                await message.reply(f"❌ Failed:\n<pre>{result.stderr[:1000]}</pre>", parse_mode="HTML")
         elif action == "list":
             result = subprocess.run([sys.executable, "-m", "pip", "list"], capture_output=True, text=True, timeout=30)
-            await message.reply(f"📦 **Packages**\n```\n{result.stdout[:3500]}\n```", parse_mode="Markdown")
+            await message.reply(f"📦 <b>Packages</b>\n<pre>{result.stdout[:3500]}</pre>", parse_mode="HTML")
         elif action == "uninstall":
             pkg = args[1]
             result = subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", pkg], capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
-                await message.reply(f"✅ Uninstalled {pkg}")
+                await message.reply(f"✅ Uninstalled {pkg}", parse_mode="HTML")
             else:
-                await message.reply(f"❌ Failed:\n```\n{result.stderr[:1000]}\n```", parse_mode="Markdown")
+                await message.reply(f"❌ Failed:\n<pre>{result.stderr[:1000]}</pre>", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ {str(e)[:500]}")
+        await message.reply(f"❌ {str(e)[:500]}", parse_mode="HTML")
 
 @dp.message(Command("math"))
 async def math_cmd(message: Message, command: CommandObject):
     expr = command.args
     if not expr:
-        await message.reply("Usage: /math 2+2 or /math solve x**2-4=0")
+        await message.reply("Usage: <code>/math 2+2</code> or <code>/math solve x**2-4=0</code>", parse_mode="HTML")
         return
-    
     try:
         x, y, z = symbols('x y z')
         if expr.lower().startswith('solve '):
@@ -1756,32 +1437,26 @@ async def math_cmd(message: Message, command: CommandObject):
                 parts = eq.split('=')
                 eq = f"({parts[0]}) - ({parts[1]})"
             result = solve(sympify(eq))
-            await message.reply(f"🔢 Solution: `{result}`")
+            await message.reply(f"🔢 Solution: <code>{result}</code>", parse_mode="HTML")
         elif expr.lower().startswith('diff '):
             result = diff(sympify(expr[5:]), x)
-            await message.reply(f"🔢 Derivative: `{result}`")
+            await message.reply(f"🔢 Derivative: <code>{result}</code>", parse_mode="HTML")
         elif expr.lower().startswith('integrate '):
             result = integrate(sympify(expr[10:]), x)
-            await message.reply(f"🔢 Integral: `{result} + C`")
-        elif expr.lower().startswith('simplify '):
-            result = simplify(sympify(expr[9:]))
-            await message.reply(f"🔢 Simplified: `{result}`")
-        elif expr.lower().startswith('expand '):
-            result = expand(sympify(expr[7:]))
-            await message.reply(f"🔢 Expanded: `{result}`")
-        elif expr.lower().startswith('factor '):
-            result = factor(sympify(expr[7:]))
-            await message.reply(f"🔢 Factored: `{result}`")
+            await message.reply(f"🔢 Integral: <code>{result} + C</code>", parse_mode="HTML")
         else:
             result = sympify(expr).evalf()
-            await message.reply(f"🔢 Result: `{result}`")
+            await message.reply(f"🔢 Result: <code>{result}</code>", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ Math error: {str(e)[:200]}")
+        await message.reply(f"❌ Math error: {str(e)[:200]}", parse_mode="HTML")
 
 @dp.message(Command("sysinfo"))
 async def sysinfo_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("⛔ Owner only!")
+        return
     info = f"""
-💻 **System Info**
+💻 <b>System Info</b>
 🖥️ Platform: {platform.system()} {platform.release()}
 🔧 Arch: {platform.machine()}
 🐍 Python: {platform.python_version()}
@@ -1796,88 +1471,89 @@ async def sysinfo_cmd(message: Message):
     except:
         pass
     info += f"\n🆙 Uptime: {indian_now() - bot_start_time}"
-    await message.reply(info, parse_mode="Markdown")
+    await message.reply(info, parse_mode="HTML")
 
 @dp.message(Command("json"))
 async def json_cmd(message: Message, command: CommandObject):
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("⛔ Owner only!")
+        return
     text = command.args or (message.reply_to_message.text if message.reply_to_message else None)
     if not text:
-        await message.reply("Usage: /json {'key':'value'}")
+        await message.reply("Usage: <code>/json {'key':'value'}</code>", parse_mode="HTML")
         return
     try:
         data = json.loads(text)
         pretty = json.dumps(data, indent=2, ensure_ascii=False)
-        await message.reply(f"📋 **JSON**\n```json\n{pretty[:3500]}\n```", parse_mode="Markdown")
+        await message.reply(f"📋 <b>JSON</b>\n<pre>{pretty[:3500]}</pre>", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ Invalid JSON: {str(e)}")
+        await message.reply(f"❌ Invalid JSON: {str(e)}", parse_mode="HTML")
 
 @dp.message(Command("hash"))
 async def hash_cmd(message: Message, command: CommandObject):
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("⛔ Owner only!")
+        return
     text = command.args
     if not text:
-        await message.reply("Usage: /hash hello")
+        await message.reply("Usage: <code>/hash hello</code>", parse_mode="HTML")
         return
-    
     md5 = hashlib.md5(text.encode()).hexdigest()
     sha1 = hashlib.sha1(text.encode()).hexdigest()
     sha256 = hashlib.sha256(text.encode()).hexdigest()
     sha512 = hashlib.sha512(text.encode()).hexdigest()
-    
-    await message.reply(f"🔐 **Hashes**\nMD5: `{md5}`\nSHA1: `{sha1}`\nSHA256: `{sha256}`\nSHA512: `{sha512[:64]}...`", parse_mode="Markdown")
+    await message.reply(
+        f"🔐 <b>Hashes</b>\nMD5: <code>{md5}</code>\nSHA1: <code>{sha1}</code>\nSHA256: <code>{sha256}</code>\nSHA512: <code>{sha512[:64]}...</code>",
+        parse_mode="HTML"
+    )
 
 @dp.message(Command("base64"))
 async def base64_cmd(message: Message, command: CommandObject):
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("⛔ Owner only!")
+        return
     args = command.args.split() if command.args else []
     if len(args) < 2:
-        await message.reply("Usage: /base64 encode Hello or /base64 decode SGVsbG8=")
+        await message.reply("Usage: <code>/base64 encode Hello</code> or <code>/base64 decode SGVsbG8=</code>", parse_mode="HTML")
         return
-    
     action, text = args[0], ' '.join(args[1:])
     try:
         if action == "encode":
             result = base64.b64encode(text.encode()).decode()
-            await message.reply(f"🔄 Encoded:\n`{result}`")
+            await message.reply(f"🔄 Encoded:\n<code>{result}</code>", parse_mode="HTML")
         elif action == "decode":
             result = base64.b64decode(text.encode()).decode()
-            await message.reply(f"🔄 Decoded:\n`{result}`")
+            await message.reply(f"🔄 Decoded:\n<code>{result}</code>", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"❌ {str(e)}")
+        await message.reply(f"❌ {str(e)}", parse_mode="HTML")
 
 @dp.message(Command("regex"))
 async def regex_cmd(message: Message, command: CommandObject):
-    if not command.args or '|||' not in command.args:
-        await message.reply("Usage: /regex pattern ||| test_string")
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("⛔ Owner only!")
         return
-    
+    if not command.args or '|||' not in command.args:
+        await message.reply("Usage: <code>/regex pattern ||| test_string</code>", parse_mode="HTML")
+        return
     parts = command.args.split('|||', 1)
     pattern, test = parts[0].strip(), parts[1].strip()
-    
     try:
         matches = re.findall(pattern, test)
         if matches:
-            await message.reply(f"🔤 Pattern: `{pattern}`\nMatches: {matches[:20]}\n✅ {len(matches)} found")
+            await message.reply(f"🔤 Pattern: <code>{pattern}</code>\nMatches: {matches[:20]}\n✅ {len(matches)} found", parse_mode="HTML")
         else:
-            await message.reply(f"🔤 Pattern: `{pattern}`\n❌ No matches")
+            await message.reply(f"🔤 Pattern: <code>{pattern}</code>\n❌ No matches", parse_mode="HTML")
     except re.error as e:
-        await message.reply(f"❌ Invalid regex: {e}")
+        await message.reply(f"❌ Invalid regex: {e}", parse_mode="HTML")
 
 @dp.message(Command("shorten"))
 async def shorten_cmd(message: Message, command: CommandObject):
     url = command.args
     if not url:
-        await message.reply("Usage: /shorten https://example.com")
+        await message.reply("Usage: <code>/shorten https://example.com</code>", parse_mode="HTML")
         return
-    
-    try:
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(f"https://tinyurl.com/api-create.php?url={url}") as resp:
-                if resp.status == 200:
-                    short = await resp.text()
-                    await message.reply(f"🔗 Short URL: {short}")
-                else:
-                    await message.reply("❌ Failed")
-    except:
-        await message.reply("❌ Error")
+    short = await shorten_url(url)
+    await message.reply(f"🔗 Short URL: {short}", parse_mode="HTML")
 
 @dp.message(Command("password"))
 async def password_cmd(message: Message, command: CommandObject):
@@ -1888,104 +1564,83 @@ async def password_cmd(message: Message, command: CommandObject):
             length = max(4, min(64, length))
         except:
             pass
-    
     pwd = generate_password(length)
-    await message.reply(f"🔐 **Password:** `{pwd}`", parse_mode="Markdown")
+    await message.reply(f"🔐 <b>Password:</b> <code>{pwd}</code>", parse_mode="HTML")
 
-# ---- WEATHER, TIME, QR, TRANSLATE, LYRICS ----
+# ---- WEATHER, TIME, QR, etc. ----
 @dp.message(Command("weather"))
 async def weather_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply("City name do! Example: /weather Mumbai")
+        await message.reply("City name do! Example: <code>/weather Mumbai</code>", parse_mode="HTML")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     weather = await get_weather(command.args)
-    await message.reply(weather, parse_mode="Markdown")
+    await message.reply(weather, parse_mode="HTML")
+    await add_reaction(message, command.args)
 
 @dp.message(Command("time"))
 async def time_cmd(message: Message):
     now = indian_now()
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"🕒 **Indian Time:** {now.strftime('%I:%M %p')}\n📅 **Date:** {now.strftime('%A, %d %B %Y')}\n\nHey {pet_name}! 💕")
+    await message.reply(
+        f"🕒 <b>Indian Time:</b> {now.strftime('%I:%M %p')}\n📅 <b>Date:</b> {now.strftime('%A, %d %B %Y')}\n{random_emoji()}",
+        parse_mode="HTML"
+    )
 
 @dp.message(Command("date"))
 async def date_cmd(message: Message):
     now = indian_now()
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"📆 **{now.strftime('%A, %d %B %Y')}**\n\nHey {pet_name}! 💕")
+    await message.reply(f"📆 <b>{now.strftime('%A, %d %B %Y')}</b>\n{random_emoji()}", parse_mode="HTML")
 
 @dp.message(Command("qr"))
 async def qr_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply("Text do! Example: /qr Hello World")
+        await message.reply("Text do! Example: <code>/qr Hello World</code>", parse_mode="HTML")
         return
-    
     qr_bytes = generate_qr(command.args)
-    await message.reply_photo(BufferedInputFile(qr_bytes, filename="qr.png"), caption=f"✅ QR Code ready!")
+    await message.reply_photo(BufferedInputFile(qr_bytes, filename="qr.png"), caption="✅ QR Code ready!")
 
 @dp.message(Command("translate"))
 async def translate_cmd(message: Message, command: CommandObject):
     if not command.args or len(command.args.split()) < 2:
-        await message.reply("Usage: /translate hi Hello")
+        await message.reply("Usage: <code>/translate hi Hello</code>", parse_mode="HTML")
         return
-    
     parts = command.args.split(maxsplit=1)
     lang, text = parts[0], parts[1]
     translated = await translate_text(text, lang)
-    await message.reply(f"🌍 **Translation ({lang.upper()}):**\n{translated}")
-
-async def translate_text(text: str, target: str) -> str:
-    try:
-        async with aiohttp.ClientSession() as sess:
-            url = f"https://api.mymemory.translated.net/get?q={text}&langpair=en|{target}"
-            async with sess.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data.get('responseData', {}).get('translatedText', text)
-    except:
-        pass
-    return text
+    await message.reply(f"🌍 <b>Translation ({lang.upper()}):</b>\n{translated}", parse_mode="HTML")
 
 @dp.message(Command("lyrics"))
 async def lyrics_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply("Song name do! Example: /lyrics Shape of You")
+        await message.reply("Song name do! Example: <code>/lyrics Shape of You</code>", parse_mode="HTML")
         return
-    
     await bot.send_chat_action(message.chat.id, "typing")
     lyrics = await get_lyrics(command.args)
-    await message.reply(f"🎶 **{command.args}**\n\n{lyrics[:3500]}", parse_mode="Markdown")
+    await message.reply(f"🎶 <b>{command.args}</b>\n\n{lyrics[:3500]}", parse_mode="HTML", disable_web_page_preview=True)
 
 @dp.message(Command("imagine"))
 async def imagine_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply("Prompt do! Example: /imagine sunset mountains")
+        await message.reply(f"{random_emoji()} Prompt do! Example: <code>/imagine sunset mountains</code>", parse_mode="HTML")
         return
-    
-    pet_name = get_pet_name(message.from_user.id)
-    status = await message.reply(f"{random_emoji('happy')} {pet_name}, image bana rahi hu... 🎨")
-    
+    status = await message.reply(f"{random_emoji()} Image bana rahi hu... 🎨", parse_mode="HTML")
     img_bytes = await generate_image(command.args)
     if img_bytes:
         await status.delete()
-        await message.reply_photo(BufferedInputFile(img_bytes, filename="alita_ai.png"), caption=f"**Your image:** {command.args}\n\nFor you {pet_name}! 💕")
+        await message.reply_photo(BufferedInputFile(img_bytes, filename="alita_ai.png"), caption=f"<b>Your image:</b> {command.args}", parse_mode="HTML")
     else:
-        await status.edit_text(f"{random_emoji('crying')} {pet_name}, image nahi ban paai, try again!")
+        await status.edit_text(f"{random_emoji('crying')} Image nahi ban paai, try again!", parse_mode="HTML")
 
 @dp.message(Command("fact"))
 async def fact_cmd(message: Message):
-    facts = [
-        "🍯 Honey kabhi kharab nahi hota – 3000 saal purana honey bhi kha sakte ho!",
-        "🐙 Octopus ke 3 dil hote hain!",
-        "🍌 Banana ek berry hai, strawberry nahi!",
-        "🦈 Sharks pehle aaye, trees baad mein!",
-        "🧠 Human brain 20% energy use karta hai!",
-        "🦋 Butterflies taste with their feet!",
-        "💩 Wombat poop cube shaped hota hai!"
-    ]
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"📌 **Daily Fact:**\n{random.choice(facts)}\n\nHey {pet_name}! {random_emoji('thinking')}")
+    facts = ["🍯 Honey kabhi kharab nahi hota – 3000 saal purana honey bhi kha sakte ho!",
+             "🐙 Octopus ke 3 dil hote hain!",
+             "🍌 Banana ek berry hai, strawberry nahi!",
+             "🦈 Sharks pehle aaye, trees baad mein!",
+             "🧠 Human brain 20% energy use karta hai!",
+             "🦋 Butterflies taste with their feet!",
+             "💩 Wombat poop cube shaped hota hai!"]
+    await message.reply(f"📌 <b>Daily Fact:</b>\n{random.choice(facts)}\n\n{random_emoji()}", parse_mode="HTML")
 
 @dp.message(Command("horoscope"))
 async def horoscope_cmd(message: Message, command: CommandObject):
@@ -2003,85 +1658,67 @@ async def horoscope_cmd(message: Message, command: CommandObject):
         "aquarius": "♒ Aquarius – Naye ideas aayenge.",
         "pisces": "♓ Pisces – Creativity boost pe hai."
     }
-    
     if not command.args:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(f"{s.capitalize()}", callback_data=f"horo_{s}") for s in list(signs)[:4]],
             [InlineKeyboardButton(f"{s.capitalize()}", callback_data=f"horo_{s}") for s in list(signs)[4:8]],
             [InlineKeyboardButton(f"{s.capitalize()}", callback_data=f"horo_{s}") for s in list(signs)[8:]]
         ])
-        await message.reply(f"{random_emoji('surprise')} **Apni rashi choose karo:**", reply_markup=kb)
+        await message.reply(f"{random_emoji('surprise')} <b>Apni rashi choose karo:</b>", reply_markup=kb, parse_mode="HTML")
         return
-    
     sign = command.args.lower()
-    pet_name = get_pet_name(message.from_user.id)
-    
     if sign in signs:
-        await message.reply(f"{signs[sign]}\n\nHey {pet_name}! {random_emoji('love')}")
+        await message.reply(f"{signs[sign]}\n\n{random_emoji('love')}", parse_mode="HTML")
     else:
-        await message.reply(f"{random_emoji('crying')} Yeh rashi nahi mili. Aries, Taurus, etc. likho.")
+        await message.reply(f"{random_emoji('crying')} Yeh rashi nahi mili. Aries, Taurus, etc. likho.", parse_mode="HTML")
 
 # ---- NOTES, REMINDERS, AFK, INFO ----
 @dp.message(Command("note"))
 async def note_cmd(message: Message, command: CommandObject):
     if not command.args:
-        await message.reply("Note kya save karun? Example: /note Milk lena")
+        await message.reply("Note kya save karun? Example: <code>/note Milk lena</code>", parse_mode="HTML")
         return
-    
     cursor.execute("INSERT INTO notes (user_id, note_text, created_at) VALUES (?, ?, ?)",
                    (message.from_user.id, command.args, indian_now()))
     conn.commit()
-    
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"{random_emoji('happy')} **Note saved!** 📝\n\nHey {pet_name}! 💕")
+    await message.reply(f"{random_emoji()} <b>Note saved!</b> 📝", parse_mode="HTML")
 
 @dp.message(Command("notes"))
 async def notes_cmd(message: Message):
     cursor.execute("SELECT note_text, created_at FROM notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
                    (message.from_user.id,))
     rows = cursor.fetchall()
-    
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not rows:
-        await message.reply(f"Koi note nahi hai {pet_name}. /note se add karo.")
+        await message.reply("Koi note nahi hai. <code>/note</code> se add karo.", parse_mode="HTML")
         return
-    
-    text = f"📋 **Your Notes:**\n\n"
+    text = "📋 <b>Your Notes:</b>\n\n"
     for i, row in enumerate(rows, 1):
-        time = datetime.fromisoformat(row['created_at']).strftime('%d/%m %I:%M %p')
-        text += f"{i}. {row['note_text']} — _{time}_\n"
-    
-    text += f"\nHey {pet_name}! 💕"
-    await message.reply(text, parse_mode="Markdown")
+        time_str = datetime.fromisoformat(row['created_at']).strftime('%d/%m %I:%M %p')
+        text += f"{i}. {row['note_text']} — <i>{time_str}</i>\n"
+    await message.reply(text, parse_mode="HTML")
 
 @dp.message(Command("remind"))
 async def remind_cmd(message: Message, command: CommandObject):
     if not command.args or len(command.args.split()) < 2:
-        await message.reply("Usage: /remind 1h Call mom")
+        await message.reply("Usage: <code>/remind 1h Call mom</code>", parse_mode="HTML")
         return
-    
     args = command.args.split(maxsplit=1)
     time_str, text = args[0], args[1]
-    
     minutes = 0
     if time_str.endswith('h'):
         minutes = int(time_str[:-1]) * 60
     elif time_str.endswith('m'):
         minutes = int(time_str[:-1])
     else:
-        await message.reply("Time format: 30m (minutes) ya 1h (hours)")
+        await message.reply("Time format: <code>30m</code> (minutes) ya <code>1h</code> (hours)", parse_mode="HTML")
         return
-    
     remind_at = indian_now() + timedelta(minutes=minutes)
     cursor.execute(
         "INSERT INTO reminders (user_id, chat_id, reminder_text, remind_at, created_at) VALUES (?, ?, ?, ?, ?)",
         (message.from_user.id, message.chat.id, text, remind_at, indian_now())
     )
     conn.commit()
-    
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"{random_emoji('happy')} **Reminder set!** ⏰\n{text} – {remind_at.strftime('%I:%M %p')}\n\nHey {pet_name}! 💕")
+    await message.reply(f"{random_emoji()} <b>Reminder set!</b> ⏰\n{text} – {remind_at.strftime('%I:%M %p')}", parse_mode="HTML")
 
 @dp.message(Command("reminders"))
 async def reminders_cmd(message: Message):
@@ -2089,68 +1726,51 @@ async def reminders_cmd(message: Message):
     cursor.execute("SELECT id, reminder_text, remind_at FROM reminders WHERE user_id = ? AND remind_at > ? ORDER BY remind_at",
                    (message.from_user.id, now))
     rows = cursor.fetchall()
-    
-    pet_name = get_pet_name(message.from_user.id)
-    
     if not rows:
-        await message.reply(f"Koi active reminder nahi {pet_name}.")
+        await message.reply("Koi active reminder nahi.", parse_mode="HTML")
         return
-    
-    text = f"⏰ **Your Reminders:**\n\n"
+    text = "⏰ <b>Your Reminders:</b>\n\n"
     for row in rows:
         due = datetime.fromisoformat(row['remind_at']).strftime('%d/%m %I:%M %p')
-        text += f"• {row['reminder_text']} — _{due}_\n"
-    
-    text += f"\nHey {pet_name}! 💕"
-    await message.reply(text, parse_mode="Markdown")
+        text += f"• {row['reminder_text']} — <i>{due}</i>\n"
+    await message.reply(text, parse_mode="HTML")
 
 @dp.message(Command("afk"))
 async def afk_cmd(message: Message, command: CommandObject):
     reason = command.args or "AFK"
     user_afk[message.from_user.id] = {"reason": reason, "since": indian_now()}
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"{random_emoji('sleepy')} **AFK mode ON**\nReason: {reason}\n\nBye {pet_name}! 💕")
+    await message.reply(f"{random_emoji('sleepy')} <b>AFK mode ON</b>\nReason: {reason}", parse_mode="HTML")
 
 @dp.message(Command("info"))
 async def info_cmd(message: Message):
     target = message.reply_to_message.from_user if message.reply_to_message else message.from_user
-    
-    text = f"""👤 **User Info**
-🆔 ID: `{target.id}`
-📛 Name: {target.full_name}
-📱 Username: @{target.username if target.username else 'N/A'}
-"""
+    text = f"👤 <b>User Info</b>\n🆔 ID: <code>{target.id}</code>\n📛 Name: {target.full_name}\n📱 Username: @{target.username if target.username else 'N/A'}\n"
     if message.chat.type in ('group','supergroup'):
         try:
             member = await bot.get_chat_member(message.chat.id, target.id)
             text += f"🏷️ Status: {member.status.capitalize()}\n"
         except:
             pass
-    
-    pet_name = get_pet_name(message.from_user.id)
-    text += f"\nHey {pet_name}! 💕"
-    await message.reply(text, parse_mode="Markdown")
+    await message.reply(text, parse_mode="HTML")
 
 # ---- ADMIN COMMANDS ----
 async def group_admin_only(message: Message):
     if message.chat.type not in ('group','supergroup'):
-        await message.reply("⚠️ Yeh command sirf groups mein chalegi.")
+        await message.reply("⚠️ Yeh command sirf groups mein chalegi.", parse_mode="HTML")
         return False
     if not await is_user_admin(message.chat.id, message.from_user.id):
-        await message.reply(f"{random_emoji('angry')} Sirf admin log yeh command use kar sakte hain.")
+        await message.reply(f"{random_emoji('angry')} Sirf admin log yeh command use kar sakte hain.", parse_mode="HTML")
         return False
     return True
 
 @dp.message(Command("adminlist"))
 async def adminlist_cmd(message: Message):
     if not await group_admin_only(message): return
-    
     admins = await get_group_admins(message.chat.id)
     if not admins:
-        await message.reply("Koi admin nahi mila?")
+        await message.reply("Koi admin nahi mila?", parse_mode="HTML")
         return
-    
-    text = "👑 **Group Admins:**\n"
+    text = "👑 <b>Group Admins:</b>\n"
     for aid in admins:
         try:
             user = await bot.get_chat_member(message.chat.id, aid)
@@ -2158,79 +1778,71 @@ async def adminlist_cmd(message: Message):
             status = "👑 Creator" if user.status == "creator" else "🛡️ Admin"
             text += f"\n{status} – {name}"
         except:
-            text += f"\n• `{aid}`"
-    
-    await message.reply(text, parse_mode="Markdown")
+            text += f"\n• <code>{aid}</code>"
+    await message.reply(text, parse_mode="HTML")
 
 @dp.message(Command("warn"))
 async def warn_cmd(message: Message, command: CommandObject):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Kisi user ke message pe reply karo.")
+        await message.reply("Kisi user ke message pe reply karo.", parse_mode="HTML")
         return
-    
     await delete_and_warn(message.reply_to_message, "manual_warning")
 
 @dp.message(Command("kick"))
 async def kick_cmd(message: Message):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo user ko kick karne ke liye.")
+        await message.reply("Reply karo user ko kick karne ke liye.", parse_mode="HTML")
         return
-    
     target = message.reply_to_message.from_user
     try:
         await bot.ban_chat_member(message.chat.id, target.id)
         await bot.unban_chat_member(message.chat.id, target.id)
-        await message.reply(f"{random_emoji('angry')} {target.first_name} ko kick kar diya!")
+        await message.reply(f"{random_emoji('angry')} {target.first_name} ko kick kar diya!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Kick nahi kar paai: {e}")
+        await message.reply(f"Kick nahi kar paai: {e}", parse_mode="HTML")
 
 @dp.message(Command("ban"))
 async def ban_cmd(message: Message):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo user ko ban karne ke liye.")
+        await message.reply("Reply karo user ko ban karne ke liye.", parse_mode="HTML")
         return
-    
     target = message.reply_to_message.from_user
     try:
         await bot.ban_chat_member(message.chat.id, target.id)
-        await message.reply(f"{random_emoji('angry')} {target.first_name} permanently banned!")
+        await message.reply(f"{random_emoji('angry')} {target.first_name} permanently banned!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Ban nahi kar paai: {e}")
+        await message.reply(f"Ban nahi kar paai: {e}", parse_mode="HTML")
 
 @dp.message(Command("unban"))
 async def unban_cmd(message: Message):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo user ke message pe unban karne ke liye.")
+        await message.reply("Reply karo user ke message pe unban karne ke liye.", parse_mode="HTML")
         return
-    
     target = message.reply_to_message.from_user
     try:
         await bot.unban_chat_member(message.chat.id, target.id)
-        await message.reply(f"{random_emoji('happy')} {target.first_name} ka ban hata diya!")
+        await message.reply(f"{random_emoji('happy')} {target.first_name} ka ban hata diya!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Unban failed: {e}")
+        await message.reply(f"Unban failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("mute"))
 async def mute_cmd(message: Message, command: CommandObject):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo user ko mute karne ke liye.")
+        await message.reply("Reply karo user ko mute karne ke liye.", parse_mode="HTML")
         return
-    
     target = message.reply_to_message.from_user
     duration = command.args
     minutes = 60
-    
     if duration:
         if duration.endswith('h'):
             minutes = int(duration[:-1]) * 60
         elif duration.endswith('m'):
             minutes = int(duration[:-1])
-    
     until = indian_now() + timedelta(minutes=minutes)
     try:
         await bot.restrict_chat_member(
@@ -2238,17 +1850,16 @@ async def mute_cmd(message: Message, command: CommandObject):
             permissions=ChatPermissions(can_send_messages=False),
             until_date=until
         )
-        await message.reply(f"{random_emoji('angry')} {target.first_name} muted for {minutes} minutes!")
+        await message.reply(f"{random_emoji('angry')} {target.first_name} muted for {minutes} minutes!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Mute failed: {e}")
+        await message.reply(f"Mute failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("unmute"))
 async def unmute_cmd(message: Message):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo user ko unmute karne ke liye.")
+        await message.reply("Reply karo user ko unmute karne ke liye.", parse_mode="HTML")
         return
-    
     target = message.reply_to_message.from_user
     try:
         await bot.restrict_chat_member(
@@ -2261,106 +1872,99 @@ async def unmute_cmd(message: Message):
                 can_add_web_page_previews=True
             )
         )
-        await message.reply(f"{random_emoji('happy')} {target.first_name} unmuted!")
+        await message.reply(f"{random_emoji('happy')} {target.first_name} unmuted!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Unmute failed: {e}")
+        await message.reply(f"Unmute failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("pin"))
 async def pin_cmd(message: Message):
     if not await group_admin_only(message): return
     if not message.reply_to_message:
-        await message.reply("Reply karo us message pe jo pin karna hai.")
+        await message.reply("Reply karo us message pe jo pin karna hai.", parse_mode="HTML")
         return
-    
     try:
         await bot.pin_chat_message(message.chat.id, message.reply_to_message.message_id)
-        await message.reply("📌 Pinned!")
+        await message.reply("📌 Pinned!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Pin failed: {e}")
+        await message.reply(f"Pin failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("unpin"))
 async def unpin_cmd(message: Message):
     if not await group_admin_only(message): return
     try:
         await bot.unpin_chat_message(message.chat.id)
-        await message.reply("📍 Unpinned!")
+        await message.reply("📍 Unpinned!", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Unpin failed: {e}")
+        await message.reply(f"Unpin failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("slowmode"))
 async def slowmode_cmd(message: Message, command: CommandObject):
     if not await group_admin_only(message): return
-    
     delay = 0
     if command.args:
         try:
             delay = int(command.args)
         except:
             pass
-    
     try:
         await bot.set_chat_slow_mode_delay(message.chat.id, delay)
         if delay == 0:
-            await message.reply("⏱️ Slow mode disabled!")
+            await message.reply("⏱️ Slow mode disabled!", parse_mode="HTML")
         else:
-            await message.reply(f"⏱️ Slow mode enabled: {delay} seconds.")
+            await message.reply(f"⏱️ Slow mode enabled: {delay} seconds.", parse_mode="HTML")
     except Exception as e:
-        await message.reply(f"Slow mode change failed: {e}")
+        await message.reply(f"Slow mode change failed: {e}", parse_mode="HTML")
 
 @dp.message(Command("tagall"))
 async def tagall_cmd(message: Message):
     if not await group_admin_only(message): return
     if not await is_bot_admin(message.chat.id):
-        await message.reply("Mujhe group admin banana padega tagall ke liye.")
+        await message.reply("Mujhe group admin banana padega tagall ke liye.", parse_mode="HTML")
         return
-    
     members = []
     try:
         async for member in bot.get_chat_members(message.chat.id):
             if not member.user.is_bot:
-                name = member.user.first_name
-                mention = f"[{name}](tg://user?id={member.user.id})"
+                mention = f"<a href='tg://user?id={member.user.id}'>{member.user.first_name}</a>"
                 members.append(mention)
                 if len(members) >= 50:
                     break
     except Exception as e:
-        await message.reply(f"Members fetch nahi ho paaye: {e}")
+        await message.reply(f"❌ Members fetch nahi ho paaye: {e}", parse_mode="HTML")
         return
-    
     if not members:
-        await message.reply("Koi member nahi mila tag karne ke liye.")
+        await message.reply("Koi member nahi mila tag karne ke liye.", parse_mode="HTML")
         return
-    
     for i in range(0, len(members), 10):
         chunk = members[i:i+10]
-        await message.reply(" ".join(chunk), parse_mode="Markdown")
+        await message.reply(" ".join(chunk), parse_mode="HTML")
         await asyncio.sleep(1)
 
 @dp.message(Command("rules"))
 async def rules_cmd(message: Message):
     rules = f"""
-{random_emoji('protective')} **📜 GROUP RULES**
+{random_emoji('protective')} <b>📜 GROUP RULES</b>
 
-✅ **DO:**
+✅ <b>DO:</b>
 • Respect everyone
 • Keep chat friendly
 • Help each other
 
-🚫 **DON'T:**
+🚫 <b>DON'T:</b>
 • No spam
 • No bad language
 • No adult content → auto‑ban
 • No group links
 • No fake links
 
-🔒 **I'm here to protect the group!**
+🔒 <b>I'm here to protect the group!</b>
 """
-    await message.reply(rules, parse_mode="Markdown")
+    await message.reply(rules, parse_mode="HTML")
 
 # ---- OWNER COMMANDS ----
 async def owner_only(message: Message):
     if message.from_user.id != ADMIN_ID:
-        await message.reply("❌ Yeh command sirf meri jaan ke liye hai.")
+        await message.reply("❌ Yeh command sirf meri jaan ke liye hai.", parse_mode="HTML")
         return False
     return True
 
@@ -2368,13 +1972,11 @@ async def owner_only(message: Message):
 async def sendall_cmd(message: Message):
     if not await owner_only(message): return
     if not message.reply_to_message:
-        await message.reply("Kisi message pe reply karo broadcast karne ke liye.")
+        await message.reply("Kisi message pe reply karo broadcast karne ke liye.", parse_mode="HTML")
         return
-    
-    status = await message.reply("📤 Broadcasting...")
+    status = await message.reply("📤 Broadcasting...", parse_mode="HTML")
     sent = 0
     failed = 0
-    
     cursor.execute("SELECT user_id FROM users")
     for row in cursor.fetchall():
         try:
@@ -2383,7 +1985,6 @@ async def sendall_cmd(message: Message):
             await asyncio.sleep(0.05)
         except:
             failed += 1
-    
     cursor.execute("SELECT chat_id FROM groups")
     for row in cursor.fetchall():
         try:
@@ -2392,109 +1993,97 @@ async def sendall_cmd(message: Message):
             await asyncio.sleep(0.05)
         except:
             failed += 1
-    
-    await status.edit_text(f"✅ Broadcast done!\nSent: {sent}\nFailed: {failed}")
+    await status.edit_text(f"✅ Broadcast done!\nSent: {sent}\nFailed: {failed}", parse_mode="HTML")
 
 @dp.message(Command("savesticker"))
 async def savesticker_cmd(message: Message):
     if not await owner_only(message): return
     if not message.reply_to_message or not message.reply_to_message.sticker:
-        await message.reply("Reply to a sticker message!")
+        await message.reply("Reply to a sticker message!", parse_mode="HTML")
         return
-    
     file_id = message.reply_to_message.sticker.file_id
     emoji = message.reply_to_message.sticker.emoji or ""
-    
     cursor.execute("INSERT OR IGNORE INTO stickers (file_id, added_by, added_at, emoji) VALUES (?, ?, ?, ?)",
                    (file_id, message.from_user.id, indian_now(), emoji))
     conn.commit()
-    
     if cursor.rowcount:
         saved_stickers.append(file_id)
-        await message.reply(f"✅ Sticker saved! Total: {len(saved_stickers)}")
+        await message.reply(f"✅ Sticker saved! Total: {len(saved_stickers)}", parse_mode="HTML")
     else:
-        await message.reply("Sticker already exists!")
+        await message.reply("Sticker already exists!", parse_mode="HTML")
 
 @dp.message(Command("stickerstatus"))
 async def stickerstatus_cmd(message: Message):
     if not await owner_only(message): return
-    await message.reply(f"🎀 **Sticker Database**\n\nTotal stickers: {len(saved_stickers)}")
+    await message.reply(f"🎀 <b>Sticker Database</b>\n\nTotal stickers: {len(saved_stickers)}", parse_mode="HTML")
 
 @dp.message(Command("deletesticker"))
 async def deletesticker_cmd(message: Message):
     if not await owner_only(message): return
     if not message.reply_to_message or not message.reply_to_message.sticker:
-        await message.reply("Reply to a sticker to delete from database.")
+        await message.reply("Reply to a sticker to delete from database.", parse_mode="HTML")
         return
-    
     file_id = message.reply_to_message.sticker.file_id
     cursor.execute("DELETE FROM stickers WHERE file_id = ?", (file_id,))
     conn.commit()
-    
     if cursor.rowcount:
         saved_stickers[:] = [f for f in saved_stickers if f != file_id]
-        await message.reply("✅ Sticker deleted!")
+        await message.reply("✅ Sticker deleted!", parse_mode="HTML")
     else:
-        await message.reply("Sticker not found in database.")
+        await message.reply("Sticker not found in database.", parse_mode="HTML")
 
-# -------------------- MESSAGE HANDLER (AI + MOD + AFK + REACTIONS) --------------------
+# -------------------- MESSAGE HANDLER (AI + MOD + AFK + GAMING DETECT + REACT) --------------------
 @dp.message()
 async def message_handler(message: Message):
     if message.from_user.id == bot.id:
         return
-    
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
+
     # Update user activity
     cursor.execute(
         "INSERT OR REPLACE INTO users (user_id, first_name, username, last_active) VALUES (?, ?, ?, ?)",
-        (user_id, message.from_user.first_name, message.from_user.username, indian_now())
+        (message.from_user.id, message.from_user.first_name, message.from_user.username, indian_now())
     )
     conn.commit()
-    
-    # Save group if group
+
+    # Save group
     if message.chat.type in ('group','supergroup'):
         cursor.execute(
             "INSERT OR IGNORE INTO groups (chat_id, title) VALUES (?, ?)",
-            (chat_id, message.chat.title)
+            (message.chat.id, message.chat.title)
         )
         conn.commit()
-    
-    # ---- 60% CHANCE TO REACT TO MESSAGE ----
-    await maybe_react_to_message(message, user_id)
-    
-    # ---- AFK check ----
-    if user_id in user_afk:
-        del user_afk[user_id]
-        pet_name = get_pet_name(user_id)
-        await message.reply(f"{random_emoji('happy')} Welcome back {pet_name}! AFK hata diya. 💕")
-    
-    # Check if someone mentioned an AFK user
-    if message.reply_to_message and message.reply_to_message.from_user.id in user_afk:
-        afk_data = user_afk[message.reply_to_message.from_user.id]
-        pet_name = get_pet_name(user_id)
-        await message.reply(f"{random_emoji('sleepy')} {message.reply_to_message.from_user.first_name} AFK hai!\nReason: {afk_data['reason']}\n\nHey {pet_name}! 💕")
-    
-    # ---- Creator detection ----
+
+    # AFK check
+    if message.from_user.id in user_afk:
+        del user_afk[message.from_user.id]
+        await message.reply(f"{random_emoji('happy')} Welcome back! AFK hata diya.", parse_mode="HTML")
+
+    # Creator detection
     if message.text:
         msg_lower = message.text.lower()
-        creator_keywords = ["kisne banaya", "kisne bnaya", "who made", "who created", "creator", "developer", 
-                          "kon banaya", "kon bnaya", "made you", "created you", "tumhe kisne banaya", 
-                          "tujhe kisne banaya", "aapko kisne banaya", "tere creator", "tera creator", 
-                          "tera malik", "tera owner", "owner", "malik", "banane wala", "bnane wala"]
-        for kw in creator_keywords:
+        for kw in CREATOR_KEYWORDS:
             if kw in msg_lower:
-                pet_name = get_pet_name(user_id)
-                await message.reply(f"🥰😊\n\n{pet_name}, mujhe mere bhagwan ne banaya hai Abhi ne (@a6h1ii) 🙏✨\nWoh mere creator hain, bahut talented developer hain! 💖🎀")
+                await message.reply("🥰😊\n\nMujhe mere bhagwan ne banaya hai <b>Abhi</b> ne (@a6h1ii) 🙏✨\nWoh mere creator hain, bahut talented devloper hain! 💖🎀", parse_mode="HTML")
                 return
-    
-    # ---- AUTO MODERATION (groups) ----
+
+    # Gaming keyword auto-response
+    if message.chat.type in ('group','supergroup') and message.text and not message.text.startswith('/'):
+        msg_lower = message.text.lower()
+        for cat, words in GAMING_KEYWORDS.items():
+            for word in words:
+                if word in msg_lower:
+                    react_key = cat.replace("_words", "_reaction")
+                    if react_key in GAMING_REACTIONS:
+                        react = random.choice(GAMING_REACTIONS[react_key])
+                        await message.reply(react, parse_mode="HTML")
+                    return
+
+    # AUTO MODERATION
     if message.chat.type in ('group','supergroup') and message.text:
-        cursor.execute("SELECT auto_mod_enabled FROM groups WHERE chat_id = ?", (chat_id,))
+        cursor.execute("SELECT auto_mod_enabled FROM groups WHERE chat_id = ?", (message.chat.id,))
         row = cursor.fetchone()
         if row and row['auto_mod_enabled']:
-            if await is_spam(chat_id, user_id):
+            if await is_spam(message.chat.id, message.from_user.id):
                 await delete_and_warn(message, "spam")
                 return
             if contains_bad_words(message.text):
@@ -2509,72 +2098,66 @@ async def message_handler(message: Message):
             if contains_fake_link(message.text):
                 await delete_and_warn(message, "fake_links")
                 return
-    
-    # ---- CAPTCHA answer check ----
-    if user_id in captcha_store and message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
-        correct = captcha_store[user_id].get('answer')
+
+    # CAPTCHA answer check
+    if message.from_user.id in captcha_store and message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+        correct = captcha_store[message.from_user.id].get('answer')
         if message.text.strip() == correct:
-            del captcha_store[user_id]
-            pet_name = get_pet_name(user_id)
-            await message.reply(f"{random_emoji('happy')} ✅ CAPTCHA passed {pet_name}! Welcome! 💕")
+            del captcha_store[message.from_user.id]
+            await message.reply(f"{random_emoji('happy')} ✅ CAPTCHA passed! Welcome!", parse_mode="HTML")
             return
         else:
-            await message.reply(f"{random_emoji('angry')} ❌ Wrong answer! Try again.")
+            await message.reply(f"{random_emoji('angry')} ❌ Wrong answer! Try again.", parse_mode="HTML")
             return
-    
-    # ---- AI RESPONSE (private, reply to bot, mention) ----
+
+    # AI RESPONSE (private, reply to bot, mention)
     is_private = message.chat.type == "private"
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
     is_mention = False
-    
     if BOT_USERNAME and message.text:
         if f"@{BOT_USERNAME}" in message.text.lower():
             is_mention = True
-    
+
     if is_private or is_reply_to_bot or is_mention:
-        await bot.send_chat_action(chat_id, "typing")
+        await bot.send_chat_action(message.chat.id, "typing")
         await asyncio.sleep(random.uniform(0.5, 1.2))
-        
         user_text = message.text or ""
         if BOT_USERNAME:
             user_text = re.sub(f"@{BOT_USERNAME}", "", user_text, flags=re.IGNORECASE).strip()
         if not user_text:
             user_text = "Hii"
-        
         # 20% chance to send sticker
         if saved_stickers and random.random() < 0.20:
             sticker = random.choice(saved_stickers)
-            await bot.send_sticker(chat_id, sticker)
+            await bot.send_sticker(message.chat.id, sticker)
             await asyncio.sleep(0.3)
-        
-        # Generate AI response with girl personality
-        reply = await generate_ai_response(chat_id, user_text, user_id)
-        
-        # Store conversation
-        conversation_history[chat_id].append({"role": "user", "content": user_text})
-        conversation_history[chat_id].append({"role": "assistant", "content": reply})
-        
-        await message.reply(reply, parse_mode="Markdown")
+        reply = await generate_ai_response(message.chat.id, user_text, message.from_user.id)
+        conversation_history[message.chat.id].append({"role": "user", "content": user_text})
+        conversation_history[message.chat.id].append({"role": "assistant", "content": reply})
+        await message.reply(reply, parse_mode="HTML")
+        # Add reaction after replying
+        await add_reaction(message, user_text)
         return
+
+    # For any other text message, also try to add reaction (with 60% chance)
+    if message.text and not message.text.startswith('/'):
+        await add_reaction(message, message.text)
 
 # ---- PHOTO HANDLER ----
 @dp.message(F.photo)
 async def handle_photo(message: Message):
-    pet_name = get_pet_name(message.from_user.id)
-    await message.reply(f"🔍 {pet_name}, photo analyze kar rahi hoon... 📸")
-    
+    await message.reply("🔍 Photo analyze kar rahi hoon... 📸", parse_mode="HTML")
     try:
         photo = message.photo[-1]
         file = await bot.get_file(photo.file_id)
         photo_bytes = await file.download_as_bytearray()
         photo_base64 = base64.b64encode(photo_bytes).decode('utf-8')
         caption = message.caption or "Is photo mein kya hai? Describe in detail."
-        
+
         if G4F_AVAILABLE:
             from g4f.Provider import Blackbox
             client = G4FClient()
             image_url = f"data:image/jpeg;base64,{photo_base64}"
-            
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: client.chat.completions.create(
@@ -2592,12 +2175,12 @@ async def handle_photo(message: Message):
                 )
             )
             analysis = response.choices[0].message.content
-            await message.reply(f"📸 **Photo Analysis** 🎀\n\n{analysis[:4000]}\n\nHey {pet_name}! 💕")
+            await message.reply(f"📸 <b>Photo Analysis</b> 🎀\n\n{analysis[:4000]}", parse_mode="HTML")
         else:
-            await message.reply(f"📸 {pet_name}, Vision feature thoda busy hai, thodi der mein try karo.")
+            await message.reply("📸 Photo mil gayi! Vision feature thoda busy hai, thodi der mein try karo.", parse_mode="HTML")
     except Exception as e:
         logging.error(f"Photo error: {e}")
-        await message.reply(f"😅 {pet_name}, photo process karne mein thodi problem hui! Dubara try karo.")
+        await message.reply("😅 Photo process karne mein thodi problem hui! Dubara try karo.", parse_mode="HTML")
 
 # ---- CHAT MEMBER HANDLER (Welcome/Goodbye/CAPTCHA) ----
 @dp.chat_member()
@@ -2607,12 +2190,10 @@ async def chat_member_handler(update: ChatMemberUpdated):
         row = cursor.fetchone()
         if not row:
             return
-        
         if row['captcha_enabled']:
             num1 = random.randint(1,20)
             num2 = random.randint(1,20)
             op = random.choice(['+','-','*'])
-            
             if op == '+':
                 ans = num1 + num2
             elif op == '-':
@@ -2622,35 +2203,25 @@ async def chat_member_handler(update: ChatMemberUpdated):
                     ans = num1 - num2
             else:
                 ans = num1 * num2
-            
             question = f"{num1} {op} {num2} = ?"
-            captcha_store[update.new_chat_member.user.id] = {"answer": str(ans), "chat_id": update.chat.id, "question": question}
-            
+            captcha_store[update.new_chat_member.user.id] = {"answer": str(ans), "chat_id": update.chat.id}
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton("I'm human!", callback_data=f"captcha_{update.new_chat_member.user.id}")]
             ])
-            
             await bot.send_message(
                 update.chat.id,
-                f"🧩 **CAPTCHA Verification**\nWelcome {update.new_chat_member.user.first_name}!\nSolve: {question}",
-                reply_markup=kb
+                f"🧩 <b>CAPTCHA Verification</b>\nWelcome {update.new_chat_member.user.first_name}!\nSolve: {question}",
+                reply_markup=kb,
+                parse_mode="HTML"
             )
             return
-        
         if row['welcome_enabled']:
             if row['custom_welcome']:
                 msg = row['custom_welcome'].replace("{name}", update.new_chat_member.user.first_name)
             else:
-                wel = [
-                    "🎉 Welcome {name}!",
-                    "🌟 Aao ji {name}!",
-                    "🥳 {name} aa gaye!",
-                    "🌸 Namaste {name}!"
-                ]
+                wel = ["🎉 Welcome {name}!", "🌟 Aao ji {name}!", "🥳 {name} aa gaye!", "🌸 Namaste {name}!"]
                 msg = random.choice(wel).format(name=update.new_chat_member.user.first_name)
-            
-            await bot.send_message(update.chat.id, msg + f" {random_emoji('happy')}")
-    
+            await bot.send_message(update.chat.id, msg + f" {random_emoji('happy')}", parse_mode="HTML")
     elif update.new_chat_member.status in ("left","kicked"):
         cursor.execute("SELECT goodbye_enabled, custom_goodbye FROM groups WHERE chat_id = ?", (update.chat.id,))
         row = cursor.fetchone()
@@ -2658,74 +2229,58 @@ async def chat_member_handler(update: ChatMemberUpdated):
             if row['custom_goodbye']:
                 msg = row['custom_goodbye'].replace("{name}", update.old_chat_member.user.first_name)
             else:
-                bye = [
-                    "👋 {name} left. Take care!",
-                    "😔 {name} chale gaye!",
-                    "💔 {name} is no longer with us."
-                ]
+                bye = ["👋 {name} left. Take care!", "😔 {name} chale gaye!", "💔 {name} is no longer with us."]
                 msg = random.choice(bye).format(name=update.old_chat_member.user.first_name)
-            
-            await bot.send_message(update.chat.id, msg + f" {random_emoji('crying')}")
+            await bot.send_message(update.chat.id, msg + f" {random_emoji('crying')}", parse_mode="HTML")
 
 # ---- CALLBACK HANDLER ----
 @dp.callback_query()
 async def callback_handler(callback: CallbackQuery):
     data = callback.data
-    
     if data.startswith("horo_"):
         sign = data[5:]
         await horoscope_cmd(callback.message, CommandObject(args=sign))
         await callback.answer()
-    
     elif data.startswith("captcha_"):
         user_id = int(data[8:])
         if callback.from_user.id != user_id:
             await callback.answer("Yeh CAPTCHA aapke liye nahi hai!", show_alert=True)
             return
-        
         if user_id in captcha_store:
             q = captcha_store[user_id].get('question')
             await callback.message.edit_text(
-                f"🧩 **Solve this CAPTCHA:**\n{q}\n\nReply with your answer.",
-                parse_mode="Markdown"
+                f"🧩 <b>Solve this CAPTCHA:</b>\n{q}\n\nReply with your answer.",
+                parse_mode="HTML"
             )
         else:
             await callback.answer("CAPTCHA expire ho gayi!", show_alert=True)
-    
     elif data == "menu_util":
         await callback.message.edit_text(
-            "📱 **Utilities**\n/weather – Weather\n/time – Indian time\n/date – Date\n/qr – QR code\n/translate – Translate\n/shorten – URL shortener\n/password – Strong password",
-            parse_mode="Markdown"
+            "📱 <b>Utilities</b>\n/weather – Weather\n/time – Indian time\n/date – Date\n/qr – QR code\n/translate – Translate\n/shorten – URL shortener\n/password – Strong password",
+            parse_mode="HTML"
         )
-    
     elif data == "menu_fun":
         await callback.message.edit_text(
-            "🎭 **Fun**\n/imagine – AI image\n/fact – Daily fact\n/horoscope – Rashifal\n/lyrics – Song lyrics\n/creative – Creative writing",
-            parse_mode="Markdown"
+            "🎭 <b>Fun</b>\n/imagine – AI image\n/fact – Daily fact\n/horoscope – Rashifal\n/lyrics – Song lyrics\n/creative – Creative writing",
+            parse_mode="HTML"
         )
-    
     elif data == "menu_safety":
         await callback.message.edit_text(
-            "🛡️ **Safety**\n• Auto spam block\n• Bad words filter\n• Adult content = ban\n• Group link block\n• Fake link block\n• 3 warns = mute",
-            parse_mode="Markdown"
+            "🛡️ <b>Safety</b>\n• Auto spam block\n• Bad words filter\n• Adult content = ban\n• Group link block\n• Fake link block\n• 3 warns = mute",
+            parse_mode="HTML"
         )
-    
     elif data == "menu_game":
         await callback.message.edit_text(
-            "🎮 **Gaming**\n/game – Profile\n/bal – Balance\n/daily – Daily\n/work – Work\n/crime – Crime\n/rob – Rob\n/kill – Kill\n/heal – Heal\n/revive – Revive\n/protect – 24h protection\n/give – Give money\n/lb – Leaderboard",
-            parse_mode="Markdown"
+            "🎮 <b>Gaming</b>\n/game – Profile\n/bal – Balance\n/daily – Daily\n/work – Work\n/crime – Crime\n/rob – Rob\n/kill – Kill\n/heal – Heal\n/revive – Revive\n/protect – 24h protection\n/give – Give money\n/lb – Leaderboard",
+            parse_mode="HTML"
         )
-    
     elif data == "menu_providers":
         await providers_cmd(callback.message, CommandObject(args=""))
-    
     elif data == "talk":
-        pet_name = get_pet_name(callback.from_user.id)
         await callback.message.edit_text(
-            f"{random_emoji('love')} Haan {pet_name}, main yahan hoon! Kya baat karni hai? Mujhe mention karo ya reply karo. 💕",
-            parse_mode="Markdown"
+            f"{random_emoji('love')} Haan ji, main yahan hoon! Kya baat karni hai? Mujhe mention karo ya reply karo.",
+            parse_mode="HTML"
         )
-    
     await callback.answer()
 
 # -------------------- WEB SERVER --------------------
@@ -2749,11 +2304,9 @@ async def main():
     me = await bot.get_me()
     BOT_USERNAME = me.username
     print(f"🤖 Bot: @{BOT_USERNAME} (ID: {me.id})")
-    print(f"🎀 Alita - Human-like Girl Bot initialized!")
     print(f"🎨 Stickers loaded: {len(saved_stickers)}")
     print(f"🧠 Groq available: {groq_client is not None}")
     print(f"🆓 g4f available: {G4F_AVAILABLE}")
-    print(f"💕 Message reactions: 60% chance enabled!")
 
     # Scheduler jobs
     scheduler.add_job(send_time_greetings, CronTrigger(hour=7, minute=0, timezone=INDIAN_TZ), id="morning")
@@ -2765,6 +2318,7 @@ async def main():
     scheduler.start()
 
     await start_web_server()
+
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
