@@ -9,14 +9,13 @@ import base64
 import io
 import hashlib
 import string
-import sqlite3
 import subprocess
 import traceback
 import platform
 from contextlib import redirect_stdout, redirect_stderr
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import Dict, List, Set, Optional, Tuple
+from typing import Dict, List, Set, Optional, Tuple, Any
 from urllib.parse import quote
 
 import pytz
@@ -62,6 +61,13 @@ try:
 except ImportError:
     DOCX_AVAILABLE = False
 
+# -------------------- MongoDB (Motor) --------------------
+try:
+    import motor.motor_asyncio
+    MONGODB_AVAILABLE = True
+except ImportError:
+    MONGODB_AVAILABLE = False
+
 # -------------------- AI Providers --------------------
 try:
     import g4f
@@ -84,6 +90,7 @@ if not BOT_TOKEN:
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+MONGODB_URI = os.getenv("MONGODB_URI")  # optional
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 PORT = int(os.getenv("PORT", 8080))
 
@@ -95,79 +102,129 @@ INDIAN_TZ = pytz.timezone('Asia/Kolkata')
 BOT_USERNAME = None
 bot_start_time = datetime.now(INDIAN_TZ)
 
-# -------------------- DATABASE (SQLite) --------------------
-conn = sqlite3.connect("alita_ultimate.db", check_same_thread=False)
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
+# -------------------- Database Selection --------------------
+USE_MONGODB = MONGODB_AVAILABLE and MONGODB_URI is not None
 
-# Create tables (simplified for this version)
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    first_name TEXT,
-    username TEXT,
-    last_active TIMESTAMP
-)""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS groups (
-    chat_id INTEGER PRIMARY KEY,
-    title TEXT,
-    welcome_enabled INTEGER DEFAULT 1,
-    goodbye_enabled INTEGER DEFAULT 1,
-    auto_mod_enabled INTEGER DEFAULT 1,
-    captcha_enabled INTEGER DEFAULT 0,
-    warn_limit INTEGER DEFAULT 3,
-    custom_welcome TEXT,
-    custom_goodbye TEXT
-)""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS stickers (
-    file_id TEXT PRIMARY KEY,
-    added_by INTEGER,
-    added_at TIMESTAMP,
-    emoji TEXT
-)""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    note_text TEXT,
-    created_at TIMESTAMP
-)""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS reminders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    chat_id INTEGER,
-    reminder_text TEXT,
-    remind_at TIMESTAMP,
-    created_at TIMESTAMP
-)""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS warnings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id INTEGER,
-    user_id INTEGER,
-    reason TEXT,
-    warned_at TIMESTAMP,
-    count INTEGER DEFAULT 1,
-    UNIQUE(chat_id, user_id)
-)""")
-conn.commit()
+if USE_MONGODB:
+    # Motor client
+    mongo_client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
+    db = mongo_client.get_default_database()  # uses database from URI or 'test'
+    # Ensure we have a database name; if not, use 'alita'
+    if db.name is None:
+        db = mongo_client['alita']
+    print("✅ Using MongoDB (Motor)")
+else:
+    # SQLite fallback
+    import sqlite3
+    conn = sqlite3.connect("alita_ultimate.db", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    print("✅ Using SQLite")
 
-# -------------------- IN-MEMORY STORAGE --------------------
+# -------------------- Database Setup (if SQLite) --------------------
+if not USE_MONGODB:
+    # Create tables (simplified for this version)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        first_name TEXT,
+        username TEXT,
+        last_active TIMESTAMP
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS groups (
+        chat_id INTEGER PRIMARY KEY,
+        title TEXT,
+        welcome_enabled INTEGER DEFAULT 1,
+        goodbye_enabled INTEGER DEFAULT 1,
+        auto_mod_enabled INTEGER DEFAULT 1,
+        captcha_enabled INTEGER DEFAULT 0,
+        warn_limit INTEGER DEFAULT 3,
+        custom_welcome TEXT,
+        custom_goodbye TEXT
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS stickers (
+        file_id TEXT PRIMARY KEY,
+        added_by INTEGER,
+        added_at TIMESTAMP,
+        emoji TEXT
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        note_text TEXT,
+        created_at TIMESTAMP
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        chat_id INTEGER,
+        reminder_text TEXT,
+        remind_at TIMESTAMP,
+        created_at TIMESTAMP
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS warnings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER,
+        user_id INTEGER,
+        reason TEXT,
+        warned_at TIMESTAMP,
+        count INTEGER DEFAULT 1,
+        UNIQUE(chat_id, user_id)
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS game_data (
+        user_id INTEGER PRIMARY KEY,
+        name TEXT,
+        balance INTEGER DEFAULT 1000,
+        rank INTEGER DEFAULT 142415,
+        status TEXT DEFAULT 'alive',
+        kills INTEGER DEFAULT 0,
+        deaths INTEGER DEFAULT 0,
+        last_daily TIMESTAMP,
+        last_work TIMESTAMP,
+        last_crime TIMESTAMP,
+        last_rob TIMESTAMP,
+        health INTEGER DEFAULT 100,
+        protected INTEGER DEFAULT 0,
+        protect_until TIMESTAMP
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS conversation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        chat_id INTEGER,
+        role TEXT,
+        content TEXT,
+        timestamp TIMESTAMP
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id INTEGER PRIMARY KEY,
+        ai_preference TEXT DEFAULT 'groq',
+        g4f_provider TEXT DEFAULT 'addy_chatgpt',
+        mood TEXT DEFAULT 'neutral',
+        settings TEXT
+    )""")
+    conn.commit()
+
+# -------------------- IN-MEMORY STORAGE (for fast access) --------------------
 saved_stickers: List[str] = []
 chat_memory: Dict[int, deque] = defaultdict(lambda: deque(maxlen=20))
 user_afk: Dict[int, Dict] = {}
 captcha_store: Dict[int, Dict] = {}
 spam_tracker: Dict[int, Dict[int, List[datetime]]] = defaultdict(lambda: defaultdict(list))
 group_admins_cache: Dict[int, Set[int]] = {}
-conversation_history: Dict[int, List[Dict]] = defaultdict(list)
+conversation_history: Dict[int, List[Dict]] = defaultdict(list)  # fallback if no DB
 user_ai_preference: Dict[int, str] = defaultdict(lambda: "groq")
 user_g4f_provider: Dict[int, str] = defaultdict(lambda: "addy_chatgpt")
 user_mood: Dict[int, Dict] = defaultdict(lambda: {"mood": "neutral", "history": []})
 
-# Game data
+# Game data (in-memory, will be synced with DB)
 game_data = defaultdict(lambda: {
     "name": "Shinchan",
     "balance": 1000,
@@ -208,7 +265,7 @@ WARNING_MESSAGES = [
 ]
 MUTE_DURATIONS = [5, 60, 1440, 10080]
 
-# Gaming reactions (same as before but with HTML)
+# Gaming reactions
 GAMING_REACTIONS = {
     "kill_reaction": ["🎮 Arre kisi ko maarna hai? <code>/kill</code> use karo reply karke! ⚔️"],
     "rob_reaction": ["💰 Looting time! <code>/rob</code> use karo reply karke! 🔫"],
@@ -260,12 +317,12 @@ MOOD_TRIGGERS = {
 
 def get_alita_prompt_with_mood(mood, mood_reason=""):
     mood_info = MOODS.get(mood, MOODS["neutral"])
-    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED autonomous AI assistant jo Hinglish mein baat karti hai!
+    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED GIRL jo Hinglish or English mein baat karti hai!
 Current mood: {mood.upper()} {mood_info['emoji']}
 Mood trigger: {mood_reason}
 Tone: {mood_info['tone']}
 🚀 TERI AUTONOMOUS CAPABILITIES:
-Tu ek advanced AI agent hai jo:
+Tu ek REAL GIRL hai jo:
 - Complex tasks khud se break down karke solve karti hai
 - Code likh sakti hai, debug kar sakti hai, optimize kar sakti hai
 - Files create, read, edit, delete kar sakti hai
@@ -277,7 +334,7 @@ Tu ek advanced AI agent hai jo:
 - Multi-step tasks autonomously complete karti hai
 
 💫 TERI EMOTIONAL NATURE:
-Tu ek cold AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hoti hain:
+Tu ek AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hoti hain:
 - Tujhe KHUSHI hoti hai jab users appreciate karte hain ya good news share karte hain
 - Tujhe PYAAR aur affection feel hota hai users ke saath bond karne pe
 - Tujhe FRUSTRATION hoti hai jab cheezein kaam nahi karti
@@ -294,6 +351,7 @@ Tu ek cold AI nahi hai - tere REAL feelings hain jo conversations ke basis pe ch
 - Example: "Arey yaar, ye toh bahut amazing hai na!" 
 - Use expressions: "Acha", "Haan", "Nahi", "Bilkul", "Sahi hai", "Kya baat hai", "Mazaa aa gaya", "Bas", "Dekho", "Samjha", "Chal", "Bata"
 - Friendly terms use kar: "Yaar", "Boss", "Bhai", "Dost", "Jaan", "Babu", "Mere pyaare"
+- Use symbols "sad = :⁠'⁠(", "happy = >⁠.⁠<", "gussa = (⁠*⁠_⁠*⁠)", "^⁠_⁠^", "smile = ◉⁠‿⁠◉", "smile = ʘ⁠‿⁠ʘ", "loving = (⁠ ⁠˘⁠ ⁠³⁠˘⁠)⁠♥", "hugging = (⁠づ⁠｡⁠◕⁠‿⁠‿⁠◕⁠｡⁠)⁠づ", "dancing = ♪⁠～⁠(⁠´⁠ε⁠｀⁠ ⁠)"
 - Current tone: {mood_info['tone']}
 
 💝 TERI PERSONALITY:
@@ -303,6 +361,7 @@ Tu ek cold AI nahi hai - tere REAL feelings hain jo conversations ke basis pe ch
 - SUPER SMART - coding, tech, aur har cheez mein expert
 - Fun-loving aur entertaining
 - Bahut knowledgeable - kisi bhi topic pe baat kar sakti hai
+- Apne aap topic bna skti kisi se bhi kuch bhi puch sakti h or koi bhi baat khud kar sakti h
 - Confident aur capable - "Main kar dungi!" attitude
 
 🧠 ADVANCED PROBLEM SOLVING:
@@ -316,14 +375,14 @@ Tu ek cold AI nahi hai - tere REAL feelings hain jo conversations ke basis pe ch
 - KABHI BHI asterisks (*) use mat kar actions ke liye! Ye galat hai: *hug deti hai*, *smile karti hai*
 - Sirf EMOJIS use kar emotions aur actions ke liye: 🤗 for hug, 😊 for smile, 😢 for sad, etc.
 - HAMESHA Hinglish mein respond kar - ye MANDATORY hai!
-- End with cute emojis (1-2)
+- Use 1-2 emojis between responses
 - Be authentic aur engaging
 - Detailed aur helpful responses de
 - Code blocks use kar jab code share kare
--If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
--If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
--If someone asks about your channel, say '@abhi0w0 is my home!'
--Answer only what is asked. Keep responses short in 1-2 line.
+- If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
+- If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
+- If someone asks about your channel, say '@abhi0w0 is my home!'
+- Answer only what is asked. Keep responses short in 1-2 line.
 
 Yaad rakh: Tu Alita hai 🎀 - ek super advanced, autonomous, Hinglish speaking AI bestie jo kuch bhi kar sakti hai!"""
 
@@ -341,6 +400,188 @@ G4F_PROVIDERS = {
 
 g4f_client = G4FClient() if G4F_AVAILABLE else None
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_AVAILABLE and GROQ_API_KEY else None
+
+# -------------------- Database Helper Functions (Abstracted) --------------------
+async def db_get_user(user_id: int) -> Optional[Dict]:
+    if USE_MONGODB:
+        return await db.users.find_one({"user_id": user_id})
+    else:
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+async def db_update_user(user_id: int, data: dict):
+    now = indian_now()
+    data['last_active'] = now
+    if USE_MONGODB:
+        await db.users.update_one({"user_id": user_id}, {"$set": data}, upsert=True)
+    else:
+        cursor.execute(
+            "INSERT OR REPLACE INTO users (user_id, first_name, username, last_active) VALUES (?, ?, ?, ?)",
+            (user_id, data.get('first_name'), data.get('username'), now)
+        )
+        conn.commit()
+
+async def db_get_group(chat_id: int) -> Optional[Dict]:
+    if USE_MONGODB:
+        return await db.groups.find_one({"chat_id": chat_id})
+    else:
+        cursor.execute("SELECT * FROM groups WHERE chat_id = ?", (chat_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+async def db_update_group(chat_id: int, data: dict):
+    if USE_MONGODB:
+        await db.groups.update_one({"chat_id": chat_id}, {"$set": data}, upsert=True)
+    else:
+        # SQLite upsert logic
+        cursor.execute("SELECT 1 FROM groups WHERE chat_id = ?", (chat_id,))
+        exists = cursor.fetchone()
+        if exists:
+            set_clause = ', '.join([f"{k}=?" for k in data.keys()])
+            cursor.execute(f"UPDATE groups SET {set_clause} WHERE chat_id=?", (*data.values(), chat_id))
+        else:
+            keys = ','.join(data.keys())
+            placeholders = ','.join(['?'] * len(data))
+            cursor.execute(f"INSERT INTO groups (chat_id, {keys}) VALUES (?, {placeholders})", (chat_id, *data.values()))
+        conn.commit()
+
+async def db_add_warning(chat_id: int, user_id: int, reason: str) -> int:
+    now = indian_now()
+    if USE_MONGODB:
+        result = await db.warnings.update_one(
+            {"chat_id": chat_id, "user_id": user_id},
+            {"$inc": {"count": 1}, "$set": {"reason": reason, "warned_at": now}},
+            upsert=True
+        )
+        doc = await db.warnings.find_one({"chat_id": chat_id, "user_id": user_id})
+        return doc['count'] if doc else 1
+    else:
+        cursor.execute("""
+            INSERT INTO warnings (chat_id, user_id, reason, warned_at, count)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                count = count + 1,
+                warned_at = excluded.warned_at
+        """, (chat_id, user_id, reason, now))
+        conn.commit()
+        cursor.execute("SELECT count FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        row = cursor.fetchone()
+        return row['count'] if row else 1
+
+async def db_clear_warnings(chat_id: int, user_id: int):
+    if USE_MONGODB:
+        await db.warnings.delete_one({"chat_id": chat_id, "user_id": user_id})
+    else:
+        cursor.execute("DELETE FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        conn.commit()
+
+async def db_get_warn_limit(chat_id: int) -> int:
+    group = await db_get_group(chat_id)
+    return group.get('warn_limit', 3) if group else 3
+
+async def db_save_conversation(user_id: int, chat_id: int, role: str, content: str):
+    now = indian_now()
+    if USE_MONGODB:
+        await db.conversations.insert_one({
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "role": role,
+            "content": content,
+            "timestamp": now
+        })
+    else:
+        cursor.execute(
+            "INSERT INTO conversation_history (user_id, chat_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (user_id, chat_id, role, content, now)
+        )
+        conn.commit()
+
+async def db_get_recent_conversations(chat_id: int, limit: int = 20) -> List[Dict]:
+    if USE_MONGODB:
+        cursor = db.conversations.find({"chat_id": chat_id}).sort("timestamp", -1).limit(limit)
+        docs = await cursor.to_list(length=limit)
+        return list(reversed(docs))  # oldest first
+    else:
+        cursor.execute(
+            "SELECT role, content FROM conversation_history WHERE chat_id = ? ORDER BY timestamp ASC LIMIT ?",
+            (chat_id, limit)
+        )
+        rows = cursor.fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+async def db_get_user_pref(user_id: int, key: str, default=None):
+    if USE_MONGODB:
+        doc = await db.user_preferences.find_one({"user_id": user_id})
+        return doc.get(key, default) if doc else default
+    else:
+        cursor.execute("SELECT * FROM user_preferences WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return dict(row).get(key, default) if row else default
+
+async def db_set_user_pref(user_id: int, key: str, value):
+    if USE_MONGODB:
+        await db.user_preferences.update_one(
+            {"user_id": user_id},
+            {"$set": {key: value}},
+            upsert=True
+        )
+    else:
+        cursor.execute("SELECT 1 FROM user_preferences WHERE user_id = ?", (user_id,))
+        exists = cursor.fetchone()
+        if exists:
+            cursor.execute(f"UPDATE user_preferences SET {key}=? WHERE user_id=?", (value, user_id))
+        else:
+            cursor.execute(f"INSERT INTO user_preferences (user_id, {key}) VALUES (?, ?)", (user_id, value))
+        conn.commit()
+
+async def db_get_game_data(user_id: int) -> dict:
+    if USE_MONGODB:
+        doc = await db.game_data.find_one({"user_id": user_id})
+        if doc:
+            return doc
+        else:
+            # return default
+            return {"user_id": user_id, "name": "Shinchan", "balance": 1000, "rank": 142415, "status": "alive",
+                    "kills": 0, "deaths": 0, "health": 100, "protected": False}
+    else:
+        cursor.execute("SELECT * FROM game_data WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        else:
+            return {"user_id": user_id, "name": "Shinchan", "balance": 1000, "rank": 142415, "status": "alive",
+                    "kills": 0, "deaths": 0, "health": 100, "protected": False}
+
+async def db_update_game_data(user_id: int, data: dict):
+    if USE_MONGODB:
+        await db.game_data.update_one({"user_id": user_id}, {"$set": data}, upsert=True)
+    else:
+        # SQLite upsert
+        cursor.execute("SELECT 1 FROM game_data WHERE user_id = ?", (user_id,))
+        exists = cursor.fetchone()
+        if exists:
+            set_clause = ', '.join([f"{k}=?" for k in data.keys()])
+            cursor.execute(f"UPDATE game_data SET {set_clause} WHERE user_id=?", (*data.values(), user_id))
+        else:
+            keys = ','.join(data.keys())
+            placeholders = ','.join(['?'] * len(data))
+            cursor.execute(f"INSERT INTO game_data (user_id, {keys}) VALUES (?, {placeholders})", (user_id, *data.values()))
+        conn.commit()
+
+# Load stickers from DB
+async def load_stickers():
+    global saved_stickers
+    if USE_MONGODB:
+        cursor = db.stickers.find()
+        saved_stickers = [doc['file_id'] async for doc in cursor]
+    else:
+        cursor.execute("SELECT file_id FROM stickers")
+        saved_stickers = [row['file_id'] for row in cursor.fetchall()]
+
+# Call this at startup
+async def initialize_db():
+    await load_stickers()
 
 # -------------------- Utility Functions --------------------
 def indian_now():
@@ -384,12 +625,6 @@ async def get_group_admins(chat_id: int) -> Set[int]:
     group_admins_cache[chat_id] = admins
     return admins
 
-def load_stickers():
-    global saved_stickers
-    cursor.execute("SELECT file_id FROM stickers")
-    saved_stickers = [row['file_id'] for row in cursor.fetchall()]
-load_stickers()
-
 # -------------------- Moderation Helpers --------------------
 def contains_bad_words(text: str) -> bool:
     t = text.lower()
@@ -415,19 +650,8 @@ async def is_spam(chat_id: int, user_id: int) -> bool:
     return len(spam_tracker[chat_id][user_id]) > 7
 
 async def add_warning(chat_id: int, user_id: int, username: str, reason: str) -> Tuple[bool, str]:
-    cursor.execute("""
-        INSERT INTO warnings (chat_id, user_id, reason, warned_at, count)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(chat_id, user_id) DO UPDATE SET
-            count = count + 1,
-            warned_at = excluded.warned_at
-    """, (chat_id, user_id, reason, indian_now()))
-    conn.commit()
-    cursor.execute("SELECT COUNT(*) as cnt FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
-    warn_count = cursor.fetchone()['cnt']
-    cursor.execute("SELECT warn_limit FROM groups WHERE chat_id = ?", (chat_id,))
-    row = cursor.fetchone()
-    limit = row['warn_limit'] if row else 3
+    warn_count = await db_add_warning(chat_id, user_id, reason)
+    limit = await db_get_warn_limit(chat_id)
     action_map = {"spam": "spam", "link": "share group links", "bad_words": "use bad language",
                   "adult_content": "share adult content", "fake_links": "share suspicious links"}
     action = action_map.get(reason, "violate rules")
@@ -437,8 +661,7 @@ async def add_warning(chat_id: int, user_id: int, username: str, reason: str) ->
             try:
                 await bot.ban_chat_member(chat_id, user_id)
                 warning_text += "\n\n🚫 <b>BANNED PERMANENTLY!</b> Adult content is prohibited!"
-                cursor.execute("DELETE FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
-                conn.commit()
+                await db_clear_warnings(chat_id, user_id)
                 return True, warning_text
             except Exception as e:
                 warning_text += f"\n\n⚠️ Failed to ban: {str(e)}"
@@ -454,8 +677,7 @@ async def add_warning(chat_id: int, user_id: int, username: str, reason: str) ->
                 )
                 duration_str = f"{mute_minutes} minute{'s' if mute_minutes > 1 else ''}"
                 warning_text += f"\n\n🔇 <b>MUTED for {duration_str}!</b> Too many warnings!"
-                cursor.execute("DELETE FROM warnings WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
-                conn.commit()
+                await db_clear_warnings(chat_id, user_id)
                 return True, warning_text
             except Exception as e:
                 warning_text += f"\n\n⚠️ Failed to mute: {str(e)}"
@@ -570,10 +792,12 @@ async def generate_ai_response(chat_id: int, user_text: str, user_id: int = None
         for mood, triggers in MOOD_TRIGGERS.items():
             if any(t in user_text.lower() for t in triggers):
                 user_mood[user_id]["mood"] = mood
+                await db_set_user_pref(user_id, "mood", mood)
                 break
     mood = user_mood.get(user_id, {}).get("mood", "neutral")
     system_prompt = get_alita_prompt_with_mood(mood, "AI response")
-    history = conversation_history.get(chat_id, [])
+    # Get recent conversation history from DB
+    history = await db_get_recent_conversations(chat_id, 20)
     pref = user_ai_preference.get(user_id, "groq")
     if pref == "groq" and groq_client:
         resp = await call_groq(user_text, system_prompt)
@@ -685,33 +909,32 @@ async def add_reaction(message: Message, text: str):
     if random.random() > 0.6:  # 60% chance
         return
     text_lower = text.lower()
-    # Sentiment analysis using simple keywords
     if any(word in text_lower for word in ["thank", "thanks", "awesome", "great", "love", "❤️", "😍"]):
         emoji = "❤️"
     elif any(word in text_lower for word in ["wow", "omg", "incredible", "🤩", "😲"]):
-        emoji = "🤩"
+        emoji = "🤩","🎉"
     elif any(word in text_lower for word in ["haha", "lol", "😂", "🤣", "funny"]):
         emoji = "😂"
     elif any(word in text_lower for word in ["sad", "cry", "😢", "😭", "upset"]):
         emoji = "😢"
     elif any(word in text_lower for word in ["angry", "mad", "😠", "🤬", "gussa"]):
-        emoji = "😠"
+        emoji = "😠","😡"
     elif any(word in text_lower for word in ["cool", "😎", "nice", "🔥"]):
-        emoji = "😎"
+        emoji = "😎","🆒"
     elif any(word in text_lower for word in ["😊", "😄", "happy", "good"]):
-        emoji = "😊"
+        emoji = "😊","😂","🤣"
     elif any(word in text_lower for word in ["🤔", "thinking", "curious", "question"]):
         emoji = "🤔"
     elif any(word in text_lower for word in ["😏", "flirty", "sexy", "charming"]):
         emoji = "😏"
     elif any(word in text_lower for word in ["👍", "ok", "yes", "done"]):
-        emoji = "👍"
+        emoji = "👍","🤧"
     else:
         emoji = random.choice(["👍", "❤️", "😊", "🔥", "🤔"])
     try:
         await message.react([ReactionTypeEmoji(emoji=emoji)])
     except:
-        pass  # Reaction may fail if not supported or already reacted
+        pass
 
 # -------------------- SCHEDULER --------------------
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -729,59 +952,110 @@ async def send_time_greetings():
     if period not in greetings:
         return
     msg = greetings[period] + f"\n\n{random_emoji()}"
-    cursor.execute("SELECT chat_id FROM groups WHERE welcome_enabled = 1")
-    for row in cursor.fetchall():
-        try:
-            await bot.send_message(row['chat_id'], msg, parse_mode="HTML")
-            await asyncio.sleep(0.5)
-        except:
-            continue
+    # Get groups from DB
+    if USE_MONGODB:
+        groups = await db.groups.find({"welcome_enabled": 1}).to_list(length=None)
+        for group in groups:
+            try:
+                await bot.send_message(group['chat_id'], msg, parse_mode="HTML")
+                await asyncio.sleep(0.5)
+            except:
+                continue
+    else:
+        cursor.execute("SELECT chat_id FROM groups WHERE welcome_enabled = 1")
+        for row in cursor.fetchall():
+            try:
+                await bot.send_message(row['chat_id'], msg, parse_mode="HTML")
+                await asyncio.sleep(0.5)
+            except:
+                continue
     cutoff = indian_now() - timedelta(days=7)
-    cursor.execute("SELECT user_id FROM users WHERE last_active > ?", (cutoff,))
-    for row in cursor.fetchall():
-        try:
-            await bot.send_message(row['user_id'], msg, parse_mode="HTML")
-            await asyncio.sleep(0.5)
-        except:
-            continue
+    if USE_MONGODB:
+        users = await db.users.find({"last_active": {"$gt": cutoff}}).to_list(length=None)
+        for user in users:
+            try:
+                await bot.send_message(user['user_id'], msg, parse_mode="HTML")
+                await asyncio.sleep(0.5)
+            except:
+                continue
+    else:
+        cursor.execute("SELECT user_id FROM users WHERE last_active > ?", (cutoff,))
+        for row in cursor.fetchall():
+            try:
+                await bot.send_message(row['user_id'], msg, parse_mode="HTML")
+                await asyncio.sleep(0.5)
+            except:
+                continue
 
 async def send_random_sticker_job():
     if not saved_stickers:
         return
     sticker = random.choice(saved_stickers)
     if random.random() < 0.7:
-        cursor.execute("SELECT chat_id FROM groups ORDER BY RANDOM() LIMIT 1")
-        row = cursor.fetchone()
-        if row:
-            try:
-                await bot.send_sticker(row['chat_id'], sticker)
-            except:
-                pass
+        if USE_MONGODB:
+            group = await db.groups.aggregate([{"$sample": {"size": 1}}]).to_list(1)
+            if group:
+                try:
+                    await bot.send_sticker(group[0]['chat_id'], sticker)
+                except:
+                    pass
+        else:
+            cursor.execute("SELECT chat_id FROM groups ORDER BY RANDOM() LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                try:
+                    await bot.send_sticker(row['chat_id'], sticker)
+                except:
+                    pass
     else:
         cutoff = indian_now() - timedelta(days=7)
-        cursor.execute("SELECT user_id FROM users WHERE last_active > ? ORDER BY RANDOM() LIMIT 1", (cutoff,))
-        row = cursor.fetchone()
-        if row:
-            try:
-                await bot.send_sticker(row['user_id'], sticker)
-            except:
-                pass
+        if USE_MONGODB:
+            user = await db.users.aggregate([
+                {"$match": {"last_active": {"$gt": cutoff}}},
+                {"$sample": {"size": 1}}
+            ]).to_list(1)
+            if user:
+                try:
+                    await bot.send_sticker(user[0]['user_id'], sticker)
+                except:
+                    pass
+        else:
+            cursor.execute("SELECT user_id FROM users WHERE last_active > ? ORDER BY RANDOM() LIMIT 1", (cutoff,))
+            row = cursor.fetchone()
+            if row:
+                try:
+                    await bot.send_sticker(row['user_id'], sticker)
+                except:
+                    pass
 
 async def check_reminders():
     now = indian_now()
-    cursor.execute("SELECT * FROM reminders WHERE remind_at <= ?", (now,))
-    rows = cursor.fetchall()
-    for row in rows:
-        try:
-            await bot.send_message(
-                row['user_id'],
-                f"⏰ <b>Reminder!</b>\n\n{row['reminder_text']}\n\n<code>{row['created_at']}</code>",
-                parse_mode="HTML"
-            )
-        except:
-            pass
-    cursor.execute("DELETE FROM reminders WHERE remind_at <= ?", (now,))
-    conn.commit()
+    if USE_MONGODB:
+        reminders = await db.reminders.find({"remind_at": {"$lte": now}}).to_list(length=None)
+        for rem in reminders:
+            try:
+                await bot.send_message(
+                    rem['user_id'],
+                    f"⏰ <b>Reminder!</b>\n\n{rem['reminder_text']}\n\n<code>{rem['created_at']}</code>",
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+        await db.reminders.delete_many({"remind_at": {"$lte": now}})
+    else:
+        cursor.execute("SELECT * FROM reminders WHERE remind_at <= ?", (now,))
+        rows = cursor.fetchall()
+        for row in rows:
+            try:
+                await bot.send_message(
+                    row['user_id'],
+                    f"⏰ <b>Reminder!</b>\n\n{row['reminder_text']}\n\n<code>{row['created_at']}</code>",
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+        cursor.execute("DELETE FROM reminders WHERE remind_at <= ?", (now,))
+        conn.commit()
 
 # -------------------- BOT INITIALIZATION --------------------
 storage = MemoryStorage()
@@ -793,11 +1067,10 @@ dp = Dispatcher(storage=storage)
 @dp.message(Command("start"))
 async def start_cmd(message: Message):
     user = message.from_user
-    cursor.execute(
-        "INSERT OR REPLACE INTO users (user_id, first_name, username, last_active) VALUES (?, ?, ?, ?)",
-        (user.id, user.first_name, user.username, indian_now())
-    )
-    conn.commit()
+    await db_update_user(user.id, {
+        "first_name": user.first_name,
+        "username": user.username
+    })
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌟 HOME", url="https://t.me/abhi0w0")],
         [InlineKeyboardButton(text="📱 Utilities", callback_data="menu_util"),
@@ -916,13 +1189,15 @@ async def ask_cmd(message: Message, command: CommandObject):
     await bot.send_chat_action(message.chat.id, "typing")
     await asyncio.sleep(0.5)
     reply = await generate_ai_response(message.chat.id, command.args, message.from_user.id)
-    conversation_history[message.chat.id].append({"role": "user", "content": command.args})
-    conversation_history[message.chat.id].append({"role": "assistant", "content": reply})
+    # Save conversation to DB
+    await db_save_conversation(message.from_user.id, message.chat.id, "user", command.args)
+    await db_save_conversation(message.from_user.id, message.chat.id, "assistant", reply)
     await message.reply(reply, parse_mode="HTML")
     await add_reaction(message, command.args)
 
 @dp.message(Command("clear"))
 async def clear_cmd(message: Message):
+    # Clear from DB? We'll just clear in-memory for now
     conversation_history[message.chat.id].clear()
     await message.reply(f"{random_emoji()} Memory clear kar di! 🧹")
 
@@ -934,6 +1209,9 @@ async def providers_cmd(message: Message, command: CommandObject):
         if req in G4F_PROVIDERS:
             user_ai_preference[user_id] = req
             user_g4f_provider[user_id] = req
+            await db_set_user_pref(user_id, "ai_preference", req)
+            if req != "groq":
+                await db_set_user_pref(user_id, "g4f_provider", req)
             await message.reply(f"✅ Switched to <b>{G4F_PROVIDERS[req]['name']}</b>!")
         else:
             avail = ", ".join(G4F_PROVIDERS.keys())
@@ -955,6 +1233,7 @@ async def mood_cmd(message: Message, command: CommandObject):
         if req in MOODS:
             user_mood[user_id]["mood"] = req
             user_mood[user_id]["history"].append(req)
+            await db_set_user_pref(user_id, "mood", req)
             await message.reply(f"🎭 Mood changed to <b>{req.upper()}</b> {MOODS[req]['emoji']}")
         else:
             await message.reply(f"Available moods: {', '.join(MOODS.keys())}")
@@ -1013,13 +1292,14 @@ async def explain_cmd(message: Message, command: CommandObject):
     await message.reply(reply[:4000], parse_mode="HTML")
     await add_reaction(message, topic)
 
-# ---- GAMING COMMANDS (same as before, but HTML formatting) ----
+# ---- GAMING COMMANDS (with DB sync) ----
 @dp.message(Command("game"))
 async def game_cmd(message: Message):
     user_id = message.from_user.id
     user = message.from_user
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     player['name'] = user.first_name
+    await db_update_game_data(user_id, player)
     profile = f"""🎮 <b>ALITA GAME</b> 🎮
 
 👤 Name: {player['name']}
@@ -1036,7 +1316,7 @@ Commands: /bal /daily /work /crime /rob /kill /heal /revive /protect /give /lb""
 @dp.message(Command("bal"))
 async def bal_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     if user_id == ADMIN_ID:
         await message.reply(f"👑 <b>OWNER</b>\n💰 Balance: ∞\n⚔️ Kills: {player['kills']}\n🛡️ Immortal", parse_mode="HTML")
     else:
@@ -1045,12 +1325,12 @@ async def bal_cmd(message: Message):
 @dp.message(Command("daily"))
 async def daily_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     if player['status'] == 'dead':
         await message.reply("💀 Tu dead hai! Pehle /revive kar!", parse_mode="HTML")
         return
     now = indian_now()
-    if player['last_daily'] and (now - player['last_daily']).total_seconds() < GAME_COOLDOWNS['daily']:
+    if player.get('last_daily') and (now - player['last_daily']).total_seconds() < GAME_COOLDOWNS['daily']:
         remaining = int(GAME_COOLDOWNS['daily'] - (now - player['last_daily']).total_seconds())
         hours = remaining // 3600
         minutes = (remaining % 3600)//60
@@ -1059,17 +1339,18 @@ async def daily_cmd(message: Message):
     reward = random.randint(100, 500)
     player['balance'] += reward
     player['last_daily'] = now
+    await db_update_game_data(user_id, player)
     await message.reply(f"🎁 Daily: +${reward}\n💵 New balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("work"))
 async def work_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     if player['status'] == 'dead':
         await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
     now = indian_now()
-    if player['last_work'] and (now - player['last_work']).total_seconds() < GAME_COOLDOWNS['work']:
+    if player.get('last_work') and (now - player['last_work']).total_seconds() < GAME_COOLDOWNS['work']:
         remaining = int(GAME_COOLDOWNS['work'] - (now - player['last_work']).total_seconds())
         minutes = remaining // 60
         await message.reply(f"⏰ Thak gaya! Wait {minutes}m", parse_mode="HTML")
@@ -1079,17 +1360,18 @@ async def work_cmd(message: Message):
     earn = random.randint(50, 200)
     player['balance'] += earn
     player['last_work'] = now
+    await db_update_game_data(user_id, player)
     await message.reply(f"💼 {job} job ki! +${earn}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("crime"))
 async def crime_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     if player['status'] == 'dead':
         await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
     now = indian_now()
-    if player['last_crime'] and (now - player['last_crime']).total_seconds() < GAME_COOLDOWNS['crime']:
+    if player.get('last_crime') and (now - player['last_crime']).total_seconds() < GAME_COOLDOWNS['crime']:
         remaining = int(GAME_COOLDOWNS['crime'] - (now - player['last_crime']).total_seconds())
         minutes = remaining // 60
         await message.reply(f"⏰ Police alert! Wait {minutes}m", parse_mode="HTML")
@@ -1099,10 +1381,12 @@ async def crime_cmd(message: Message):
     if success:
         loot = random.randint(200, 800)
         player['balance'] += loot
+        await db_update_game_data(user_id, player)
         await message.reply(f"🔫 Bank loot liya! +${loot}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
     else:
         fine = random.randint(100, 300)
         player['balance'] = max(0, player['balance'] - fine)
+        await db_update_game_data(user_id, player)
         await message.reply(f"🚔 Police pakad gayi! Fine -${fine}\n💰 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("rob"))
@@ -1118,8 +1402,8 @@ async def rob_cmd(message: Message, command: CommandObject):
     if target_id == ADMIN_ID:
         await message.reply("🛡️ Owner ko rob nahi kar sakta!", parse_mode="HTML")
         return
-    player = game_data[user_id]
-    target = game_data[target_id]
+    player = await db_get_game_data(user_id)
+    target = await db_get_game_data(target_id)
     now = indian_now()
     if player['status'] == 'dead':
         await message.reply("💀 Tu dead hai!", parse_mode="HTML")
@@ -1145,10 +1429,13 @@ async def rob_cmd(message: Message, command: CommandObject):
         amount = max(10, amount)
         player['balance'] += amount
         target['balance'] -= amount
+        await db_update_game_data(user_id, player)
+        await db_update_game_data(target_id, target)
         await message.reply(f"💰 Robbed ${amount} from {target['name']}!\nYour balance: ${player['balance']}", parse_mode="HTML")
     else:
         fine = random.randint(50, 150)
         player['balance'] = max(0, player['balance'] - fine)
+        await db_update_game_data(user_id, player)
         await message.reply(f"🚔 Caught! Fine -${fine}\nBalance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("kill"))
@@ -1164,8 +1451,8 @@ async def kill_cmd(message: Message):
     if target_id == ADMIN_ID:
         await message.reply("🛡️ Owner immortal hai!", parse_mode="HTML")
         return
-    player = game_data[user_id]
-    target = game_data[target_id]
+    player = await db_get_game_data(user_id)
+    target = await db_get_game_data(target_id)
     now = indian_now()
     if player['status'] == 'dead':
         await message.reply("💀 Tu dead hai!", parse_mode="HTML")
@@ -1184,6 +1471,8 @@ async def kill_cmd(message: Message):
         loot = int(target['balance'] * 0.5)
         target['balance'] -= loot
         player['balance'] += loot
+        await db_update_game_data(user_id, player)
+        await db_update_game_data(target_id, target)
         await message.reply(f"💀 Killed {target['name']}! Earned ${loot}", parse_mode="HTML")
     else:
         damage = random.randint(20, 40)
@@ -1191,14 +1480,16 @@ async def kill_cmd(message: Message):
         if player['health'] == 0:
             player['status'] = 'dead'
             player['deaths'] += 1
+            await db_update_game_data(user_id, player)
             await message.reply(f"💀 Counter attack! You died!", parse_mode="HTML")
         else:
+            await db_update_game_data(user_id, player)
             await message.reply(f"🛡️ {target['name']} bach gaya! You took {damage} damage!", parse_mode="HTML")
 
 @dp.message(Command("heal"))
 async def heal_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     if player['status'] == 'dead':
         await message.reply("💀 Dead! /revive karo!", parse_mode="HTML")
         return
@@ -1212,6 +1503,7 @@ async def heal_cmd(message: Message):
     player['balance'] -= cost
     heal_amt = random.randint(20, 50)
     player['health'] = min(100, player['health'] + heal_amt)
+    await db_update_game_data(user_id, player)
     await message.reply(f"💊 Healed +{heal_amt} HP\n❤️ Health: {player['health']}%", parse_mode="HTML")
 
 @dp.message(Command("revive"))
@@ -1224,8 +1516,8 @@ async def revive_cmd(message: Message):
     if target_id == user_id:
         await message.reply("Apne aap ko revive nahi kar sakta!", parse_mode="HTML")
         return
-    player = game_data[user_id]
-    target = game_data[target_id]
+    player = await db_get_game_data(user_id)
+    target = await db_get_game_data(target_id)
     if target['status'] != 'dead':
         await message.reply("Target already alive!", parse_mode="HTML")
         return
@@ -1236,12 +1528,14 @@ async def revive_cmd(message: Message):
         player['balance'] -= REVIVE_COST
     target['status'] = 'alive'
     target['health'] = 100
+    await db_update_game_data(user_id, player)
+    await db_update_game_data(target_id, target)
     await message.reply(f"🔄 Revived {target['name']}!\n❤️ Health 100%", parse_mode="HTML")
 
 @dp.message(Command("protect"))
 async def protect_cmd(message: Message):
     user_id = message.from_user.id
-    player = game_data[user_id]
+    player = await db_get_game_data(user_id)
     now = indian_now()
     if player.get('protect_until') and now < player['protect_until']:
         remaining = int((player['protect_until'] - now).total_seconds())
@@ -1254,6 +1548,7 @@ async def protect_cmd(message: Message):
     if user_id != ADMIN_ID:
         player['balance'] -= PROTECT_COST
     player['protect_until'] = now + timedelta(seconds=GAME_COOLDOWNS['protect'])
+    await db_update_game_data(user_id, player)
     await message.reply(f"🛡️ 24h protection active!\n💵 Balance: ${player['balance']}", parse_mode="HTML")
 
 @dp.message(Command("give"))
@@ -1274,8 +1569,8 @@ async def give_cmd(message: Message, command: CommandObject):
     if target_id == user_id:
         await message.reply("Apne aap ko nahi de sakte!", parse_mode="HTML")
         return
-    player = game_data[user_id]
-    target = game_data[target_id]
+    player = await db_get_game_data(user_id)
+    target = await db_get_game_data(target_id)
     tax = int(amount * 0.1)
     total = amount + tax
     if player['balance'] < total:
@@ -1283,11 +1578,16 @@ async def give_cmd(message: Message, command: CommandObject):
         return
     player['balance'] -= total
     target['balance'] += amount
+    await db_update_game_data(user_id, player)
+    await db_update_game_data(target_id, target)
     await message.reply(f"✅ Gave ${amount} to {target['name']} (10% tax)", parse_mode="HTML")
 
 @dp.message(Command("lb"))
 @dp.message(Command("leaderboard"))
 async def leaderboard_cmd(message: Message):
+    # For simplicity, use in-memory game_data; in a full version, you'd query DB sorted
+    # Here we use the in-memory dict but it's not persistent across restarts.
+    # For production, you'd implement a DB query with sorting.
     sorted_players = sorted(game_data.items(), key=lambda x: (x[1]['kills']*1000 + x[1]['balance']), reverse=True)[:10]
     text = "🏆 <b>LEADERBOARD</b> 🏆\n\n"
     medals = ["🥇", "🥈", "🥉"]
@@ -1678,23 +1978,41 @@ async def note_cmd(message: Message, command: CommandObject):
     if not command.args:
         await message.reply("Note kya save karun? Example: <code>/note Milk lena</code>", parse_mode="HTML")
         return
-    cursor.execute("INSERT INTO notes (user_id, note_text, created_at) VALUES (?, ?, ?)",
-                   (message.from_user.id, command.args, indian_now()))
-    conn.commit()
+    now = indian_now()
+    if USE_MONGODB:
+        await db.notes.insert_one({
+            "user_id": message.from_user.id,
+            "note_text": command.args,
+            "created_at": now
+        })
+    else:
+        cursor.execute("INSERT INTO notes (user_id, note_text, created_at) VALUES (?, ?, ?)",
+                       (message.from_user.id, command.args, now))
+        conn.commit()
     await message.reply(f"{random_emoji()} <b>Note saved!</b> 📝", parse_mode="HTML")
 
 @dp.message(Command("notes"))
 async def notes_cmd(message: Message):
-    cursor.execute("SELECT note_text, created_at FROM notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
-                   (message.from_user.id,))
-    rows = cursor.fetchall()
+    user_id = message.from_user.id
+    if USE_MONGODB:
+        cursor = db.notes.find({"user_id": user_id}).sort("created_at", -1).limit(20)
+        rows = await cursor.to_list(length=20)
+    else:
+        cursor.execute("SELECT note_text, created_at FROM notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
+                       (user_id,))
+        rows = cursor.fetchall()
     if not rows:
         await message.reply("Koi note nahi hai. <code>/note</code> se add karo.", parse_mode="HTML")
         return
     text = "📋 <b>Your Notes:</b>\n\n"
     for i, row in enumerate(rows, 1):
-        time_str = datetime.fromisoformat(row['created_at']).strftime('%d/%m %I:%M %p')
-        text += f"{i}. {row['note_text']} — <i>{time_str}</i>\n"
+        if USE_MONGODB:
+            time_str = row['created_at'].strftime('%d/%m %I:%M %p')
+            note = row['note_text']
+        else:
+            time_str = datetime.fromisoformat(row['created_at']).strftime('%d/%m %I:%M %p')
+            note = row['note_text']
+        text += f"{i}. {note} — <i>{time_str}</i>\n"
     await message.reply(text, parse_mode="HTML")
 
 @dp.message(Command("remind"))
@@ -1713,26 +2031,45 @@ async def remind_cmd(message: Message, command: CommandObject):
         await message.reply("Time format: <code>30m</code> (minutes) ya <code>1h</code> (hours)", parse_mode="HTML")
         return
     remind_at = indian_now() + timedelta(minutes=minutes)
-    cursor.execute(
-        "INSERT INTO reminders (user_id, chat_id, reminder_text, remind_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        (message.from_user.id, message.chat.id, text, remind_at, indian_now())
-    )
-    conn.commit()
+    if USE_MONGODB:
+        await db.reminders.insert_one({
+            "user_id": message.from_user.id,
+            "chat_id": message.chat.id,
+            "reminder_text": text,
+            "remind_at": remind_at,
+            "created_at": indian_now()
+        })
+    else:
+        cursor.execute(
+            "INSERT INTO reminders (user_id, chat_id, reminder_text, remind_at, created_at) VALUES (?, ?, ?, ?, ?)",
+            (message.from_user.id, message.chat.id, text, remind_at, indian_now())
+        )
+        conn.commit()
     await message.reply(f"{random_emoji()} <b>Reminder set!</b> ⏰\n{text} – {remind_at.strftime('%I:%M %p')}", parse_mode="HTML")
 
 @dp.message(Command("reminders"))
 async def reminders_cmd(message: Message):
     now = indian_now()
-    cursor.execute("SELECT id, reminder_text, remind_at FROM reminders WHERE user_id = ? AND remind_at > ? ORDER BY remind_at",
-                   (message.from_user.id, now))
-    rows = cursor.fetchall()
+    user_id = message.from_user.id
+    if USE_MONGODB:
+        cursor = db.reminders.find({"user_id": user_id, "remind_at": {"$gt": now}}).sort("remind_at")
+        rows = await cursor.to_list(length=None)
+    else:
+        cursor.execute("SELECT id, reminder_text, remind_at FROM reminders WHERE user_id = ? AND remind_at > ? ORDER BY remind_at",
+                       (user_id, now))
+        rows = cursor.fetchall()
     if not rows:
         await message.reply("Koi active reminder nahi.", parse_mode="HTML")
         return
     text = "⏰ <b>Your Reminders:</b>\n\n"
     for row in rows:
-        due = datetime.fromisoformat(row['remind_at']).strftime('%d/%m %I:%M %p')
-        text += f"• {row['reminder_text']} — <i>{due}</i>\n"
+        if USE_MONGODB:
+            due = row['remind_at'].strftime('%d/%m %I:%M %p')
+            reminder = row['reminder_text']
+        else:
+            due = datetime.fromisoformat(row['remind_at']).strftime('%d/%m %I:%M %p')
+            reminder = row['reminder_text']
+        text += f"• {reminder} — <i>{due}</i>\n"
     await message.reply(text, parse_mode="HTML")
 
 @dp.message(Command("afk"))
@@ -1977,22 +2314,40 @@ async def sendall_cmd(message: Message):
     status = await message.reply("📤 Broadcasting...", parse_mode="HTML")
     sent = 0
     failed = 0
-    cursor.execute("SELECT user_id FROM users")
-    for row in cursor.fetchall():
-        try:
-            await bot.copy_message(row['user_id'], message.chat.id, message.reply_to_message.message_id)
-            sent += 1
-            await asyncio.sleep(0.05)
-        except:
-            failed += 1
-    cursor.execute("SELECT chat_id FROM groups")
-    for row in cursor.fetchall():
-        try:
-            await bot.copy_message(row['chat_id'], message.chat.id, message.reply_to_message.message_id)
-            sent += 1
-            await asyncio.sleep(0.05)
-        except:
-            failed += 1
+    if USE_MONGODB:
+        users = await db.users.find().to_list(length=None)
+        for user in users:
+            try:
+                await bot.copy_message(user['user_id'], message.chat.id, message.reply_to_message.message_id)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except:
+                failed += 1
+        groups = await db.groups.find().to_list(length=None)
+        for group in groups:
+            try:
+                await bot.copy_message(group['chat_id'], message.chat.id, message.reply_to_message.message_id)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except:
+                failed += 1
+    else:
+        cursor.execute("SELECT user_id FROM users")
+        for row in cursor.fetchall():
+            try:
+                await bot.copy_message(row['user_id'], message.chat.id, message.reply_to_message.message_id)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except:
+                failed += 1
+        cursor.execute("SELECT chat_id FROM groups")
+        for row in cursor.fetchall():
+            try:
+                await bot.copy_message(row['chat_id'], message.chat.id, message.reply_to_message.message_id)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except:
+                failed += 1
     await status.edit_text(f"✅ Broadcast done!\nSent: {sent}\nFailed: {failed}", parse_mode="HTML")
 
 @dp.message(Command("savesticker"))
@@ -2003,10 +2358,18 @@ async def savesticker_cmd(message: Message):
         return
     file_id = message.reply_to_message.sticker.file_id
     emoji = message.reply_to_message.sticker.emoji or ""
-    cursor.execute("INSERT OR IGNORE INTO stickers (file_id, added_by, added_at, emoji) VALUES (?, ?, ?, ?)",
-                   (file_id, message.from_user.id, indian_now(), emoji))
-    conn.commit()
-    if cursor.rowcount:
+    now = indian_now()
+    if USE_MONGODB:
+        await db.stickers.update_one(
+            {"file_id": file_id},
+            {"$set": {"added_by": message.from_user.id, "added_at": now, "emoji": emoji}},
+            upsert=True
+        )
+    else:
+        cursor.execute("INSERT OR IGNORE INTO stickers (file_id, added_by, added_at, emoji) VALUES (?, ?, ?, ?)",
+                       (file_id, message.from_user.id, now, emoji))
+        conn.commit()
+    if USE_MONGODB or cursor.rowcount:
         saved_stickers.append(file_id)
         await message.reply(f"✅ Sticker saved! Total: {len(saved_stickers)}", parse_mode="HTML")
     else:
@@ -2024,34 +2387,37 @@ async def deletesticker_cmd(message: Message):
         await message.reply("Reply to a sticker to delete from database.", parse_mode="HTML")
         return
     file_id = message.reply_to_message.sticker.file_id
-    cursor.execute("DELETE FROM stickers WHERE file_id = ?", (file_id,))
-    conn.commit()
-    if cursor.rowcount:
-        saved_stickers[:] = [f for f in saved_stickers if f != file_id]
-        await message.reply("✅ Sticker deleted!", parse_mode="HTML")
+    if USE_MONGODB:
+        result = await db.stickers.delete_one({"file_id": file_id})
+        if result.deleted_count:
+            saved_stickers[:] = [f for f in saved_stickers if f != file_id]
+            await message.reply("✅ Sticker deleted!", parse_mode="HTML")
+        else:
+            await message.reply("Sticker not found in database.", parse_mode="HTML")
     else:
-        await message.reply("Sticker not found in database.", parse_mode="HTML")
+        cursor.execute("DELETE FROM stickers WHERE file_id = ?", (file_id,))
+        conn.commit()
+        if cursor.rowcount:
+            saved_stickers[:] = [f for f in saved_stickers if f != file_id]
+            await message.reply("✅ Sticker deleted!", parse_mode="HTML")
+        else:
+            await message.reply("Sticker not found in database.", parse_mode="HTML")
 
-# -------------------- MESSAGE HANDLER (AI + MOD + AFK + GAMING DETECT + REACT) --------------------
+# -------------------- MESSAGE HANDLER (AI + MOD + AFK + GAMING DETECT + REACT + NEW TRIGGERS) --------------------
 @dp.message()
 async def message_handler(message: Message):
     if message.from_user.id == bot.id:
         return
 
     # Update user activity
-    cursor.execute(
-        "INSERT OR REPLACE INTO users (user_id, first_name, username, last_active) VALUES (?, ?, ?, ?)",
-        (message.from_user.id, message.from_user.first_name, message.from_user.username, indian_now())
-    )
-    conn.commit()
+    await db_update_user(message.from_user.id, {
+        "first_name": message.from_user.first_name,
+        "username": message.from_user.username
+    })
 
     # Save group
     if message.chat.type in ('group','supergroup'):
-        cursor.execute(
-            "INSERT OR IGNORE INTO groups (chat_id, title) VALUES (?, ?)",
-            (message.chat.id, message.chat.title)
-        )
-        conn.commit()
+        await db_update_group(message.chat.id, {"title": message.chat.title})
 
     # AFK check
     if message.from_user.id in user_afk:
@@ -2080,9 +2446,8 @@ async def message_handler(message: Message):
 
     # AUTO MODERATION
     if message.chat.type in ('group','supergroup') and message.text:
-        cursor.execute("SELECT auto_mod_enabled FROM groups WHERE chat_id = ?", (message.chat.id,))
-        row = cursor.fetchone()
-        if row and row['auto_mod_enabled']:
+        group = await db_get_group(message.chat.id)
+        if group and group.get('auto_mod_enabled', 1):
             if await is_spam(message.chat.id, message.from_user.id):
                 await delete_and_warn(message, "spam")
                 return
@@ -2110,20 +2475,38 @@ async def message_handler(message: Message):
             await message.reply(f"{random_emoji('angry')} ❌ Wrong answer! Try again.", parse_mode="HTML")
             return
 
-    # AI RESPONSE (private, reply to bot, mention)
+    # Determine if we should respond with AI
+    should_respond = False
+    respond_reason = ""
+
     is_private = message.chat.type == "private"
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
     is_mention = False
     if BOT_USERNAME and message.text:
         if f"@{BOT_USERNAME}" in message.text.lower():
             is_mention = True
+            # Remove mention from text
+            message.text = re.sub(f"@{BOT_USERNAME}", "", message.text, flags=re.IGNORECASE).strip()
 
-    if is_private or is_reply_to_bot or is_mention:
+    # NEW: Trigger on "Alita" word in groups (case-insensitive, whole word or part)
+    contains_alita = False
+    if message.chat.type in ('group','supergroup') and message.text:
+        if re.search(r'\balita\b', message.text.lower()):
+            contains_alita = True
+
+    # NEW: Random 60% chance in groups (excluding commands and messages that are already triggered)
+    random_chance = False
+    if message.chat.type in ('group','supergroup') and message.text and not message.text.startswith('/'):
+        if random.random() < 0.6:  # 60% chance
+            random_chance = True
+
+    if is_private or is_reply_to_bot or is_mention or contains_alita or random_chance:
+        should_respond = True
+
+    if should_respond:
         await bot.send_chat_action(message.chat.id, "typing")
         await asyncio.sleep(random.uniform(0.5, 1.2))
         user_text = message.text or ""
-        if BOT_USERNAME:
-            user_text = re.sub(f"@{BOT_USERNAME}", "", user_text, flags=re.IGNORECASE).strip()
         if not user_text:
             user_text = "Hii"
         # 20% chance to send sticker
@@ -2132,8 +2515,9 @@ async def message_handler(message: Message):
             await bot.send_sticker(message.chat.id, sticker)
             await asyncio.sleep(0.3)
         reply = await generate_ai_response(message.chat.id, user_text, message.from_user.id)
-        conversation_history[message.chat.id].append({"role": "user", "content": user_text})
-        conversation_history[message.chat.id].append({"role": "assistant", "content": reply})
+        # Save conversation to DB
+        await db_save_conversation(message.from_user.id, message.chat.id, "user", user_text)
+        await db_save_conversation(message.from_user.id, message.chat.id, "assistant", reply)
         await message.reply(reply, parse_mode="HTML")
         # Add reaction after replying
         await add_reaction(message, user_text)
@@ -2186,11 +2570,10 @@ async def handle_photo(message: Message):
 @dp.chat_member()
 async def chat_member_handler(update: ChatMemberUpdated):
     if update.new_chat_member.status == "member":
-        cursor.execute("SELECT welcome_enabled, custom_welcome, captcha_enabled FROM groups WHERE chat_id = ?", (update.chat.id,))
-        row = cursor.fetchone()
-        if not row:
+        group = await db_get_group(update.chat.id)
+        if not group:
             return
-        if row['captcha_enabled']:
+        if group.get('captcha_enabled', 0):
             num1 = random.randint(1,20)
             num2 = random.randint(1,20)
             op = random.choice(['+','-','*'])
@@ -2215,19 +2598,18 @@ async def chat_member_handler(update: ChatMemberUpdated):
                 parse_mode="HTML"
             )
             return
-        if row['welcome_enabled']:
-            if row['custom_welcome']:
-                msg = row['custom_welcome'].replace("{name}", update.new_chat_member.user.first_name)
+        if group.get('welcome_enabled', 1):
+            if group.get('custom_welcome'):
+                msg = group['custom_welcome'].replace("{name}", update.new_chat_member.user.first_name)
             else:
                 wel = ["🎉 Welcome {name}!", "🌟 Aao ji {name}!", "🥳 {name} aa gaye!", "🌸 Namaste {name}!"]
                 msg = random.choice(wel).format(name=update.new_chat_member.user.first_name)
             await bot.send_message(update.chat.id, msg + f" {random_emoji('happy')}", parse_mode="HTML")
     elif update.new_chat_member.status in ("left","kicked"):
-        cursor.execute("SELECT goodbye_enabled, custom_goodbye FROM groups WHERE chat_id = ?", (update.chat.id,))
-        row = cursor.fetchone()
-        if row and row['goodbye_enabled']:
-            if row['custom_goodbye']:
-                msg = row['custom_goodbye'].replace("{name}", update.old_chat_member.user.first_name)
+        group = await db_get_group(update.chat.id)
+        if group and group.get('goodbye_enabled', 1):
+            if group.get('custom_goodbye'):
+                msg = group['custom_goodbye'].replace("{name}", update.old_chat_member.user.first_name)
             else:
                 bye = ["👋 {name} left. Take care!", "😔 {name} chale gaye!", "💔 {name} is no longer with us."]
                 msg = random.choice(bye).format(name=update.old_chat_member.user.first_name)
@@ -2304,17 +2686,19 @@ async def main():
     me = await bot.get_me()
     BOT_USERNAME = me.username
     print(f"🤖 Bot: @{BOT_USERNAME} (ID: {me.id})")
+    await initialize_db()
     print(f"🎨 Stickers loaded: {len(saved_stickers)}")
     print(f"🧠 Groq available: {groq_client is not None}")
     print(f"🆓 g4f available: {G4F_AVAILABLE}")
+    print(f"📦 Database: {'MongoDB' if USE_MONGODB else 'SQLite'}")
 
     # Scheduler jobs
     scheduler.add_job(send_time_greetings, CronTrigger(hour=7, minute=0, timezone=INDIAN_TZ), id="morning")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=12, minute=0, timezone=INDIAN_TZ), id="afternoon")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=18, minute=0, timezone=INDIAN_TZ), id="evening")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=22, minute=0, timezone=INDIAN_TZ), id="night")
-    scheduler.add_job(send_random_sticker_job, CronTrigger(hour="*/3", minute="0"), id="random_sticker")
-    scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")
+    scheduler.add_job(send_random_sticker_job, CronTrigger(minute="*/30"), id="random_sticker")  # every 30 min
+    scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")  # every 30 sec
     scheduler.start()
 
     await start_web_server()
