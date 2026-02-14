@@ -576,6 +576,7 @@ async def load_stickers():
         cursor = db.stickers.find()
         saved_stickers = [doc['file_id'] async for doc in cursor]
     else:
+        # SQLite mode mein global cursor use karo
         cursor.execute("SELECT file_id FROM stickers")
         saved_stickers = [row['file_id'] for row in cursor.fetchall()]
 
