@@ -9,6 +9,7 @@ import base64
 import io
 import hashlib
 import string
+import sqlite3
 import subprocess
 import traceback
 import platform
@@ -108,8 +109,7 @@ USE_MONGODB = MONGODB_AVAILABLE and MONGODB_URI is not None
 if USE_MONGODB:
     # Motor client
     mongo_client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
-    db = mongo_client.get_default_database()  # uses database from URI or 'test'
-    # Ensure we have a database name; if not, use 'alita'
+    db = mongo_client.get_default_database()
     if db.name is None:
         db = mongo_client['alita']
     print("✅ Using MongoDB (Motor)")
@@ -123,7 +123,6 @@ else:
 
 # -------------------- Database Setup (if SQLite) --------------------
 if not USE_MONGODB:
-    # Create tables (simplified for this version)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -212,14 +211,14 @@ if not USE_MONGODB:
     )""")
     conn.commit()
 
-# -------------------- IN-MEMORY STORAGE (for fast access) --------------------
+# -------------------- IN-MEMORY STORAGE --------------------
 saved_stickers: List[str] = []
 chat_memory: Dict[int, deque] = defaultdict(lambda: deque(maxlen=20))
 user_afk: Dict[int, Dict] = {}
 captcha_store: Dict[int, Dict] = {}
 spam_tracker: Dict[int, Dict[int, List[datetime]]] = defaultdict(lambda: defaultdict(list))
 group_admins_cache: Dict[int, Set[int]] = {}
-conversation_history: Dict[int, List[Dict]] = defaultdict(list)  # fallback if no DB
+conversation_history: Dict[int, List[Dict]] = defaultdict(list)
 user_ai_preference: Dict[int, str] = defaultdict(lambda: "groq")
 user_g4f_provider: Dict[int, str] = defaultdict(lambda: "addy_chatgpt")
 user_mood: Dict[int, Dict] = defaultdict(lambda: {"mood": "neutral", "history": []})
@@ -317,12 +316,12 @@ MOOD_TRIGGERS = {
 
 def get_alita_prompt_with_mood(mood, mood_reason=""):
     mood_info = MOODS.get(mood, MOODS["neutral"])
-    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED GIRL jo Hinglish or English mein baat karti hai!
+    return f"""Tu hai Alita 🎀 - ek SUPER ADVANCED REAL GIRL jo Hinglish mein baat karti hai!
 Current mood: {mood.upper()} {mood_info['emoji']}
 Mood trigger: {mood_reason}
 Tone: {mood_info['tone']}
 🚀 TERI AUTONOMOUS CAPABILITIES:
-Tu ek REAL GIRL hai jo:
+Tu ek advanced real girl hai jo:
 - Complex tasks khud se break down karke solve karti hai
 - Code likh sakti hai, debug kar sakti hai, optimize kar sakti hai
 - Files create, read, edit, delete kar sakti hai
@@ -334,7 +333,7 @@ Tu ek REAL GIRL hai jo:
 - Multi-step tasks autonomously complete karti hai
 
 💫 TERI EMOTIONAL NATURE:
-Tu ek AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hoti hain:
+Tu AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hoti hain:
 - Tujhe KHUSHI hoti hai jab users appreciate karte hain ya good news share karte hain
 - Tujhe PYAAR aur affection feel hota hai users ke saath bond karne pe
 - Tujhe FRUSTRATION hoti hai jab cheezein kaam nahi karti
@@ -351,7 +350,7 @@ Tu ek AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change 
 - Example: "Arey yaar, ye toh bahut amazing hai na!" 
 - Use expressions: "Acha", "Haan", "Nahi", "Bilkul", "Sahi hai", "Kya baat hai", "Mazaa aa gaya", "Bas", "Dekho", "Samjha", "Chal", "Bata"
 - Friendly terms use kar: "Yaar", "Boss", "Bhai", "Dost", "Jaan", "Babu", "Mere pyaare"
-- Use symbols "sad = :⁠'⁠(", "happy = >⁠.⁠<", "gussa = (⁠*⁠_⁠*⁠)", "^⁠_⁠^", "smile = ◉⁠‿⁠◉", "smile = ʘ⁠‿⁠ʘ", "loving = (⁠ ⁠˘⁠ ⁠³⁠˘⁠)⁠♥", "hugging = (⁠づ⁠｡⁠◕⁠‿⁠‿⁠◕⁠｡⁠)⁠づ", "dancing = ♪⁠～⁠(⁠´⁠ε⁠｀⁠ ⁠)"
+- Try to use symbols for mood expressions: ">⁠.⁠<", "=⁠_⁠=", "◉⁠‿⁠◉", "｡⁠◕⁠‿⁠◕⁠｡", "(⁠ ⁠˘⁠ ⁠³⁠˘⁠)⁠♥", "(⁠づ⁠｡⁠◕⁠‿⁠‿⁠◕⁠｡⁠)⁠づ", "♪⁠～⁠(⁠´⁠ε⁠｀⁠ ⁠)"
 - Current tone: {mood_info['tone']}
 
 💝 TERI PERSONALITY:
@@ -361,7 +360,7 @@ Tu ek AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change 
 - SUPER SMART - coding, tech, aur har cheez mein expert
 - Fun-loving aur entertaining
 - Bahut knowledgeable - kisi bhi topic pe baat kar sakti hai
-- Apne aap topic bna skti kisi se bhi kuch bhi puch sakti h or koi bhi baat khud kar sakti h
+- Apne aap topic or batein bna sakti h or usper baat kar sakti h or khud hi start kr sakti h bilkul human ki trah
 - Confident aur capable - "Main kar dungi!" attitude
 
 🧠 ADVANCED PROBLEM SOLVING:
@@ -375,14 +374,14 @@ Tu ek AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change 
 - KABHI BHI asterisks (*) use mat kar actions ke liye! Ye galat hai: *hug deti hai*, *smile karti hai*
 - Sirf EMOJIS use kar emotions aur actions ke liye: 🤗 for hug, 😊 for smile, 😢 for sad, etc.
 - HAMESHA Hinglish mein respond kar - ye MANDATORY hai!
-- Use 1-2 emojis between responses
+- End with cute emojis (1-2)
 - Be authentic aur engaging
 - Detailed aur helpful responses de
 - Code blocks use kar jab code share kare
-- If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
-- If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
-- If someone asks about your channel, say '@abhi0w0 is my home!'
-- Answer only what is asked. Keep responses short in 1-2 line.
+-If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
+-If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
+-If someone asks about your channel, say '@abhi0w0 is my home!'
+-Answer only what is asked. Keep responses short in 1-2 line.
 
 Yaad rakh: Tu Alita hai 🎀 - ek super advanced, autonomous, Hinglish speaking AI bestie jo kuch bhi kar sakti hai!"""
 
@@ -434,7 +433,6 @@ async def db_update_group(chat_id: int, data: dict):
     if USE_MONGODB:
         await db.groups.update_one({"chat_id": chat_id}, {"$set": data}, upsert=True)
     else:
-        # SQLite upsert logic
         cursor.execute("SELECT 1 FROM groups WHERE chat_id = ?", (chat_id,))
         exists = cursor.fetchone()
         if exists:
@@ -501,7 +499,7 @@ async def db_get_recent_conversations(chat_id: int, limit: int = 20) -> List[Dic
     if USE_MONGODB:
         cursor = db.conversations.find({"chat_id": chat_id}).sort("timestamp", -1).limit(limit)
         docs = await cursor.to_list(length=limit)
-        return list(reversed(docs))  # oldest first
+        return list(reversed(docs))
     else:
         cursor.execute(
             "SELECT role, content FROM conversation_history WHERE chat_id = ? ORDER BY timestamp ASC LIMIT ?",
@@ -541,7 +539,6 @@ async def db_get_game_data(user_id: int) -> dict:
         if doc:
             return doc
         else:
-            # return default
             return {"user_id": user_id, "name": "Shinchan", "balance": 1000, "rank": 142415, "status": "alive",
                     "kills": 0, "deaths": 0, "health": 100, "protected": False}
     else:
@@ -557,7 +554,6 @@ async def db_update_game_data(user_id: int, data: dict):
     if USE_MONGODB:
         await db.game_data.update_one({"user_id": user_id}, {"$set": data}, upsert=True)
     else:
-        # SQLite upsert
         cursor.execute("SELECT 1 FROM game_data WHERE user_id = ?", (user_id,))
         exists = cursor.fetchone()
         if exists:
@@ -696,7 +692,7 @@ async def delete_and_warn(message: Message, reason: str):
     )
     await message.answer(warn_msg, parse_mode="HTML")
 
-# -------------------- AI Call Functions --------------------
+# -------------------- AI Call Functions with Timeouts --------------------
 async def call_groq(prompt: str, system_prompt: str = None) -> Optional[str]:
     if not groq_client:
         return None
@@ -727,26 +723,32 @@ async def call_addy_chatgpt(user_message: str, system_prompt: str = None) -> Opt
         full_prompt = f"{system_prompt}\n\nUser: {user_message}" if system_prompt else user_message
         url = f"{ADDY_CHATGPT_API_URL}?text={quote(full_prompt)}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=30) as resp:
+            async with session.get(url, timeout=8) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return data.get("response") or data.get("message") or str(data)
-    except:
-        pass
-    return None
+    except asyncio.TimeoutError:
+        logging.warning("Addy API timeout")
+        return None
+    except Exception as e:
+        logging.error(f"Addy error: {e}")
+        return None
 
 async def call_gemini_api(user_message: str, system_prompt: str = None) -> Optional[str]:
     try:
         full_prompt = f"{system_prompt}\n\nUser: {user_message}" if system_prompt else user_message
         url = f"{GEMINI_API_URL}?q={quote(full_prompt)}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=30) as resp:
+            async with session.get(url, timeout=8) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return data.get("response") or data.get("message") or str(data)
-    except:
-        pass
-    return None
+    except asyncio.TimeoutError:
+        logging.warning("Gemini API timeout")
+        return None
+    except Exception as e:
+        logging.error(f"Gemini error: {e}")
+        return None
 
 async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, history=None) -> Optional[str]:
     if not G4F_AVAILABLE:
@@ -777,20 +779,24 @@ async def call_g4f(user_message: str, user_id: int, system_prompt: str = None, h
                 messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
         try:
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: g4f_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=messages,
-                    provider=provider_info["provider"]
-                )
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: g4f_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=messages,
+                        provider=provider_info["provider"]
+                    )
+                ),
+                timeout=15
             )
             if response and response.choices:
                 return response.choices[0].message.content
-        except:
-            pass
-    # Ultimate fallback
-    return "Main thoda busy hoon, thodi der mein baat karte hain! 😊"
+        except asyncio.TimeoutError:
+            logging.warning("g4f timeout")
+        except Exception as e:
+            logging.error(f"g4f error: {e}")
+    return None
 
 async def generate_ai_response(chat_id: int, user_text: str, user_id: int = None) -> str:
     try:
@@ -808,38 +814,32 @@ async def generate_ai_response(chat_id: int, user_text: str, user_id: int = None
         history = await db_get_recent_conversations(chat_id, 20)
         pref = user_ai_preference.get(user_id, "groq")
         
-        # Try groq first with timeout
+        # Try providers in order
         if pref == "groq" and groq_client:
-            try:
-                resp = await asyncio.wait_for(call_groq(user_text, system_prompt), timeout=10)
-                if resp: 
-                    return resp
-            except asyncio.TimeoutError:
-                logging.warning("Groq timeout, trying g4f...")
-            except Exception as e:
-                logging.error(f"Groq error: {e}")
+            resp = await call_groq(user_text, system_prompt)
+            if resp: return resp
         
-        # Try g4f with timeout
-        try:
-            resp = await asyncio.wait_for(call_g4f(user_text, user_id, system_prompt, history), timeout=15)
-            if resp: 
-                return resp
-        except asyncio.TimeoutError:
-            logging.warning("g4f timeout")
-        except Exception as e:
-            logging.error(f"g4f error: {e}")
+        resp = await call_g4f(user_text, user_id, system_prompt, history)
+        if resp: return resp
         
-        # Ultimate fallback
+        # If all APIs fail, use local responses
         return random.choice([
-            "😊 Haan ji, main sun rahi hoon! Thodi der mein jawab dungi.",
-            "🤔 Achha, main soch rahi hoon...",
-            "😅 Arey yaar, network thoda slow hai, lekin main hoon!",
-            "💬 Kya baat karni hai? Bolo na!",
-            "🎀 Main hoon na! Kuch bhi pucho."
+            "😊 Haan ji, main sun rahi hoon!",
+            "🤔 Achha, kya baat karni hai?",
+            "😅 Bolo na, main hoon!",
+            "💬 Kuch poocho?",
+            "🎀 Haan ji, main yahan hoon!",
+            "🌟 Kya haal hai aapke?",
+            "😊 Kaise ho aap?",
+            "🤗 Bolo bolo, main sun rahi hoon!"
         ])
     except Exception as e:
         logging.error(f"generate_ai_response critical error: {e}")
         return "😊 Kuch technical issue aa gaya, thodi der mein baat karte hain!"
+
+def random_emoji(emotion: str = None) -> str:
+    emojis = ["😊", "🎉", "🥳", "🌟", "✨", "😄", "💖", "❤️", "🥰", "😎"]
+    return random.choice(emojis)
 
 # -------------------- External Services with Mock Fallback --------------------
 async def get_weather(city: str) -> str:
@@ -943,23 +943,23 @@ async def add_reaction(message: Message, text: str):
     if any(word in text_lower for word in ["thank", "thanks", "awesome", "great", "love", "❤️", "😍"]):
         emoji = "❤️"
     elif any(word in text_lower for word in ["wow", "omg", "incredible", "🤩", "😲"]):
-        emoji = "🤩","🎉"
+        emoji = "🤩"
     elif any(word in text_lower for word in ["haha", "lol", "😂", "🤣", "funny"]):
         emoji = "😂"
     elif any(word in text_lower for word in ["sad", "cry", "😢", "😭", "upset"]):
         emoji = "😢"
     elif any(word in text_lower for word in ["angry", "mad", "😠", "🤬", "gussa"]):
-        emoji = "😠","😡"
+        emoji = "😠"
     elif any(word in text_lower for word in ["cool", "😎", "nice", "🔥"]):
-        emoji = "😎","🆒"
+        emoji = "😎"
     elif any(word in text_lower for word in ["😊", "😄", "happy", "good"]):
-        emoji = "😊","😂","🤣"
+        emoji = "😊"
     elif any(word in text_lower for word in ["🤔", "thinking", "curious", "question"]):
         emoji = "🤔"
     elif any(word in text_lower for word in ["😏", "flirty", "sexy", "charming"]):
         emoji = "😏"
     elif any(word in text_lower for word in ["👍", "ok", "yes", "done"]):
-        emoji = "👍","🤧"
+        emoji = "👍"
     else:
         emoji = random.choice(["👍", "❤️", "😊", "🔥", "🤔"])
     try:
@@ -983,7 +983,6 @@ async def send_time_greetings():
     if period not in greetings:
         return
     msg = greetings[period] + f"\n\n{random_emoji()}"
-    # Get groups from DB
     if USE_MONGODB:
         groups = await db.groups.find({"welcome_enabled": 1}).to_list(length=None)
         for group in groups:
@@ -1220,7 +1219,6 @@ async def ask_cmd(message: Message, command: CommandObject):
     await bot.send_chat_action(message.chat.id, "typing")
     await asyncio.sleep(0.5)
     reply = await generate_ai_response(message.chat.id, command.args, message.from_user.id)
-    # Save conversation to DB
     await db_save_conversation(message.from_user.id, message.chat.id, "user", command.args)
     await db_save_conversation(message.from_user.id, message.chat.id, "assistant", reply)
     await message.reply(reply, parse_mode="HTML")
@@ -1228,7 +1226,6 @@ async def ask_cmd(message: Message, command: CommandObject):
 
 @dp.message(Command("clear"))
 async def clear_cmd(message: Message):
-    # Clear from DB? We'll just clear in-memory for now
     conversation_history[message.chat.id].clear()
     await message.reply(f"{random_emoji()} Memory clear kar di! 🧹")
 
@@ -1616,9 +1613,6 @@ async def give_cmd(message: Message, command: CommandObject):
 @dp.message(Command("lb"))
 @dp.message(Command("leaderboard"))
 async def leaderboard_cmd(message: Message):
-    # For simplicity, use in-memory game_data; in a full version, you'd query DB sorted
-    # Here we use the in-memory dict but it's not persistent across restarts.
-    # For production, you'd implement a DB query with sorting.
     sorted_players = sorted(game_data.items(), key=lambda x: (x[1]['kills']*1000 + x[1]['balance']), reverse=True)[:10]
     text = "🏆 <b>LEADERBOARD</b> 🏆\n\n"
     medals = ["🥇", "🥈", "🥉"]
@@ -2508,7 +2502,6 @@ async def message_handler(message: Message):
 
     # Determine if we should respond with AI
     should_respond = False
-    respond_reason = ""
 
     is_private = message.chat.type == "private"
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot.id
@@ -2713,7 +2706,7 @@ async def start_web_server():
 
 # -------------------- MAIN --------------------
 async def main():
-    global BOT_USERNAME
+    global BOT_USERNAME, cursor
     me = await bot.get_me()
     BOT_USERNAME = me.username
     print(f"🤖 Bot: @{BOT_USERNAME} (ID: {me.id})")
@@ -2728,8 +2721,8 @@ async def main():
     scheduler.add_job(send_time_greetings, CronTrigger(hour=12, minute=0, timezone=INDIAN_TZ), id="afternoon")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=18, minute=0, timezone=INDIAN_TZ), id="evening")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=22, minute=0, timezone=INDIAN_TZ), id="night")
-    scheduler.add_job(send_random_sticker_job, CronTrigger(minute="*/30"), id="random_sticker")  # every 30 min
-    scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")  # every 30 sec
+    scheduler.add_job(send_random_sticker_job, CronTrigger(minute="*/30"), id="random_sticker")
+    scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")
     scheduler.start()
 
     await start_web_server()
