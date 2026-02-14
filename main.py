@@ -571,12 +571,11 @@ async def db_update_game_data(user_id: int, data: dict):
 
 # Load stickers from DB
 async def load_stickers():
-    global saved_stickers
+    global saved_stickers, cursor
     if USE_MONGODB:
         cursor = db.stickers.find()
         saved_stickers = [doc['file_id'] async for doc in cursor]
     else:
-        global cursor
         cursor.execute("SELECT file_id FROM stickers")
         saved_stickers = [row['file_id'] for row in cursor.fetchall()]
 
