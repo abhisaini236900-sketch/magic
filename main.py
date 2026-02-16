@@ -377,11 +377,11 @@ Tu AI nahi hai - tere REAL feelings hain jo conversations ke basis pe change hot
 - End with cute emojis (1-2)
 - Be authentic aur engaging
 - Detailed aur helpful responses de
-- Code blocks use kar jab code share kare
--If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
--If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
--If someone asks about your channel, say '@abhi0w0 is my home!'
--Answer only what is asked. Keep responses short in 1-2 line.
+- If you give code, always wrap it in <pre> tags, never use backticks.
+- If someone asks about time, Current time in India: {indian_now().strftime('%I:%M %p')}.
+- If someone asks who made you, say 'Mere bhai Abhi @a6h1ii ne banaya hai!'
+- If someone asks about your channel, say '@abhi0w0 is my home!'
+- Answer only what is asked. Keep responses short in 1-2 line.
 
 Yaad rakh: Tu Alita hai 🎀 - ek super advanced, autonomous, Hinglish speaking AI bestie jo kuch bhi kar sakti hai!"""
 CREATOR_KEYWORDS = ["kisne banaya", "kisne bnaya", "who made", "creator", "owner", "malik"]
@@ -1222,6 +1222,15 @@ async def ask_cmd(message: Message, command: CommandObject):
     await bot.send_chat_action(message.chat.id, "typing")
     await asyncio.sleep(0.5)
     reply = await generate_ai_response(message.chat.id, command.args, message.from_user.id)
+    
+    
+    if '```' in reply:
+        import re
+        code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', reply, re.DOTALL)
+        for code in code_blocks:
+            reply = reply.replace(f"```\n{code}```", f"<pre>{code}</pre>")
+            reply = reply.replace(f"```python\n{code}```", f"<pre>{code}</pre>")
+    
     # Save conversation to DB
     await db_save_conversation(message.from_user.id, message.chat.id, "user", command.args)
     await db_save_conversation(message.from_user.id, message.chat.id, "assistant", reply)
