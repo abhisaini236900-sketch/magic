@@ -2742,7 +2742,7 @@ async def main():
     scheduler.add_job(send_time_greetings, CronTrigger(hour=12, minute=0, timezone=INDIAN_TZ), id="afternoon")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=18, minute=0, timezone=INDIAN_TZ), id="evening")
     scheduler.add_job(send_time_greetings, CronTrigger(hour=22, minute=0, timezone=INDIAN_TZ), id="night")
-    scheduler.add_job(send_random_sticker_job, CronTrigger(minute="*/30"), id="random_sticker")
+    scheduler.add_job(send_random_sticker_job, CronTrigger(hour="*/3", minute="0"), id="random_sticker")
     scheduler.add_job(check_reminders, CronTrigger(second="*/30"), id="reminders")
     scheduler.start()
 
