@@ -16,3 +16,4 @@ feedparser
 beautifulsoup4
 lxml
 pyzbar
+request
