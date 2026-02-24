@@ -1,12 +1,15 @@
 aiogram
 aiohttp
-apscheduler
+APScheduler
 pytz
 Pillow
 qrcode
 sympy
 psutil
 groq
+edge-tts
+google-api-python-client
+google-generativeai
 g4f
 pymongo
 yt-dlp
@@ -16,4 +19,3 @@ feedparser
 beautifulsoup4
 lxml
 pyzbar
-request
